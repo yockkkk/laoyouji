@@ -1,0 +1,262 @@
+"""ConfirmationService —— 高危操作确认状态机 + 延迟重放执行（ADR-1）。
+
+状态机：
+  pending ──approve──► executing ──成功──► executed
+     │ │                                 └─失败──► failed
+     │ └──reject──► rejected
+     └──超时(30min, 惰性清扫)──► expired
+
+约束：非 pending 再审批 ⇒ 409；过期审批 ⇒ 409 并标记 expired。
+bypass 凭证：approve 后重放必须与冻结的 tool_args 完全一致（防篡改重放）。
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from app.core.context import AppContext, TurnContext
+from app.core.events import durable_type
+from app.core.guard import GuardResult
+from app.core.sse import SSEEvent
+from app.core.tool import Tool
+from app.db.repositories import Repository
+
+logger = logging.getLogger(__name__)
+
+
+class ConfirmationError(Exception):
+    def __init__(self, message: str, status_code: int = 409):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class ConfirmationService:
+    def __init__(self, repo: Repository, timeout_min: int):
+        self._repo = repo
+        self._timeout = timedelta(minutes=timeout_min)
+
+    # ------------------------------------------------------------- 挂起（拦截时）
+
+    async def suspend(self, turn: TurnContext, tool: Tool, args: dict,
+                      guard_result: GuardResult) -> dict:
+        """由 ToolDispatcher 调用：冻结参数、建确认任务、通知双端。"""
+        binding = await self._repo.find_one(
+            "family_bindings", {"elder_id": turn.user.get("id")}
+        )
+        child_id = binding["child_id"] if binding else None
+        relation = (binding or {}).get("relation") or "家人"
+
+        summary_text = (
+            tool.child_summary(args) if tool.child_summary
+            else f"妈妈想执行 {tool.name}：{args}"
+        )
+        elder_name = turn.user.get("name", "老人")
+        card = {
+            "title": f"{elder_name}想进行一项需要确认的操作",
+            "summary": summary_text,
+            "reason": guard_result.reason or "涉及资金/重要事项",
+            "risk_level": guard_result.risk_level,
+            "amount": guard_result.amount,
+            "relation": relation,
+        }
+
+        now = datetime.now(timezone.utc)
+        task = await self._repo.insert("confirmation_tasks", {
+            "session_id": turn.session_id,
+            "elder_id": turn.user.get("id"),
+            "child_id": child_id,
+            "tool_name": tool.name,
+            "tool_args": args,
+            "risk_level": guard_result.risk_level,
+            "amount": guard_result.amount,
+            "summary_for_child": card,
+            "status": "pending",
+            "expires_at": (now + self._timeout).isoformat(),
+        })
+        await self._repo.insert("audit_log", {
+            "actor_id": turn.user.get("id"),
+            "action": "confirmation_created",
+            "target": task["id"],
+            "detail": {"tool": tool.name, "args": args, "risk_level": guard_result.risk_level},
+        })
+
+        await turn.emit("suspended", {
+            "confirmation_id": task["id"],
+            "tool": tool.name,
+            "summary": summary_text,
+            "amount": guard_result.amount,
+            "expires_at": task["expires_at"],
+            "message": f"这步要先过您{relation}的确认。已经发过去了，"
+                       f"他点一下同意，我马上帮您办好。",
+        })
+        return {
+            "ok": False,
+            "suspended": True,
+            "confirmation_id": task["id"],
+            "summary": f"已发起{relation}确认，等待通过后自动执行。",
+        }
+
+    # ------------------------------------------------------------- 放行凭证校验
+
+    async def check_bypass(self, confirmation_id: str, tool_name: str,
+                           args: dict) -> bool:
+        task = await self._repo.get("confirmation_tasks", confirmation_id)
+        if not task or task.get("status") != "approved":
+            return False
+        if task.get("tool_name") != tool_name:
+            return False
+        # 参数必须与冻结时完全一致（防篡改重放）
+        return (task.get("tool_args") or {}) == args
+
+    # ------------------------------------------------------------- 子女端操作
+
+    async def approve_and_execute(self, task_id: str, ctx: AppContext,
+                                  child_id: str | None = None) -> dict:
+        """子女批准 → 校验状态机 → 带 bypass 凭证重放冻结的工具调用。"""
+        task = await self._get_valid_pending(task_id)
+        await self._repo.update("confirmation_tasks", task_id, {
+            "status": "approved", "resolved_at": _now_iso(),
+        })
+        await self._repo.insert("audit_log", {
+            "actor_id": child_id or task.get("child_id"),
+            "action": "confirmation_approved",
+            "target": task_id,
+            "detail": {"tool": task["tool_name"]},
+        })
+
+        elder = await self._repo.get("users", task["elder_id"])
+        turn = TurnContext(
+            ctx=ctx, session_id=task.get("session_id") or "", user=elder or {},
+        )
+        result = await ctx.dispatcher.execute(
+            turn, task["tool_name"], task.get("tool_args") or {},
+            bypass_confirmation_id=task_id,
+        )
+
+        status = "executed" if result.get("ok") else "failed"
+        await self._repo.update("confirmation_tasks", task_id, {
+            "status": status, "result": _jsonable(result),
+        })
+        await self._announce(ctx, task, elder or {}, result, status=status)
+        return {"ok": bool(result.get("ok")), "status": status, "result": _jsonable(result)}
+
+    async def reject(self, task_id: str, ctx: AppContext,
+                     child_id: str | None = None) -> dict:
+        task = await self._get_valid_pending(task_id)
+        await self._repo.update("confirmation_tasks", task_id, {
+            "status": "rejected", "resolved_at": _now_iso(),
+        })
+        await self._repo.insert("audit_log", {
+            "actor_id": child_id or task.get("child_id"),
+            "action": "confirmation_rejected",
+            "target": task_id,
+            "detail": {"tool": task["tool_name"]},
+        })
+        # 老人是这条播报的归属人：拿真人记账，别拿 {}。否则"家人没同意"这条
+        # 事件在日志里没有 user_id，和"家人同意了"那条对不上，按人查审计会漏。
+        elder = await self._repo.get("users", task["elder_id"])
+        await self._announce(ctx, task, elder or {}, {
+            "ok": False,
+            "announce": "家人觉得这次先不办。您要是有疑问，给他打个电话商量商量。",
+        }, status="rejected")
+        return {"ok": True, "status": "rejected"}
+
+    async def list_for_child(self, child_id: str, status: str | None = None) -> list[dict]:
+        await self._expire_stale(child_id=child_id)
+        where: dict = {"child_id": child_id}
+        if status:
+            where["status"] = status
+        rows = await self._repo.list(
+            "confirmation_tasks", where=where, order="-created_at", limit=50
+        )
+        return rows
+
+    # ------------------------------------------------------------- 内部
+
+    async def _get_valid_pending(self, task_id: str) -> dict:
+        task = await self._repo.get("confirmation_tasks", task_id)
+        if not task:
+            raise ConfirmationError("确认任务不存在", 404)
+        if task.get("status") != "pending":
+            raise ConfirmationError(f"该任务已处理（当前状态: {task['status']}）", 409)
+        expires_at = _parse_iso(task.get("expires_at"))
+        if expires_at and datetime.now(timezone.utc) > expires_at:
+            await self._repo.update("confirmation_tasks", task_id, {
+                "status": "expired", "resolved_at": _now_iso(),
+            })
+            raise ConfirmationError("确认已超时过期（30 分钟）", 409)
+        return task
+
+    async def _expire_stale(self, *, child_id: str | None = None) -> int:
+        """惰性清扫：任何读取路径触发，把超时的 pending 标记 expired。"""
+        where = {"status": "pending"}
+        if child_id:
+            where["child_id"] = child_id
+        rows = await self._repo.list("confirmation_tasks", where=where, limit=200)
+        now = datetime.now(timezone.utc)
+        count = 0
+        for task in rows:
+            expires_at = _parse_iso(task.get("expires_at"))
+            if expires_at and now > expires_at:
+                await self._repo.update("confirmation_tasks", task["id"], {
+                    "status": "expired", "resolved_at": _now_iso(),
+                })
+                count += 1
+        return count
+
+    async def _announce(self, ctx: AppContext, task: dict, elder: dict,
+                        result: dict, *, status: str) -> None:
+        """执行结果回播老人端（+落会话日志，断线可轮询恢复）。
+
+        ``status`` 用 ``confirmation_tasks.status`` 那套词（``executed`` /
+        ``failed`` / ``rejected``），不新造第四套。它必须单独发出去，因为
+        ``ok=False`` 是**两件不同的事**：家人不同意，和家人同意了但没办成。
+        少了这个字段，老人端只能在两者之间猜一个 —— 猜错哪一头都是在替家人
+        表态。
+        """
+        session_id = task.get("session_id") or ""
+        if not session_id:
+            return
+        # 重放走的是子女端 HTTP 请求，进程里可能还没这个会话的内存日志；
+        # 不先 hydrate 就 append，seq 会从 1 重新发号，把已有行撞掉。
+        await ctx.event_log.hydrate(session_id)
+        announce = result.get("announce") or result.get("summary") or "事情办好啦。"
+        for event, payload in (
+            ("confirmation_resolved", {
+                "confirmation_id": task["id"],
+                "tool": task["tool_name"],
+                "ok": bool(result.get("ok")),
+                "status": status,
+            }),
+            ("agent_msg", {"text": announce, "agent": "main"}),
+            ("final", {"text": announce}),
+        ):
+            ctx.event_log.append(session_id, elder.get("id"),
+                                 durable_type(event), payload)
+            ctx.broadcast.push_sync(session_id, SSEEvent(event, payload))
+        if result.get("card"):
+            ctx.event_log.append(session_id, elder.get("id"),
+                                 durable_type("card"), result["card"])
+            ctx.broadcast.push_sync(session_id, SSEEvent("card", result["card"]))
+        # 重放发生在 HTTP 请求里（不在 agent 轮次里），所以这里自己落一次库
+        await ctx.event_log.flush(session_id)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _jsonable(result: dict) -> dict:
+    import json
+
+    return json.loads(json.dumps(result, ensure_ascii=False, default=str))

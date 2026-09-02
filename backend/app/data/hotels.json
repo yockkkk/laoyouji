@@ -1,0 +1,43 @@
+{
+  "hotels": [
+    {
+      "name": "如家精选（新街口地铁站店）",
+      "city": "北京",
+      "address": "北京市西城区新街口南大街 108 号",
+      "near_hospital": "北京积水潭医院",
+      "distance_m": 850,
+      "walk_min": 12,
+      "price": 389,
+      "accessible": true,
+      "accessible_note": "有无障碍电梯和坡道卫生间",
+      "phone": "010-66180000",
+      "rating": 4.6
+    },
+    {
+      "name": "汉庭酒店（积水潭店）",
+      "city": "北京",
+      "address": "北京市西城区德胜门内大街 85 号",
+      "near_hospital": "北京积水潭医院",
+      "distance_m": 600,
+      "walk_min": 9,
+      "price": 329,
+      "accessible": true,
+      "accessible_note": "一层客房，电梯直达",
+      "phone": "010-83221111",
+      "rating": 4.5
+    },
+    {
+      "name": "北京国玉大酒店",
+      "city": "北京",
+      "address": "北京市东城区东单三条 9 号",
+      "near_hospital": "北京协和医院",
+      "distance_m": 1200,
+      "walk_min": 17,
+      "price": 528,
+      "accessible": true,
+      "accessible_note": "提供轮椅租借",
+      "phone": "010-65128888",
+      "rating": 4.4
+    }
+  ]
+}

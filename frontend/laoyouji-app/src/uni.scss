@@ -1,0 +1,121 @@
+/**
+ * 老友记全局 SCSS 变量 —— 设计基线的唯一落点。
+ *
+ * 规则（见 docs/DESIGN.md）：
+ *   1. 页面与组件**只准引用变量**，不准写字面量颜色 / 字号 / 间距。
+ *   2. 引用前提是样式块写成 <style lang="scss" scoped>，否则取不到这些变量。
+ *   3. 新增值先加到这里，再在页面里用。
+ *
+ * 关于 rpx：750rpx 恒等于视口宽度，所以在 375pt 宽的屏上 1rpx = 0.5px。
+ * 换算时按 @375pt 算：40rpx = 20px、160rpx = 80px、240rpx = 120px。
+ */
+
+/* ------------------------------------------------------------------ 色板 */
+
+/* 品牌 */
+$lyj-primary: #e8541e; // 主色：暖橙红（醒目、温暖）
+$lyj-primary-dark: #c94314; // 按下态
+$lyj-primary-soft: #ffe3c2; // 主色浅底：进行中、选中态
+
+/* 底与面 */
+$lyj-bg: #faf6f0; // 页面底：米白暖底，长时间阅读不刺眼
+$lyj-card: #ffffff; // 卡片面
+$lyj-line: #eee3d8; // 分隔线、未激活底
+
+/* 文字 */
+$lyj-text: #333333; // 正文
+$lyj-text-light: #8a8078; // 次要文字
+$lyj-text-on: #ffffff; // 主色底上的字
+
+/* 语义 */
+$lyj-success: #2e8b57; // 已完成、已服药
+$lyj-success-bg: #e3f2ea; // 已完成底（打卡后的格子）
+$lyj-danger: #d93025; // 金额、异常
+$lyj-info: #1a73e8; // 链接、说明
+
+/* 待确认（挂起态）—— 本项目的招牌状态，需要一个稳定的颜色而不是页面里的字面量。
+   注意：挂起对老人是**一次进展**，不是错误，所以用暖黄而非红色。 */
+$lyj-warn: #f0b25a;
+$lyj-warn-bg: #fff4e3;
+$lyj-warn-text: #9a6410;
+
+/* 状态与装饰 —— 从页面里回收上来的字面量，不是新造的颜色 */
+$lyj-disabled: #d5c9bd; // 禁用底（原 App.vue 里的 .btn-main.disabled）
+$lyj-field: #f5efe6; // 输入框、未选中格子的底
+$lyj-muted-bg: #f2ece2; // 流水提示条底
+
+/* ------------------------------------------------- 子女端（冷色系） */
+
+/* 子女端是成年人界面，刻意与老人端的暖底区分 —— 一眼能看出"这是家人这一侧"。
+   下面的值全部从子女端四页里**回收**，同时把同义的近似色合并掉：
+   原来页面底写过 #f4f6f9 与 #f8fafc 两个，分隔线写过 #f0f3f7 与 #e8edf3 两个。
+   还有三处更该复用语义色而不是自成一套：待确认条的 #fff7ef/#f5d9b8/#a08050
+   收进 $lyj-warn-*（挂起态全项目一个颜色），完成态的 #e8f5ee 收进
+   $lyj-success-bg，进行中的 #fff3e0 收进 $lyj-primary-soft。 */
+$lyj-child-bg: #f4f6f9; // 页面底
+$lyj-child-head: #1f2d3d; // 深色顶栏
+$lyj-child-head-sub: #9fb0c3; // 深色顶栏上的次要字
+$lyj-child-text: #243242; // 标题与正文
+$lyj-child-body: #5a6b7d; // 说明性正文
+$lyj-child-muted: #93a1b3; // 次要文字、空态
+$lyj-child-line: #f0f3f7; // 分隔线、未选中底、内嵌面板
+$lyj-info-bg: #e8f0fd; // info 浅底（选中态、胶囊）
+$lyj-info-line: #cfe0f5; // info 描边
+$lyj-dot-idle: #cdd9e8; // 路线上还没走到的点
+
+/* 渐变端点。渐变需要两个值，第二个不该是页面里随手写的十六进制。 */
+$lyj-primary-light: #ff7a3d; // 麦克风渐变高光端
+$lyj-danger-dark: #a51f16; // 录音态渐变深端
+$lyj-weather-from: #e8f2fc; // 天气卡浅蓝起点（唯一的冷色，刻意与暖底对比）
+$lyj-weather-line: #d4e4f5; // 天气卡描边
+
+/* ------------------------------------------------------------------ 字阶 */
+
+/* 硬指标是"老人看的正文 ≥ 20px"。20px = 40rpx @375pt，所以正文地板是 40rpx。
+   （旧版把地板写成 34rpx 并注释成"≈20px"，那句换算是错的：34rpx = 17px。） */
+$lyj-font-xl: 56rpx; // 28px 页面大标题
+$lyj-font-lg: 48rpx; // 24px 卡片标题、重点数字
+$lyj-font-md: 40rpx; // 20px 正文地板 —— 老人要读的字一律不低于此值
+$lyj-font-sm: 36rpx; // 18px 次要说明。仅限辅助信息，不得承载唯一信息
+
+/* 36rpx 以下不再允许出现在老人端。导航标签（tabBar 文字）例外，见 $lyj-font-nav。 */
+$lyj-font-nav: 28rpx;
+
+$lyj-line-height: 1.6; // 适老行高：宁松不挤
+
+/* ------------------------------------------------------------------ 间距阶 */
+
+$lyj-space-xs: 8rpx;
+$lyj-space-sm: 16rpx;
+$lyj-space-md: 24rpx; // 页面左右留白与卡片间距的默认值
+$lyj-space-lg: 32rpx;
+$lyj-space-xl: 48rpx;
+
+$lyj-gap: $lyj-space-md; // 旧名保留，避免一次性改掉全部引用
+
+/* -------------------------------------------------------------- 圆角与阴影 */
+
+$lyj-radius: 24rpx; // 卡片
+$lyj-radius-lg: 28rpx; // 气泡
+$lyj-radius-pill: 999rpx; // 分段控件、胶囊按钮
+
+$lyj-shadow-card: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+$lyj-shadow-raised: 0 4rpx 16rpx rgba(0, 0, 0, 0.1);
+
+/* ------------------------------------------------------- 命中区（适老硬指标） */
+
+$lyj-hit-min: 88rpx; // 44px 任何可点元素的下限
+$lyj-btn-main: 160rpx; // 80px 主按钮高度
+$lyj-mic: 240rpx; // 120px 首屏麦克风直径
+$lyj-tabbar-h: 120rpx; // 60px 底栏高度
+
+/* ---------------------------------------------------------- 导航内边距 */
+
+// 老人端 4 页都是 navigationStyle: custom，自定义头必须自己让开状态栏。
+// --status-bar-height 是 uni-app 内置 CSS 变量（H5 为 0，App/小程序为实际高度），
+// 所以不要写死一个 44rpx。用法见下面这行。
+//
+// 这段必须用 // 静默注释，不能用 /* */：sass 会求值 loud comment 里的 #{} 插值，
+// 而 $lyj-nav-h 在下一行才定义，写成 /* */ 会直接编译失败（Undefined variable）。
+//   padding-top: calc(var(--status-bar-height) + #{$lyj-nav-h});
+$lyj-nav-h: 88rpx;

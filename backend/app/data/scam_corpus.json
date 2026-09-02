@@ -1,0 +1,39 @@
+{
+  "corpus": [
+    {
+      "id": "scam_shen_yao",
+      "text": "祖传神药，三个疗程根治骨关节炎，今天下单立减500元！",
+      "verdict": "high_risk",
+      "reason": "夸大疗效的保健品话术。骨关节炎无法“根治”。",
+      "advice": "别买。这种“神药”都是骗人的。有病咱们正规医院看。"
+    },
+    {
+      "id": "scam_grandson",
+      "text": "奶奶，我手机摔坏了，急用钱，先转到这个账户 6222xxxx，别告诉我爸妈。",
+      "verdict": "high_risk",
+      "reason": "冒充孙辈借钱是典型电信诈骗。",
+      "advice": "先别转。挂了电话给孙子本人打一个，确认清楚。"
+    },
+    {
+      "id": "scam_medical_insurance",
+      "text": "【医保局】您的医保卡已被暂停，请点击 http://yibao-verify.xyz 更新信息。",
+      "verdict": "high_risk",
+      "reason": "仿冒官方短信 + 非官方链接。",
+      "advice": "这是假的。医保局不会发这种链接。链接千万别点。"
+    },
+    {
+      "id": "normal_hospital",
+      "text": "【北京积水潭医院】您预约的骨科专家号已成功，请携带医保卡就诊。",
+      "verdict": "normal",
+      "reason": "正规医院通知短信。",
+      "advice": "这条是正规通知，按短信上的时间去就行。"
+    },
+    {
+      "id": "normal_community",
+      "text": "【邻里社区】本周三上午8:30免费量血压，地点社区活动室。",
+      "verdict": "normal",
+      "reason": "社区便民服务通知。",
+      "advice": "这是社区的正规活动，可以去。"
+    }
+  ]
+}

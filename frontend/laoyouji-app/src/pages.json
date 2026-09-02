@@ -1,0 +1,76 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/login",
+      "style": { "navigationBarTitleText": "老友记" }
+    },
+    {
+      "path": "pages/elder/home",
+      "style": { "navigationBarTitleText": "老友记", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/elder/chat",
+      "style": { "navigationBarTitleText": "和老友记聊聊", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/elder/medications",
+      "style": { "navigationBarTitleText": "今天的药", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/elder/profile",
+      "style": { "navigationBarTitleText": "我的", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/child/dashboard",
+      "style": {
+        "navigationBarTitleText": "家人看板",
+        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/child/confirm-detail",
+      "style": {
+        "navigationBarTitleText": "待确认事项",
+        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/child/guardian",
+      "style": {
+        "navigationBarTitleText": "行程守护",
+        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/child/privacy",
+      "style": {
+        "navigationBarTitleText": "隐私权限",
+        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarTextStyle": "white"
+      }
+    }
+  ],
+  "tabBar": {
+    "color": "#8a8078",
+    "selectedColor": "#e8541e",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "fontSize": "28rpx",
+    "height": "120rpx",
+    "list": [
+      { "pagePath": "pages/elder/home", "text": "首页" },
+      { "pagePath": "pages/elder/chat", "text": "聊天" },
+      { "pagePath": "pages/elder/medications", "text": "吃药" },
+      { "pagePath": "pages/elder/profile", "text": "我的" }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "老友记",
+    "navigationBarBackgroundColor": "#faf6f0",
+    "backgroundColor": "#faf6f0"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "templates": [
+    {"condition": "晴", "temp_low": 18, "temp_high": 29,
+     "advice": "早晚凉，加件薄外套。白天太阳好，戴个帽子。",
+     "umbrella": false},
+    {"condition": "多云", "temp_low": 16, "temp_high": 26,
+     "advice": "天气舒服。早晚温差大，记得添衣。",
+     "umbrella": false},
+    {"condition": "小雨", "temp_low": 14, "temp_high": 21,
+     "advice": "有小雨。带把折叠伞，穿防滑的鞋。",
+     "umbrella": true},
+    {"condition": "阴", "temp_low": 13, "temp_high": 20,
+     "advice": "天阴，出门多穿一点。",
+     "umbrella": false}
+  ],
+  "city_bias": {"南京": 0, "北京": 2}
+}

@@ -1,0 +1,100 @@
+{
+  "cities": ["北京", "上海", "南京"],
+  "hospitals": [
+    {
+      "name": "北京积水潭医院",
+      "city": "北京",
+      "level": "三级甲等",
+      "specialty": "骨科全国闻名",
+      "address": "北京市西城区新街口东街31号",
+      "accessible": true,
+      "departments": [
+        {
+          "name": "骨科",
+          "doctors": [
+            {
+              "name": "田伟",
+              "title": "主任医师·教授",
+              "fee": 100,
+              "slots": [
+                {"date": "+1", "time": "上午 08:30", "remaining": 3},
+                {"date": "+3", "time": "上午 08:30", "remaining": 8}
+              ]
+            },
+            {
+              "name": "刘心",
+              "title": "副主任医师",
+              "fee": 60,
+              "slots": [
+                {"date": "+1", "time": "下午 14:00", "remaining": 12}
+              ]
+            }
+          ]
+        },
+        {"name": "风湿免疫科", "doctors": [
+          {
+            "name": "穆荣",
+            "title": "主任医师",
+            "fee": 80,
+            "slots": [{"date": "+2", "time": "上午 09:00", "remaining": 5}]
+          }
+        ]}
+      ]
+    },
+    {
+      "name": "北京协和医院",
+      "city": "北京",
+      "level": "三级甲等",
+      "specialty": "综合实力全国前列",
+      "address": "北京市东城区帅府园1号",
+      "accessible": true,
+      "departments": [
+        {
+          "name": "骨科",
+          "doctors": [
+            {
+              "name": "翁习生",
+              "title": "主任医师·教授",
+              "fee": 100,
+              "slots": [{"date": "+2", "time": "上午 08:00", "remaining": 2}]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "南京鼓楼医院",
+      "city": "南京",
+      "level": "三级甲等",
+      "specialty": "本地综合三甲",
+      "address": "南京市鼓楼区中山路321号",
+      "accessible": true,
+      "departments": [
+        {
+          "name": "骨科",
+          "doctors": [
+            {
+              "name": "邱勇",
+              "title": "主任医师",
+              "fee": 70,
+              "slots": [{"date": "+1", "time": "上午 08:30", "remaining": 15}]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "symptom_to_department": {
+    "腿疼": "骨科",
+    "腿": "骨科",
+    "关节": "骨科",
+    "膝盖": "骨科",
+    "腰": "骨科",
+    "风湿": "风湿免疫科",
+    "心口": "心内科",
+    "胸闷": "心内科",
+    "咳嗽": "呼吸内科",
+    "胃": "消化内科",
+    "眼睛": "眼科"
+  }
+}

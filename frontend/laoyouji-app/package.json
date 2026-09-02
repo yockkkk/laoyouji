@@ -1,0 +1,24 @@
+{
+  "name": "laoyouji-app",
+  "version": "0.1.0",
+  "description": "老友记 · 老年人多智能体生活助手（uni-app 单工程双角色：老人端 + 子女端）",
+  "private": true,
+  "scripts": {
+    "dev:h5": "uni",
+    "build:h5": "uni build"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5020520260829001",
+    "@dcloudio/uni-components": "3.0.0-alpha-5020520260829001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5020520260829001",
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.8",
+    "@dcloudio/uni-cli-shared": "3.0.0-alpha-5020520260829001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5020520260829001",
+    "@vue/runtime-core": "^3.4.21",
+    "sass": "^1.103.1",
+    "vite": "^5.2.8"
+  }
+}

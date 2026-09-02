@@ -1,0 +1,31 @@
+{
+  "routes": [
+    {
+      "from_city": "南京",
+      "to_city": "北京",
+      "from_station": "南京南站",
+      "to_station": "北京南站",
+      "trains": [
+        {"train_no": "G102", "depart": "08:00", "arrive": "12:18", "duration": "4小时18分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 16},
+           {"seat_type": "一等座", "price": 932.0, "remaining": 5}
+         ]},
+        {"train_no": "G104", "depart": "09:13", "arrive": "13:31", "duration": "4小时18分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 42},
+           {"seat_type": "一等座", "price": 932.0, "remaining": 12}
+         ]},
+        {"train_no": "G106", "depart": "10:26", "arrive": "14:47", "duration": "4小时21分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 7}
+         ]},
+        {"train_no": "G6", "depart": "14:00", "arrive": "17:39", "duration": "3小时39分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 0},
+           {"seat_type": "商务座", "price": 1748.5, "remaining": 2}
+         ]}
+      ]
+    }
+  ]
+}
