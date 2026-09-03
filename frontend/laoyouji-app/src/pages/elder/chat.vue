@@ -49,23 +49,37 @@
       </view>
     </scroll-view>
 
-    <!-- 输入区：大麦克风 + 文字输入兜底 -->
+    <!-- 输入区：语音/打字一键切换条（紧凑设计，释放更多可视区域给消息列表） -->
     <view class="input-area">
-      <view class="text-row">
-        <input
-          class="text-input"
-          v-model="draft"
-          placeholder="也可以打字告诉我…"
-          confirm-type="send"
-          @confirm="sendText"
-        />
-        <button class="send-btn" :disabled="thinking" @tap="sendText">发送</button>
+      <view class="input-bar">
+        <button
+          class="mode-btn"
+          :disabled="thinking"
+          :title="inputMode === 'voice' ? '切换打字' : '切换说话'"
+          @tap="toggleInputMode"
+        >
+          <text>{{ inputMode === 'voice' ? '⌨️' : '🎤' }}</text>
+        </button>
+        <view class="input-control">
+          <LyjMic
+            v-if="inputMode === 'voice'"
+            mode="bar"
+            :disabled="thinking"
+            :dialect="user ? user.dialect : ''"
+            @text="onSpoken"
+          />
+          <view v-else class="text-input-wrap">
+            <input
+              class="text-input"
+              v-model="draft"
+              placeholder="打字告诉老友记…"
+              confirm-type="send"
+              @confirm="sendText"
+            />
+            <button class="send-btn" :disabled="thinking || !draft.trim()" @tap="sendText">发送</button>
+          </view>
+        </view>
       </view>
-      <LyjMic
-        :disabled="thinking"
-        :dialect="user ? user.dialect : ''"
-        @text="onSpoken"
-      />
     </view>
   </view>
 </template>
@@ -101,10 +115,13 @@ export default {
       thinking: false,
       scrollTop: 0,
       anchor: '',
+      inputMode: 'voice', // voice (按住说话) | text (打字输入)
       _todoMsg: null, // 本轮的步骤条（整表覆盖，不新增第二张）
       _watchTimer: null, // 盯"家人点了没"的轮询句柄
       _watchStarting: false, // 启动中的同步占位（三条 suspended 并发时防重复装表）
       _watchSeq: 0, // 盯到哪一行了（只补这一行之后的新事实）
+      _scrollTimer: null,
+      _lastScrollAt: 0,
     }
   },
   onShow() {
@@ -144,7 +161,12 @@ export default {
         this.$nextTick(() => this._run(h.text))
       } else {
         this.draft = h.text
+        this.inputMode = 'text'
       }
+    },
+
+    toggleInputMode() {
+      this.inputMode = this.inputMode === 'voice' ? 'text' : 'voice'
     },
 
     // ------------------------------------------------------------ 发送
@@ -505,13 +527,26 @@ export default {
     },
 
     // ------------------------------------------------------------ 工具
-    _scrollBottom() {
-      this.$nextTick(() => {
-        this.anchor = ''
+    _scrollBottom(force = false) {
+      const now = Date.now()
+      if (force || now - this._lastScrollAt > 120) {
+        this._lastScrollAt = now
+        if (this._scrollTimer) {
+          clearTimeout(this._scrollTimer)
+          this._scrollTimer = null
+        }
         this.$nextTick(() => {
-          this.anchor = 'bottom-anchor'
+          this.anchor = ''
+          this.$nextTick(() => {
+            this.anchor = 'bottom-anchor'
+          })
         })
-      })
+      } else if (!this._scrollTimer) {
+        this._scrollTimer = setTimeout(() => {
+          this._scrollTimer = null
+          this._scrollBottom(true)
+        }, 120)
+      }
     },
   },
 }
@@ -521,7 +556,8 @@ export default {
 @import '../../uni.scss';
 
 .chat-page {
-  height: 100vh;
+  /* H5 适老全高：自适应视口高度，排除顶部与底部原生 tabBar，杜绝双滚动条打架 */
+  height: calc(100vh - var(--window-top) - var(--window-bottom));
   display: flex;
   flex-direction: column;
   background: $lyj-bg;
@@ -589,30 +625,61 @@ export default {
 .input-area {
   background: $lyj-card;
   border-top: 2rpx solid $lyj-line;
-  padding: $lyj-space-md $lyj-space-md calc(#{$lyj-space-md} + env(safe-area-inset-bottom));
+  padding: $lyj-space-sm $lyj-space-md calc(#{$lyj-space-sm} + env(safe-area-inset-bottom));
 }
-.text-row {
+.input-bar {
   display: flex;
+  align-items: center;
   gap: $lyj-space-sm;
-  margin-bottom: $lyj-space-md;
+  min-height: $lyj-hit-min;
+}
+.mode-btn {
+  width: $lyj-hit-min;
+  height: $lyj-hit-min;
+  border-radius: 50%;
+  background: $lyj-field;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  border: 2rpx solid $lyj-line;
+}
+.input-control {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.text-input-wrap {
+  width: 100%;
+  display: flex;
+  gap: $lyj-space-xs;
+  align-items: center;
 }
 .text-input {
   flex: 1;
   height: $lyj-hit-min;
   background: $lyj-field;
   border-radius: $lyj-radius;
-  padding: 0 $lyj-space-lg;
+  padding: 0 $lyj-space-md;
   font-size: $lyj-font-md;
 }
 .send-btn {
-  width: 160rpx;
+  width: 140rpx;
   height: $lyj-hit-min;
   line-height: $lyj-hit-min;
   background: $lyj-primary;
   color: $lyj-text-on;
   font-size: $lyj-font-md;
+  font-weight: 600;
   border-radius: $lyj-radius;
   padding: 0;
   margin: 0;
+}
+.send-btn[disabled] {
+  opacity: 0.5;
+  background: $lyj-disabled;
 }
 </style>

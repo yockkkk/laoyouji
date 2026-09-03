@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     routes_asr,
+    routes_auth,
     routes_chat,
     routes_child,
     routes_confirm,
+    routes_family,
     routes_guardian,
     routes_health,
     routes_misc,
@@ -31,6 +33,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(routes_misc.router)
+    app.include_router(routes_auth.router)
+    app.include_router(routes_family.router)
     app.include_router(routes_chat.router)
     app.include_router(routes_asr.router)
     app.include_router(routes_confirm.router)

@@ -5,6 +5,10 @@
       "style": { "navigationBarTitleText": "老友记" }
     },
     {
+      "path": "pages/login/register",
+      "style": { "navigationBarTitleText": "注册账号" }
+    },
+    {
       "path": "pages/elder/home",
       "style": { "navigationBarTitleText": "老友记", "navigationStyle": "custom" }
     },
@@ -24,6 +28,14 @@
       "path": "pages/child/dashboard",
       "style": {
         "navigationBarTitleText": "家人看板",
+        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/child/family",
+      "style": {
+        "navigationBarTitleText": "家庭成员",
         "navigationBarBackgroundColor": "#1f2d3d",
         "navigationBarTextStyle": "white"
       }

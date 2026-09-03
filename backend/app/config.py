@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     iflytek_api_secret: str = ""
     tencent_secret_id: str = ""
     tencent_secret_key: str = ""
-    tencent_region: str = "ap-guangzhou"
+    tencent_region: str = "ap-shanghai"
 
     # 存储
     storage_backend: str = "local"  # supabase | local
@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # 安全管控
     risk_amount_threshold: float = 50.0
     confirm_timeout_min: int = 30
+
+    # 账号鉴权（开发环境请通过 .env 覆盖 JWT_SECRET）
+    jwt_secret: str = ""
+    jwt_access_minutes: int = 30
+    jwt_refresh_days: int = 30
 
     # 智能体预算（三级止损：步数在 Agent 类上，token / 墙钟在这儿）
     budget_max_tokens: int = 60_000
