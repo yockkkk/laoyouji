@@ -17,11 +17,14 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
 
-    # 语音识别
-    asr_provider: str = "mock"  # iflytek | mock
+    # 语音识别（腾讯一句话识别 | 讯飞语音听写 | mock）
+    asr_provider: str = "mock"  # tencent | iflytek | mock
     iflytek_app_id: str = ""
     iflytek_api_key: str = ""
     iflytek_api_secret: str = ""
+    tencent_secret_id: str = ""
+    tencent_secret_key: str = ""
+    tencent_region: str = "ap-guangzhou"
 
     # 存储
     storage_backend: str = "local"  # supabase | local

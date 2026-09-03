@@ -1,6 +1,6 @@
 """应用装配根（composition root）：按 .env 选择 Provider 实现，组装 AppContext。
 
-"一切皆插件"的落点：换真实 12306 / DeepSeek / 讯飞 / Supabase
+"一切皆插件"的落点：换真实 12306 / DeepSeek / 腾讯·讯飞 ASR / Supabase
 = 只改这里（或 .env）的一行注册，agents / tools / safety 零改动。
 
 这里也是**唯一**装配内核的地方：事件总线上挂哪些监听者、工具派发器长什么样、
@@ -104,8 +104,13 @@ def build_context(cfg: Settings | None = None) -> AppContext:
         registry.register(ServiceProvider("llm", lambda _ctx: MockLLMProvider()))
         llm = registry.resolve("llm")
 
-    # 方言 ASR
-    if cfg.asr_provider == "iflytek" and cfg.iflytek_app_id:
+    # 方言 ASR（腾讯一句话识别优先；讯飞次之；key 缺一即退化 mock，与 LLM 同哲学）
+    if cfg.asr_provider == "tencent" and cfg.tencent_secret_id and cfg.tencent_secret_key:
+        from app.providers.asr.tencent import TencentASRProvider
+
+        registry.register(ServiceProvider("asr", lambda _ctx: TencentASRProvider(
+            cfg.tencent_secret_id, cfg.tencent_secret_key, cfg.tencent_region)))
+    elif cfg.asr_provider == "iflytek" and cfg.iflytek_app_id:
         from app.providers.asr.iflytek import IflytekASRProvider
 
         registry.register(ServiceProvider("asr", lambda _ctx: IflytekASRProvider(
