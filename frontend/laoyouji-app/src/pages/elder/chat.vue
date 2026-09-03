@@ -228,7 +228,8 @@ export default {
         }
       } catch (e) {
         console.error('开启新对话失败', e)
-        uni.showToast({ title: '开启失败，请重试', icon: 'none' })
+        const msg = (e && e.message) || '开启失败，请重试'
+        uni.showToast({ title: msg.length > 25 ? msg.slice(0, 25) + '…' : msg, icon: 'none' })
       } finally {
         uni.hideLoading()
       }
