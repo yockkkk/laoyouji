@@ -1,5 +1,6 @@
 <template>
   <view class="med-page">
+    <LyjBack />
     <view class="topbar">
       <text class="title">今天的药</text>
       <text class="sub">吃完点一下，家人就放心了</text>

@@ -1,5 +1,6 @@
 <template>
   <view class="family-page">
+    <LyjBack />
     <view class="head">
       <view class="head-info">
         <text class="title">家庭成员管理</text>

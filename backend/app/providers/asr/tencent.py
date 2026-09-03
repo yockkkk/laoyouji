@@ -14,9 +14,10 @@ SecretKey 只完整显示一次，之后列表一律打码），TC3 签名由官
 引擎（内置沪/川/汉/贵/昆…共 23 种，西南官话走四川/贵阳/昆明话），粤语单独
 ``16k_yue``。真实方言效果需要拿真 Key 对着腾讯文档核一遍（docs/TODO.md A2）。
 
-格式：前端 App/小程序 ``getRecorderManager`` 录 mp3（腾讯支持）；H5 MediaRecorder
-的 webm/opus 不在腾讯/讯飞任何一家的容器白名单里，需要服务端转码 —— 属接缝外
-的管线问题，这里对不认识的容器直接报错，不假装能认。
+格式：前端 App/小程序 ``getRecorderManager`` 录 mp3（腾讯支持）；H5 不走
+MediaRecorder 的 webm/opus（不在腾讯/讯飞容器白名单里），而是 AudioContext 采
+PCM 封装成 16k wav 再上传（见前端 asr.js）—— 与白名单吻合。若仍有人直接拿
+webm 上传，这里对不认识的容器报错，不假装能认。
 """
 from __future__ import annotations
 

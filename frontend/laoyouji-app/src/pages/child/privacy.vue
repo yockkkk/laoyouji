@@ -1,5 +1,6 @@
 <template>
   <view class="privacy">
+    <LyjBack />
     <view class="head">
       <text class="title">隐私权限</text>
       <text class="sub">所有授权由老人在「我的」页面亲自设置，家人这一侧只能查看</text>

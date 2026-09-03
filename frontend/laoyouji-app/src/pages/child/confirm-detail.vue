@@ -1,5 +1,6 @@
 <template>
   <view class="detail">
+    <LyjBack />
     <view v-if="task" class="detail-card">
       <!-- 大白话确认卡 -->
       <view class="head">

@@ -1,5 +1,6 @@
 <template>
   <view class="chat-page">
+    <LyjBack />
     <!-- 顶栏 -->
     <view class="topbar">
       <text class="title">和老友记聊聊</text>

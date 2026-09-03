@@ -1,5 +1,6 @@
 <template>
   <view class="profile-page">
+    <LyjBack />
     <view class="topbar">
       <text class="title">我的</text>
     </view>

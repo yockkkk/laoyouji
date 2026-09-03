@@ -1,5 +1,6 @@
 <template>
   <view class="guardian">
+    <LyjBack />
     <LyjSegment current="guardian" />
 
     <view v-if="trip" class="trip-head">
