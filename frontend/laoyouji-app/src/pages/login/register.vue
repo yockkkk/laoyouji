@@ -1,6 +1,10 @@
 <template>
   <view class="register-page">
     <view class="topbar">
+      <view class="back-btn" @tap="goBack">
+        <text class="back-icon">‹</text>
+        <text class="back-text">返回登录</text>
+      </view>
       <text class="title">新用户注册</text>
     </view>
 
@@ -106,6 +110,14 @@ export default {
         this.loading = false
       }
     },
+    goBack() {
+      const pages = getCurrentPages()
+      if (pages && pages.length > 1) {
+        uni.navigateBack()
+      } else {
+        uni.redirectTo({ url: '/pages/login/login' })
+      }
+    },
   },
 }
 </script>
@@ -121,6 +133,35 @@ export default {
 }
 .topbar {
   margin-bottom: $lyj-space-md;
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-md;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 10rpx 20rpx;
+  background: $lyj-card;
+  border: 2rpx solid $lyj-line;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.back-btn:active {
+  opacity: 0.7;
+}
+.back-icon {
+  font-size: 38rpx;
+  line-height: 1;
+  color: $lyj-primary;
+  font-weight: 800;
+}
+.back-text {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  font-weight: 700;
 }
 .title {
   font-size: $lyj-font-lg;
@@ -178,5 +219,13 @@ export default {
 }
 .submit-btn {
   margin-top: $lyj-space-sm;
+}
+
+@media screen and (min-width: 768px) {
+  .register-page {
+    max-width: 580px;
+    margin: 0 auto;
+    padding: 60rpx 40rpx;
+  }
 }
 </style>

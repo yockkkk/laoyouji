@@ -1,6 +1,10 @@
 <template>
   <view class="profile-page">
     <view class="topbar">
+      <view class="back-btn" @tap="goBack">
+        <text class="back-icon">‹</text>
+        <text class="back-text">首页</text>
+      </view>
       <text class="title">我的</text>
     </view>
 
@@ -253,6 +257,14 @@ export default {
         uni.showToast({ title: e.message || '修改失败', icon: 'none' })
       }
     },
+    goBack() {
+      const pages = getCurrentPages()
+      if (pages && pages.length > 1) {
+        uni.navigateBack()
+      } else {
+        uni.switchTab({ url: '/pages/elder/home' })
+      }
+    },
     logout() {
       clearCurrentUser()
       uni.reLaunch({ url: '/pages/login/login' })
@@ -271,7 +283,36 @@ export default {
   box-sizing: border-box;
 }
 .topbar {
-  padding: calc(var(--status-bar-height) + #{$lyj-space-lg}) $lyj-space-lg $lyj-space-md;
+  padding: 24rpx $lyj-space-lg;
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-md;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 10rpx 20rpx;
+  background: $lyj-card;
+  border: 2rpx solid $lyj-line;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.back-btn:active {
+  opacity: 0.7;
+}
+.back-icon {
+  font-size: 38rpx;
+  line-height: 1;
+  color: $lyj-primary;
+  font-weight: 800;
+}
+.back-text {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  font-weight: 700;
 }
 .title {
   font-size: $lyj-font-lg;
@@ -405,5 +446,13 @@ export default {
   font-size: $lyj-font-md;
   font-weight: 600;
   color: $lyj-text;
+}
+
+@media screen and (min-width: 768px) {
+  .profile-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20rpx 40rpx 120rpx;
+  }
 }
 </style>

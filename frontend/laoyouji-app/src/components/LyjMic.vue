@@ -176,7 +176,7 @@ export default {
 /* 紧凑横向录音条模式（用于聊天室底部，释放垂直消息可视区域） */
 .mic-wrap.mode-bar {
   width: 100%;
-  gap: $lyj-space-xs;
+  position: relative;
   .mic {
     width: 100%;
     height: 96rpx;
@@ -195,6 +195,23 @@ export default {
   }
   .mic.recording {
     transform: scale(1.02);
+  }
+  .interim {
+    position: absolute;
+    bottom: 110rpx;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(40, 40, 40, 0.85);
+    padding: 12rpx 28rpx;
+    border-radius: $lyj-radius-pill;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.2);
+    z-index: 10;
+    .interim-text {
+      color: #ffffff;
+      font-size: $lyj-font-sm;
+    }
   }
 }
 </style>

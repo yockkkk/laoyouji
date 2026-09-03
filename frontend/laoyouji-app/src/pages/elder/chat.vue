@@ -1,9 +1,16 @@
 <template>
   <view class="chat-page">
-    <!-- 顶栏 -->
+    <!-- 顶栏：回退、标题与状态 -->
     <view class="topbar">
-      <text class="title">和老友记聊聊</text>
-      <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
+      <view class="back-btn" @tap="goBack">
+        <text class="back-icon">‹</text>
+        <text class="back-text">首页</text>
+      </view>
+      <view class="topbar-main">
+        <text class="title">和老友记聊聊</text>
+        <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
+      </view>
+      <text class="agent-tag" v-if="user">{{ agentName }}</text>
     </view>
 
     <!-- 会话流 -->
@@ -167,6 +174,15 @@ export default {
 
     toggleInputMode() {
       this.inputMode = this.inputMode === 'voice' ? 'text' : 'voice'
+    },
+
+    goBack() {
+      const pages = getCurrentPages()
+      if (pages && pages.length > 1) {
+        uni.navigateBack()
+      } else {
+        uni.switchTab({ url: '/pages/elder/home' })
+      }
     },
 
     // ------------------------------------------------------------ 发送
@@ -556,19 +572,53 @@ export default {
 @import '../../uni.scss';
 
 .chat-page {
-  /* H5 适老全高：自适应视口高度，排除顶部与底部原生 tabBar，杜绝双滚动条打架 */
-  height: calc(100vh - var(--window-top) - var(--window-bottom));
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: $lyj-bg;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .topbar {
-  padding: calc(var(--status-bar-height) + #{$lyj-space-lg}) $lyj-space-lg $lyj-space-sm;
+  padding: 24rpx $lyj-space-lg;
   background: $lyj-card;
   border-bottom: 2rpx solid $lyj-line;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: $lyj-space-md;
+  flex-shrink: 0;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 10rpx 20rpx;
+  background: $lyj-field;
+  border: 2rpx solid $lyj-line;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.back-btn:active {
+  opacity: 0.7;
+}
+.back-icon {
+  font-size: 38rpx;
+  line-height: 1;
+  color: $lyj-primary;
+  font-weight: 800;
+}
+.back-text {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  font-weight: 700;
+}
+.topbar-main {
+  display: flex;
+  align-items: baseline;
+  gap: $lyj-space-sm;
+  flex: 1;
 }
 .title {
   font-size: $lyj-font-lg;
@@ -579,12 +629,21 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-success;
 }
+.agent-tag {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  background: $lyj-primary-soft;
+  padding: 4rpx $lyj-space-sm;
+  border-radius: $lyj-radius-pill;
+  flex-shrink: 0;
+}
 .stream {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .stream-inner {
-  padding: $lyj-space-md 0 $lyj-space-lg;
+  padding: $lyj-space-md 0 100rpx;
 }
 .tool-bubble {
   display: flex;
@@ -603,7 +662,6 @@ export default {
 }
 .tool-text {
   flex: 1;
-  /* 免责声明会落在这里，所以它不能是一行小灰字 */
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
   line-height: $lyj-line-height;
@@ -620,12 +678,14 @@ export default {
   color: $lyj-text-light;
 }
 .bottom-anchor {
-  height: $lyj-space-md;
+  height: 100rpx;
 }
 .input-area {
   background: $lyj-card;
   border-top: 2rpx solid $lyj-line;
-  padding: $lyj-space-sm $lyj-space-md calc(#{$lyj-space-sm} + env(safe-area-inset-bottom));
+  padding: $lyj-space-sm $lyj-space-md;
+  padding-bottom: calc(#{$lyj-space-sm} + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
 }
 .input-bar {
   display: flex;
@@ -681,5 +741,18 @@ export default {
 .send-btn[disabled] {
   opacity: 0.5;
   background: $lyj-disabled;
+}
+
+/* 电脑端宽屏铺砌自适应：大屏上聊天卡片居中舒适铺开，不压缩也不死锁480px */
+@media screen and (min-width: 768px) {
+  .topbar {
+    padding: 28rpx 40rpx;
+  }
+  .stream-inner,
+  .input-bar {
+    max-width: 920px;
+    margin: 0 auto;
+    width: 100%;
+  }
 }
 </style>

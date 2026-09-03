@@ -55,6 +55,10 @@ button {
   justify-content: center;
 }
 
+page, uni-page-body {
+  height: 100%;
+}
+
 .card {
   background: $lyj-card;
   border-radius: $lyj-radius;
@@ -64,30 +68,30 @@ button {
 }
 
 /* #ifdef H5 */
-/* PC 桌面端大屏居中自适应：模拟精致手机外框，防止在 1920px 宽屏下横向拉扯失真 */
-@media screen and (min-width: 500px) {
+/* PC 桌面端宽屏铺砌自适应：大屏舒展铺开，卡片网格响应式呈现 */
+@media screen and (min-width: 768px) {
   body {
-    background-color: #ede7de !important;
+    background-color: $lyj-bg !important;
   }
   uni-app {
-    max-width: 480px;
+    max-width: 1200px;
     margin: 0 auto;
     min-height: 100vh;
-    box-shadow: 0 0 35px rgba(0, 0, 0, 0.1);
     position: relative;
     background-color: $lyj-bg;
-    overflow-x: hidden;
   }
   uni-page-head {
-    max-width: 480px;
-    left: 50% !important;
-    transform: translateX(-50%);
+    max-width: 1200px;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 auto !important;
   }
   uni-tabbar,
   .uni-tabbar {
-    max-width: 480px;
-    left: 50% !important;
-    transform: translateX(-50%);
+    max-width: 1200px;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 auto !important;
   }
 }
 /* #endif */
