@@ -317,9 +317,9 @@ export default {
 /* 电脑端宽屏铺砌自适应：大屏两列栅格平铺，卡片饱满铺开 */
 @media screen and (min-width: 768px) {
   .home {
-    max-width: 1100px;
+    max-width: 960px;
     margin: 0 auto;
-    padding: 30rpx 40rpx 120rpx;
+    padding: 30rpx 32rpx 120rpx;
   }
   .header {
     padding: 20rpx 0 40rpx;

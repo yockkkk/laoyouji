@@ -10,7 +10,7 @@
         <text class="title">和老友记聊聊</text>
         <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
       </view>
-      <text class="agent-tag" v-if="user">{{ agentName }}</text>
+      <text class="agent-tag" v-if="user">{{ currentAgent }}</text>
     </view>
 
     <!-- 会话流 -->
@@ -130,6 +130,17 @@ export default {
       _scrollTimer: null,
       _lastScrollAt: 0,
     }
+  },
+  computed: {
+    currentAgent() {
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        const m = this.messages[i]
+        if (m.agent && AGENT_NAME[m.agent]) {
+          return `${AGENT_ICON[m.agent] || '🤵'} ${AGENT_NAME[m.agent]}`
+        }
+      }
+      return '🤵 生活管家'
+    },
   },
   onShow() {
     this.user = getCurrentUser()
@@ -572,19 +583,30 @@ export default {
 @import '../../uni.scss';
 
 .chat-page {
-  height: 100%;
+  /* #ifdef H5 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--window-bottom, 50px);
+  /* #endif */
+  /* #ifndef H5 */
+  height: 100vh;
+  /* #endif */
   display: flex;
   flex-direction: column;
   background: $lyj-bg;
   box-sizing: border-box;
   overflow: hidden;
+  z-index: 10;
 }
 .topbar {
-  padding: 24rpx $lyj-space-lg;
+  padding: 20rpx $lyj-space-lg;
   background: $lyj-card;
   border-bottom: 2rpx solid $lyj-line;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: $lyj-space-md;
   flex-shrink: 0;
 }
@@ -592,7 +614,7 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 4rpx;
-  padding: 10rpx 20rpx;
+  padding: 8rpx 18rpx;
   background: $lyj-field;
   border: 2rpx solid $lyj-line;
   border-radius: $lyj-radius-pill;
@@ -633,17 +655,19 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
   background: $lyj-primary-soft;
-  padding: 4rpx $lyj-space-sm;
+  padding: 6rpx 18rpx;
   border-radius: $lyj-radius-pill;
+  font-weight: 600;
   flex-shrink: 0;
 }
 .stream {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  background: $lyj-bg;
 }
 .stream-inner {
-  padding: $lyj-space-md 0 100rpx;
+  padding: $lyj-space-md 0 40rpx;
 }
 .tool-bubble {
   display: flex;
@@ -678,7 +702,7 @@ export default {
   color: $lyj-text-light;
 }
 .bottom-anchor {
-  height: 100rpx;
+  height: 40rpx;
 }
 .input-area {
   background: $lyj-card;
@@ -686,6 +710,7 @@ export default {
   padding: $lyj-space-sm $lyj-space-md;
   padding-bottom: calc(#{$lyj-space-sm} + env(safe-area-inset-bottom, 0px));
   flex-shrink: 0;
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.03);
 }
 .input-bar {
   display: flex;
@@ -743,16 +768,28 @@ export default {
   background: $lyj-disabled;
 }
 
-/* 电脑端宽屏铺砌自适应：大屏上聊天卡片居中舒适铺开，不压缩也不死锁480px */
+/* 电脑端宽屏自适应：固定在 960px 舒适阅读区，消灭底部大面积空洞留白与悬浮孤岛 */
 @media screen and (min-width: 768px) {
-  .topbar {
-    padding: 28rpx 40rpx;
+  .chat-page {
+    max-width: 960px;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 auto !important;
+    border-left: 2rpx solid $lyj-line;
+    border-right: 2rpx solid $lyj-line;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
   }
-  .stream-inner,
-  .input-bar {
-    max-width: 920px;
+  .topbar {
+    padding: 24rpx 32rpx;
+  }
+  .stream-inner {
+    max-width: 860px;
     margin: 0 auto;
-    width: 100%;
+    padding: 24rpx 20rpx 40rpx;
+  }
+  .input-bar {
+    max-width: 860px;
+    margin: 0 auto;
   }
 }
 </style>

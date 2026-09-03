@@ -68,27 +68,28 @@ page, uni-page-body {
 }
 
 /* #ifdef H5 */
-/* PC 桌面端宽屏铺砌自适应：大屏舒展铺开，卡片网格响应式呈现 */
+/* PC 桌面端宽屏自适应：统摄在 960px 舒适操作与阅读区，消除大面积空洞留白与背景撕裂 */
 @media screen and (min-width: 768px) {
   body {
-    background-color: $lyj-bg !important;
+    background-color: #ede7de !important;
   }
   uni-app {
-    max-width: 1200px;
+    max-width: 960px;
     margin: 0 auto;
     min-height: 100vh;
     position: relative;
     background-color: $lyj-bg;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
   }
   uni-page-head {
-    max-width: 1200px;
+    max-width: 960px;
     left: 0 !important;
     right: 0 !important;
     margin: 0 auto !important;
   }
   uni-tabbar,
   .uni-tabbar {
-    max-width: 1200px;
+    max-width: 960px;
     left: 0 !important;
     right: 0 !important;
     margin: 0 auto !important;

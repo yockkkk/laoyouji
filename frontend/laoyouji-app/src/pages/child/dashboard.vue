@@ -444,9 +444,9 @@ export default {
 /* 电脑端宽屏铺砌自适应：大屏两列网格平铺，内容饱满舒展 */
 @media screen and (min-width: 768px) {
   .dash {
-    max-width: 1100px;
+    max-width: 960px;
     margin: 0 auto;
-    padding: 30rpx 40rpx 100rpx;
+    padding: 30rpx 32rpx 100rpx;
   }
   .sections-grid {
     display: grid;
