@@ -105,9 +105,12 @@ class SupabaseRepo:
     async def reset(self) -> None:
         # 演示复位：按依赖序清空全部业务表
         for table in TABLES:
-            await asyncio.to_thread(
-                self._client.table(table).delete().neq("id", "00000000-0000-0000-0000-000000000000").execute
-            )
+            def _del():
+                if table in ("audit_log", "session_events"):
+                    return self._client.table(table).delete().gt("id", -1).execute()
+                return self._client.table(table).delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+
+            await asyncio.to_thread(_del)
 
 
 class LocalFileRepo:

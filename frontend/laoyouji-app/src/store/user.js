@@ -1,12 +1,13 @@
 /**
- * 登录态（演示级）：本地存储当前角色与家庭成员信息。
- * 竞赛原型不做真实鉴权；正式落地对接微信/手机号登录。
+ * 登录态管理：User 信息与 Bearer Token 持久化。
  */
-const KEY = 'lyj_user'
+const USER_KEY = 'lyj_user'
+const TOKEN_KEY = 'lyj_token'
+const REFRESH_KEY = 'lyj_refresh_token'
 
 export function getCurrentUser() {
   try {
-    const raw = uni.getStorageSync(KEY)
+    const raw = uni.getStorageSync(USER_KEY)
     return raw ? JSON.parse(raw) : null
   } catch (e) {
     return null
@@ -14,18 +15,30 @@ export function getCurrentUser() {
 }
 
 export function setCurrentUser(user) {
-  uni.setStorageSync(KEY, JSON.stringify(user))
+  uni.setStorageSync(USER_KEY, JSON.stringify(user))
+}
+
+export function getAccessToken() {
+  return uni.getStorageSync(TOKEN_KEY) || ''
+}
+
+export function getRefreshToken() {
+  return uni.getStorageSync(REFRESH_KEY) || ''
+}
+
+export function setAuthSession({ user, access_token, refresh_token }) {
+  if (user) setCurrentUser(user)
+  if (access_token) uni.setStorageSync(TOKEN_KEY, access_token)
+  if (refresh_token) uni.setStorageSync(REFRESH_KEY, refresh_token)
 }
 
 export function clearCurrentUser() {
-  uni.removeStorageSync(KEY)
+  uni.removeStorageSync(USER_KEY)
+  uni.removeStorageSync(TOKEN_KEY)
+  uni.removeStorageSync(REFRESH_KEY)
+  uni.removeStorageSync('lyj_family')
 }
 
-/** 拉取演示家庭（后端 /api/demo/family）。 */
-export async function loadDemoFamily(get) {
-  const d = await get('/api/demo/family')
-  return {
-    elders: d.elders || [],
-    children: d.children || [],
-  }
+export function isLoggedIn() {
+  return !!(getCurrentUser() && getAccessToken())
 }

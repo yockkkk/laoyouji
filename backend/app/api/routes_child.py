@@ -7,28 +7,29 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_ctx
+from app.api.deps import get_ctx, get_current_principal
+from app.auth.security import Principal
 from app.safety.privacy import filter_alert, filter_medication
 
 router = APIRouter(prefix="/api/child", tags=["child"])
 
 
 @router.get("/{child_id}/dashboard")
-async def dashboard(child_id: str):
+async def dashboard(child_id: str, principal: Principal = Depends(get_current_principal)):
     ctx = get_ctx()
-    child = await ctx.repos.get("users", child_id)
-    if not child:
-        raise HTTPException(404, "用户不存在")
+    if principal.id != child_id and principal.role != "child":
+        raise HTTPException(403, "无权访问其他子女看板")
+    child = principal.user
 
-    # 绑定的老人
-    bindings = await ctx.repos.list("family_bindings", where={"child_id": child_id})
+    # 绑定的老人（仅 active 关系）
+    bindings = await ctx.repos.list("family_bindings", where={"child_id": child_id, "status": "active"})
     elder_ids = [b["elder_id"] for b in bindings]
     elders = []
     for eid in elder_ids:
         e = await ctx.repos.get("users", eid)
-        if e:
+        if e and e.get("status", "active") == "active":
             elders.append(e)
     if not elders:
         return {"child": child, "elders": [], "pending_confirmations": [],
@@ -38,7 +39,6 @@ async def dashboard(child_id: str):
     elder_id = elder["id"]
 
     # 隐私分级：先取授权，后面每一项出库数据都按它裁。
-    # 没绑定关系 → denied()，位置和健康全 off（fail-closed 在身份那一层）。
     grant = await ctx.privacy.grant_for(elder_id, child_id)
     await ctx.privacy.audit(grant, "child_dashboard")
 

@@ -6,69 +6,78 @@
       <text class="slogan">您的贴心生活管家</text>
     </view>
 
-    <view class="role-card" @tap="pick('elder')">
-      <text class="role-icon">👵</text>
-      <view class="role-info">
-        <text class="role-name">我是老人</text>
-        <text class="role-desc">语音说话，啥事都帮我办</text>
+    <view class="form-card">
+      <view class="input-row">
+        <text class="label">账号</text>
+        <input class="input" v-model="username" placeholder="请输入用户名/手机号" />
       </view>
-      <text class="arrow">›</text>
+      <view class="input-row">
+        <text class="label">密码</text>
+        <input class="input" v-model="password" password placeholder="请输入密码" />
+      </view>
+      <button class="btn-main login-btn" :loading="loading" @tap="submitLogin">登录</button>
+      <button class="btn-ghost reg-btn" @tap="goRegister">没有账号？去注册</button>
     </view>
 
-    <view class="role-card child" @tap="pick('child')">
-      <text class="role-icon">👨</text>
-      <view class="role-info">
-        <text class="role-name">我是家人</text>
-        <text class="role-desc">帮爸妈把关，随时看护</text>
+    <view class="demo-card">
+      <text class="demo-title">演示账号快捷填入</text>
+      <view class="demo-actions">
+        <button class="demo-pill" size="mini" @tap="fillDemo('elder')">👵 张桂芳（老人）</button>
+        <button class="demo-pill" size="mini" @tap="fillDemo('child')">👨 李明（家人）</button>
       </view>
-      <text class="arrow">›</text>
-    </view>
-
-    <view class="tip">
-      <text>演示账号自动登录：{{ tipText }}</text>
     </view>
   </view>
 </template>
 
 <script>
-import { get } from '../../api/client'
-import { loadDemoFamily, setCurrentUser } from '../../store/user'
+import { post } from '../../api/client'
+import { setAuthSession } from '../../store/user'
 
 export default {
   data() {
-    return { tipText: '正在连接服务…' }
-  },
-  async onLoad() {
-    try {
-      const family = await loadDemoFamily(get)
-      const elder = family.elders[0]
-      const child = family.children[0]
-      uni.setStorageSync('lyj_family', JSON.stringify({ elder, child }))
-      this.tipText = `${elder ? elder.name : '老人'} / ${child ? child.name : '家人'}`
-    } catch (e) {
-      this.tipText = '后端未连接（请先启动后端服务）'
+    return {
+      username: '',
+      password: '',
+      loading: false,
     }
   },
   methods: {
-    pick(role) {
-      const raw = uni.getStorageSync('lyj_family')
-      let user = null
-      try {
-        const family = raw ? JSON.parse(raw) : {}
-        user = role === 'child' ? family.child : family.elder
-      } catch (e) {
-        /* ignore */
+    fillDemo(role) {
+      if (role === 'elder') {
+        this.username = 'zhangguifang'
+        this.password = 'elder123456'
+      } else {
+        this.username = 'liming'
+        this.password = 'child123456'
       }
-      if (!user) {
-        uni.showToast({ title: '未获取到演示家庭，请先启动后端', icon: 'none' })
+    },
+    goRegister() {
+      uni.navigateTo({ url: '/pages/login/register' })
+    },
+    async submitLogin() {
+      if (!this.username.trim() || !this.password) {
+        uni.showToast({ title: '请填写账号和密码', icon: 'none' })
         return
       }
-      user.role = role
-      setCurrentUser(user)
-      // 登录成功 —— 页面栈里只有登录页，而它不该能被返回键找回来
-      uni.reLaunch({
-        url: role === 'child' ? '/pages/child/dashboard' : '/pages/elder/home',
-      })
+      this.loading = true
+      try {
+        const res = await post('/api/auth/login', {
+          username: this.username.trim(),
+          password: this.password,
+        })
+        setAuthSession(res)
+        const role = res.user ? res.user.role : 'elder'
+        uni.showToast({ title: '登录成功', icon: 'success' })
+        setTimeout(() => {
+          uni.reLaunch({
+            url: role === 'child' ? '/pages/child/dashboard' : '/pages/elder/home',
+          })
+        }, 300)
+      } catch (err) {
+        uni.showToast({ title: err.message || '登录失败', icon: 'none' })
+      } finally {
+        this.loading = false
+      }
     },
   },
 }
@@ -82,74 +91,84 @@ export default {
   background: $lyj-bg;
   display: flex;
   flex-direction: column;
-  padding: 120rpx $lyj-space-xl 60rpx;
+  padding: 80rpx $lyj-space-lg 40rpx;
   box-sizing: border-box;
 }
 .logo-area {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 100rpx;
+  margin-bottom: 50rpx;
 }
 .logo {
-  font-size: 140rpx;
+  font-size: 110rpx;
 }
 .app-name {
-  font-size: 64rpx;
+  font-size: 56rpx;
   font-weight: 800;
   color: $lyj-primary;
-  margin-top: $lyj-space-sm;
-  letter-spacing: $lyj-space-xs;
+  margin-top: $lyj-space-xs;
 }
 .slogan {
   font-size: $lyj-font-md;
   color: $lyj-text-light;
   margin-top: $lyj-space-xs;
 }
-/* 选身份是这页唯一的操作，整张卡就是按钮 —— 按主按钮高度给 */
-.role-card {
+.form-card {
   background: $lyj-card;
-  border-radius: $lyj-radius-lg;
-  min-height: $lyj-btn-main;
-  padding: $lyj-space-xl $lyj-space-lg;
+  border-radius: $lyj-radius;
+  padding: $lyj-space-lg;
+  box-shadow: $lyj-shadow-card;
   display: flex;
-  align-items: center;
-  gap: $lyj-space-lg;
-  margin-bottom: 36rpx;
-  box-shadow: $lyj-shadow-raised;
-  border: 4rpx solid transparent;
+  flex-direction: column;
+  gap: $lyj-space-md;
 }
-.role-card.child {
-  border-color: $lyj-info-line;
-}
-.role-icon {
-  font-size: 88rpx;
-}
-.role-info {
-  flex: 1;
+.input-row {
   display: flex;
   flex-direction: column;
   gap: $lyj-space-xs;
 }
-.role-name {
-  font-size: 44rpx;
-  font-weight: 700;
+.label {
+  font-size: $lyj-font-md;
+  font-weight: 600;
   color: $lyj-text;
 }
-.role-desc {
+.input {
+  height: $lyj-hit-min;
+  background: $lyj-field;
+  border-radius: $lyj-radius;
+  padding: 0 $lyj-space-md;
   font-size: $lyj-font-md;
-  color: $lyj-text-light;
 }
-.arrow {
-  font-size: 56rpx;
-  color: $lyj-line;
+.login-btn {
+  margin-top: $lyj-space-sm;
 }
-.tip {
-  margin-top: auto;
-  text-align: center;
+.reg-btn {
+  margin-top: $lyj-space-xs;
 }
-.tip text {
+.demo-card {
+  margin-top: $lyj-space-lg;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: $lyj-radius;
+  padding: $lyj-space-md;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $lyj-space-sm;
+}
+.demo-title {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+}
+.demo-actions {
+  display: flex;
+  gap: $lyj-space-md;
+}
+.demo-pill {
+  font-size: $lyj-font-sm;
+  background: $lyj-primary-soft;
+  color: $lyj-primary;
+  border: 2rpx solid $lyj-primary;
+  border-radius: $lyj-radius-pill;
 }
 </style>

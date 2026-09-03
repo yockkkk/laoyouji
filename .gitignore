@@ -28,6 +28,7 @@ backend/local_data/
 # ===== 编辑器 / 系统 =====
 .vscode/
 .idea/
+.claude/
 *.iml
 .DS_Store
 Thumbs.db

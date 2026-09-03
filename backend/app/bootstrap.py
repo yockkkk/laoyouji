@@ -105,7 +105,12 @@ def build_context(cfg: Settings | None = None) -> AppContext:
         llm = registry.resolve("llm")
 
     # 方言 ASR
-    if cfg.asr_provider == "iflytek" and cfg.iflytek_app_id:
+    if cfg.asr_provider == "tencent" and cfg.tencentcloud_secret_id:
+        from app.providers.asr.tencent import TencentASRProvider
+
+        registry.register(ServiceProvider("asr", lambda _ctx: TencentASRProvider(
+            cfg.tencentcloud_secret_id, cfg.tencentcloud_secret_key, cfg.tencentcloud_region)))
+    elif cfg.asr_provider == "iflytek" and cfg.iflytek_app_id:
         from app.providers.asr.iflytek import IflytekASRProvider
 
         registry.register(ServiceProvider("asr", lambda _ctx: IflytekASRProvider(

@@ -7,6 +7,9 @@ create extension if not exists pgcrypto;
 -- ===== 用户与家庭 =====
 create table if not exists public.users (
   id uuid primary key default gen_random_uuid(),
+  username text unique,
+  password_hash text,
+  status text not null default 'active' check (status in ('active', 'disabled')),
   role text not null check (role in ('elder','child')),
   name text not null,
   phone text,
@@ -21,10 +24,32 @@ create table if not exists public.family_bindings (
   elder_id uuid references public.users(id) on delete cascade,
   child_id uuid references public.users(id) on delete cascade,
   relation text,
+  status text not null default 'active' check (status in ('pending', 'active', 'rejected', 'revoked', 'expired')),
+  invited_by uuid references public.users(id),
+  approved_at timestamptz,
+  resolved_at timestamptz,
+  revoked_at timestamptz,
   created_at timestamptz default now(),
   unique (elder_id, child_id)
 );
 alter table public.family_bindings enable row level security;
+
+-- 兼容已有表的增量补丁（应对旧库中 CREATE TABLE IF NOT EXISTS 跳过建表的问题）
+alter table public.users
+  add column if not exists username text unique,
+  add column if not exists password_hash text,
+  add column if not exists status text not null default 'active' check (status in ('active', 'disabled'));
+
+alter table public.family_bindings
+  add column if not exists status text not null default 'active' check (status in ('pending', 'active', 'rejected', 'revoked', 'expired')),
+  add column if not exists invited_by uuid references public.users(id),
+  add column if not exists approved_at timestamptz,
+  add column if not exists resolved_at timestamptz,
+  add column if not exists revoked_at timestamptz;
+
+create unique index if not exists uq_family_bindings_elder_child
+  on public.family_bindings (elder_id, child_id);
+
 
 -- ===== 会话（append-only 唯一事实源）=====
 create table if not exists public.sessions (

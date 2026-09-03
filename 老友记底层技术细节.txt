@@ -1,0 +1,432 @@
+老友记 · 底层技术细节（逐文件·调试体位·坑点）
+版本：按 2026-09-02 门禁全绿后的代码现状（LLM_PROVIDER=mock + STORAGE_BACKEND=local 离线链路）
+仓库根：laoyouji/  · 后端 backend/app/  · 前端 frontend/laoyouji-app/src/  · 测试 backend/tests/  · 脚本 backend/scripts/
+阅读前提：已读 docs/ARCHITECTURE.md / DESIGN.md / API.md / PRD.md / TODO.md；本文只写“代码里真有、测试真钉住”的东西，不补口号。
+
+================================================================================
+0. 全局约定（不看这节，后面每节的“坑点”会看不懂）
+================================================================================
+- 事件两套词表：持久化类型（斜杠，如 todo/write）长期落库；SSE 线格式（下划线，如 todo）推给前端。翻译点只有一处：core/events.py _SSE_TO_DURABLE 与 durable_type()，前端镜像在 frontend/laoyouji-app/src/api/sse.js _DURABLE_TO_SSE。两套不是笔误，是刻意分层的“事实 vs 活信号”。
+- 三个 persist=False：delta（打字预览）、agent_msg 的 SSE 推流用 persist=False？不，agent_msg persist=False 但会另落 assistant/message？注意 core/session.py _record_assistant 里对 assistant/message 是落库的，而对 delta 的 turn.emit("delta", ..., persist=False) 不落库。frontend/laoyouji-app/src/pages/elder/chat.vue 里 delta 只是预览，必须被 agent_msg 覆盖。
+- 唯一事实源：SessionEventLog（core/events.py）。derive_messages 是唯一投影，不许手搓 messages 列表跨步传递；“model-visible means logged”由 check_invariants 伴随校验。
+- 一切皆插件：注册返回 disposer（可逆副作用）。测试靠它“挂上-跑一轮-摘掉”自证某个行为确实来自某个监听者。
+
+================================================================================
+1. 内核 core/
+================================================================================
+-- 1.1 core/bus.py（EventBus：四种派发）
+意图：把 harness 的 microkernel event taxonomy 原样搬来，让“新行为挂钩子，不改 agent loop”成立。
+- 常量钩子名：PRE_STEP / REQUEST / REQUEST_ERROR / TURN_STOPPING / TOOLS_PRE_EXECUTE / TOOLS_EXECUTE / TOOLS_POST_EXECUTE / TOOLS_RESULT / SESSION_FLUSH。见 bus.py:29-37。
+- 注册：on(hook, fn, order=0, label="") 返回 dispose()；内部 _Listener 按 (order, seq) 排序，保证最外层 order=-100 的 diagnosis-scrubber 真在最外（见 safety/risk_rules.py install_medical_safety order=-100）。
+- waterfall(hook, payload, terminal)：洋葱环绕，listener 签名 async fn(payload, next_)，不调 next_ 即短路，返回值即裁决。_stage_pre 的 terminal 若短路返回 None，上层 waterfall 会把 None 当返回值——调用方需判 None。
+- serial：有序检查点，第一个非 None 即裁决，用于 agent/turn-stopping。
+- parallel：扇出并等齐，单个失败记 warning 不拖垮其余（gather return_exceptions=True）。
+- emit：同步即发即忘，监听者必须是同步函数，异常吞掉不影响热路径（用于 tools/result 冻结通知）。
+- listeners(hook) 可现场 dump 装配，用于答辩自证“挂了谁、顺序如何”。
+调试体位：在 bootstrap.build_context 末尾打印 ctx.bus.listeners(REQUEST) / listeners(SESSION_FLUSH)，对比 DESIGN.md §7 的预期顺序。
+坑点：waterfall 短路返回 None 会被误判为“放行”；_stage_pre 的 terminal 在无 intercept 时 return ctx（非 None），有拦截时也 return ctx，所以 waterfall 从不会得到 None。但 REQUEST 的 terminal（call）若抛异常，会进 REQUEST_ERROR 瀑布，未处理则返回 None——上层 session.py _request 会把 None 解释为 llm/failed。
+
+-- 1.2 core/events.py（SessionEventLog：唯一事实源）
+意图：append-only 全序 + write-behind + 作用域派生 + 不变式。
+- 事件类型常量：TURN_START、TURN_END、STEP_START、STEP_END、USER_MESSAGE、ASSISTANT_MESSAGE、ASSISTANT_FINAL、TOOL_CALL、TOOL_RESULT、TODO_WRITE、AGENT_REPORT、ARTIFACT_CARD、CONFIRM_SUSPENDED、CONFIRM_RESOLVED、GUARDIAN_ALERT，共 15 个。见 events.py:38-54。
+- _SSE_TO_DURABLE 映射：前端线格式→持久类型；durable_type(event) 对未登记的进 ext/ 命名空间，不会产生垃圾类型。
+- _MODEL_VISIBLE = {USER_MESSAGE, ASSISTANT_MESSAGE, TOOL_RESULT}：只有这三类进 derive_messages，进模型历史。三类之外的 todo/report/card/suspended 等只落日志，给前端与审计看，不占上下文窗口。
+- MAIN_SCOPE="main"：主智能体作用域；子智能体形如 travel#1、health#1。
+- SessionEvent：frozen dataclass，to_row/from_row 与 DB 行互转，字段含 seq/session_id/type/payload/agent_id/turn_id/step_id/user_id/created_at。
+- 内存结构：_events[session_id]=list[SessionEvent]，_seq[session_id]=int（单调计数器），_pending[session_id]=list[SessionEvent]（待落库缓冲），_hydrated=set（已从库补回内存的会话）。
+- create_session(user_id, title)：向 repos.insert("sessions") 并初始化内存位，_hydrated.add。
+- hydrate(session_id)：幂等；若已在 _hydrated 则直接 return；否则 repo.list("session_events", where={"session_id": sid}, order="seq") 读回，按 seq 重算 _seq 最大值。
+- append(...): 同步函数，无 await。seq=_seq.get(sid,0)+1，立刻进 _events 与 _pending，同步返回 event。热路径不等 I/O，这是 seq 单调性能被保证的根因（分配发生在单线程事件循环内，无读改写窗口；旧实现“先读 max 再+1”会撞号）。
+- flush(session_id?): 把 _pending 落库；按 sid 分批，逐条 repo.insert("session_events", event.to_row())，失败记 warning 不吞演示；返回落库条数。
+- events(sid, scopes?): 内存读；若 scopes 非 None则按 agent_id 过滤。
+- recent(sid, limit)/after(sid, after_seq)：先 await hydrate(sid) 再切内存；after 返回 seq>after_seq 的行，用于轮询兜底。
+- derive_messages(sid, scopes?, limit?): 唯一投影。逻辑：先按 scopes 过滤事件；收集已 settlement 的 call_id 集合（TOOL_RESULT 的 payload.call_id）；遍历事件：
+  * USER_MESSAGE → {"role":"user","content":text}
+  * ASSISTANT_MESSAGE：先过滤 tool_calls 中 id 不在 settled 的（无主声明直接丢，否则下一轮 OpenAI 兼容接口 400）；若 text 与 calls 皆空则跳过；组装 {"role":"assistant","content":...,"tool_calls":[...]}，arguments 用 json.dumps。
+  * TOOL_RESULT → {"role":"tool","tool_call_id":call_id,"content": payload.content or json(summary)}。
+  最后 _drop_orphan_tool_messages 再过一遍防御，剔除无声明的 tool 消息。
+- check_invariants(sid): 返回问题列表；检查：seq 严格递增；每个 TOOL_RESULT 的 call_id 必须有对应 ASSISTANT_MESSAGE 声明且 agent_id 一致；已结束轮次（TURN_END）里的所有声明都必须有结果（否则“静默丢弃”）；todo 状态合法性。
+- durable_type 单点翻译：未登记进 ext/，防止前端误发垃圾类型污染日志。
+调试体位：新启进程后对同一 sid 连续 hydrate 两次，断言 events 数不变（幂等）；并发四协程各追加 25 条，断言 seq==1..100（test_kernel 并发用例）；derive 后检查 [m["role"]] 是否只有 user/assistant/tool。
+坑点：append 与 hydrate 的时序——routes_chat.py chat_stream 在续接旧会话时若不先 hydrate 就 append，新 event seq 会从 1 重发号撞库；confirmation.py _announce 在“子女批准后重放”路径里必须先 hydrate，否则落库的 confirmation/resolved 与主会话历史对不上；routes_misc.py after 读 _events[sid] 前是否 hydrate 已在 after 内部处理，但若 sid 从未在内存出现且 flush 尚未完成，after 返回空需靠 hydrate 补回。
+
+-- 1.3 core/session.py（Turn/Step 分层与 AgentDriver）
+意图：把“智能体循环”从散在业务里收敛到一处，顺带补上三级预算的止损。
+- 定义：Budget(max_steps=8, max_tokens=60000, wall_clock_s=90.0, tool_timeout_s=20.0, steps_used, tokens_used, started_at)。start() 记 monotonic；exhausted() 按 steps→tokens→wall_clock 优先级报 "budget/steps(2/2)" 等；snapshot() 供 TURN_END 审计。
+- AgentStep(id, index, turn_id, agent_id, messages, response, tool_names)；AgentTurn(id, session_id, agent_id, agent_name, instruction, budget, steps, stop_reason, final_text, suspended)。
+- StepRequest(turn, agent, step, agent_turn, messages, tools)：pre-step 与 request 两瀑布的可变载荷。
+- AgentDriver(agent, turn, agent_id=MAIN_SCOPE, scopes=[agent_id], budget, flush_on_end=True)：驱动一轮。
+  run(instruction): 产 turn_id，_append TURN_START，若有 instruction 则以 USER_MESSAGE 落入子作用域（子 Agent看不到老人原话的落点），try 循环 _loop，finally 清 turn.step_id、_append TURN_END 含 budget snapshot、parallel(SESSION_FLUSH) 落库。
+  _loop: while True → 先查 exhausted()，命中则置 stop_reason、final_text 兜为 BUDGET_REPLY("这事儿有点多…") 并 return；否则建 AgentStep、append STEP_START、调 _request、charge steps/tokens、判空 response→ llm/failed、_record_assistant、若无 tool_calls 则调 _should_stop（serial TURN_STOPPING，命中 {"continue":True} 则继续，否则 model/idle 收尾），有 tool_calls 则 _run_tools 并 append STEP_END。
+  _request: 分两段瀑布。先 waterfall(PRE_STEP, StepRequest, build) 派生 messages = [system] + log.derive_messages(scopes=self.scopes) + tools.schemas；再 waterfall(REQUEST, request, call) ，call 内 on_delta 逐片 emit("delta", persist=False) 推预览。失败进 waterfall(REQUEST_ERROR, {request, error}, _none)，无人处理则回 None→ llm/failed。
+  _record_assistant: 组 payload{text, tool_calls:[{id,name,arguments}]} 落 ASSISTANT_MESSAGE，若有 content 则 emit("agent_msg", persist=False) 推定稿气泡（覆盖 delta 的契约落点）。
+  _run_tools: 将 response.tool_calls 转为 ToolCall(id,name,args,agent_id)，先逐个 emit("tool_call", summary)，再 ctx.dispatcher.execute_batch(turn, calls) 批结算，按 outcome 逐个 emit("tool_result", {call_id,tool,ok,summary,content,suspended,denied}) 与 emit("card", card)（若有）。
+  _should_stop: serial(TURN_STOPPING, agent_turn)，首个非 None 裁决。
+- 辅助：tool_summary 用 Tool.description 首句 + 前三参数；_budget_for 从 agent.max_steps 与 settings 取三级预算；_tokens_of 优先用 response.usage.total_tokens，否则按字符/2 粗估（中文 0.5 token/字，宁多不少，下限 1）。
+- Budget 常量：BUDGET_REPLY 与 LLM_FAILED_REPLY 均为无英文、带句号的人话，DESIGN.md 约束“不含黑话”。
+调试体位：用 _LoopingLLM（每步必调工具）配合 Budget(max_steps=2) 观察 stop_reason 是否为 budget/steps(2/2) 且 TURN_END 的 budget 账目一致；用 _AngryLLM（必抛）观察 llm/failed 与 STEP_END error；挂 REQUEST_ERROR 的 fallback 观察“可抢救”路径。
+坑点：delta 早于改写到达前端（见下面 R1/R2），前端必须用 agent_msg 覆盖 delta；同一 step 内 tool_calls 与 tool_results 必须一对一同序（test_kernel 校验 announced==declared==settled）；若连续两个 tool_call 批处理时一个超时，另一批是否照常结算取决于 ToolDispatcher 的并发段（见下一节）。
+
+-- 1.4 core/tool.py（ToolRegistry / ToolDispatcher / 流水线）
+意图：照 harness 的 tool-execution-pipeline 把“守卫→确认→执行→后置”做成可插拔的五段瀑布 + 一次冻结通知。
+- Tool(name, description, parameters JSON Schema, handler async, child_summary?, agent="common", execution_mode=CONCURRENT/BARRIER, timeout_s?, report_key="")。report_key 是与 plan_builder 的契约：例如 search_hospital→hospital_options、register_appointment→appointment、search_train→train_options、book_ticket→ticket、book_hotel→hotel 等。
+- ToolCall(id,name,args,agent_id)：id 即 function-calling 的 tool_call_id，agent_id 供 TOOLS_RESULT 采集时按作用域分流。
+- ToolOutcome(call,result,denied,suspended,timed_out) + to_model_content()（去 data/card 后 slim 的 JSON，供 derive_messages 的 tool content）。
+- PipelineContext(turn,tool,call,bypass_confirmation_id,decision,guard,result,timed_out)。
+- ToolRegistry：register/get/all/for_agent/schemas(names)→OpenAI 兼容的 function 列表。
+- ConfirmationPort / PostToolFilter 两个 Protocol，避免 core→safety 的循环导入。
+- ToolDispatcher(tools, guards, confirmation, post_filters, bus, concurrency=4)：
+  execute(turn,tool_name,args, bypass_confirmation_id, call_id) 兼容单次入口，内部包成 ToolCall 并走 execute_batch。
+  execute_batch(turn, calls, bypass_confirmation_id): 承诺“与入参 calls 一一对应且同序、一个不落”。
+   阶段一 _stage_pre：对每个 call 建 PipelineContext，await _stage_pre(pctx)（见下）。
+   阶段二并发执行：live=[c for c in contexts if c is not None]；Semaphore(concurrency) 限流；按 execution_mode 分段——BARRIER 独占：先把当前 segment（CONCURRENT 段）gather 完，再单独 await _stage_execute(pctx)（独占）；最后剩余 segment 再 gather。
+   阶段三有序 post：按入参数序逐个 await _stage_post(pctx) 转为 ToolOutcome，保持模型给出的顺序。
+  _stage_pre(pctx): waterfall(TOOLS_PRE_EXECUTE, pctx, terminal)。terminal 内做单调 guards：遍历 guards，DENY 立即短路且 break，INTERCEPT 取第一个生效；若 deny→decision=deny；若 intercept is None→allow；若有 intercept：若 confirmation is None→ fail-closed 记 deny（“确认服务没有就绪” + advice “先给家里人打个电话”）；否则若 bypass_confirmation_id is None→ suspend；否则 check_bypass(confirmation_id, tool_name, args) 严格比对（服务端防篡改重放），不通过则 deny（“确认凭证无效或参数与审批时不一致”），通过则 allow。最后 await bus.waterfall(TOOLS_PRE_EXECUTE, ...) 包一层，支持 pre 钩子改写 pctx。
+  _stage_execute(pctx): 若 decision==deny→ 直接拼 denied 结果（summary 用 guard.reason）；若 suspend→ await confirmation.suspend(turn,tool,args,guard) 得挂起结果；否则 waterfall(TOOLS_EXECUTE, pctx, terminal)，terminal 内 _invoke(handler, turn, args) 真调工具体，异常归一为 {ok:false, error, summary}。
+  _stage_post(pctx): waterfall(TOOLS_POST_EXECUTE, pctx, terminal)，terminal 内遍历 post_filters.apply(turn,tool,result)（如 HealthDisclaimerGuard）；捕获异常归一；再 _finalize(tool,result)（保 ok/summary/tool 字段），拼 ToolOutcome 并 bus.emit(TOOLS_RESULT, outcome) 同步通知（子智能体采集监听者靠它认领）。
+- _invoke：兼容同步/异步 handler；非 dict 返回包成 {ok:bool(data), data}。
+- _finalize：兜底 content-only 不变式。
+调试体位：盲测 fail-closed——把 ToolDispatcher 的 confirmation 设为 None，执行 book_ticket 观察 denied 与 advice；测 BARRIER——同一批里放 book_ticket(BARRIER) + get_weather(CONCURRENT)，观察后者不受前者挂起影响仍结算；测挂起批——同一批 book_hotel 被 suspend 时，紧随的 get_weather 是否 ok。
+坑点：高危工具集的 INTERCEPT 与金额阈值（见下一节）是“单调”——DENY 永远最早短路；挂起是一种结算，模型下一轮必须看到它的 summary；bypass 凭证一次性且精确比对，改一个字（金额/车次）即 DENY。
+
+-- 1.5 core/subagents.py（SubagentRegistry：spawn/fork/run_parallel + AgentReport）
+意图：把“多智能体”从“一个模型自己演”变成“真隔离、真并发、结构化回报”。
+- AgentReport(agent, ok, summary, data, missing, error, scope, suspended, tools_used)：交付物唯一输入；to_dict/from_dict 与 agent/report 事件互转；get(path) 按点分路径取 data。
+- SubagentSpec(name,instruction,mode=SPAWN, label): parse(raw) 兼容 str / {agent/name + instruction/task + mode/label} 多形；缺 name 即 None。
+- SubagentRegistry(ctx): ctx 及 _reserved[session_id]=set(scope)（并发分配窗口防撞号）。
+  available(exclude=("main",)) 列出已注册子 Agent及 report_schema 供总智能体提示词与自证；names() 取名列表。
+  spawn(turn,spec): 全新子作用域，仅 scopes=[scope]；fork(turn,spec): 作用域为 [turn.agent_id, scope]，用于需要上文的追问。
+  run_parallel(turn, specs): 真扇出。空→[]；单条→_dispatch；多条→asyncio.gather(*_dispatch, return_exceptions=True)，异常转失败 Report（error=str(exc)）。
+  _dispatch 按 spec.mode 分 fork/spawn。
+  _run(turn,spec,inherit): 查表取 agent→None→ failed Report；_next_scope 取 scope；child_turn=turn.scoped(scope)（共享队列、独立作用域）；在 bus 上挂 TOOLS_RESULT 的 collect(outcome) 监听者（仅收 outcome.call.agent_id==scope 的），label=collect:{scope}；status 播报；建 AgentDriver(agent, child_turn, agent_id=scope, scopes=[parent,scope]或[scope]，budget=_child_budget, flush_on_end=False) 跑 driver.run；finally dispose() 卸载监听者；最后 _build_report。
+  _next_scope(session_id,name): 统计已在日志里的 prefix=f"{name}#" 数量 + 已在 _reserved 里的同前缀数量，scope=f"{prefix}{n+1}" 并加入 _reserved。用于闭合并发分配窗口的撞号问题（两支 travel 同时起步、turn/start 都未 append 时若只看日志会同为 travel#1）。
+- _build_report(agent,spec,scope,agent_turn,collected,tools): 合并 collected 列表（每项 {tool,args,result,suspended,denied}）为 data。规则优先级：
+  1) 若 result.report 存在（工具显式指定的形状）则 data.update(report) 整段合并；
+  2) 否则按 Tool.report_key：若 suspended→ data[key]={**args, status:"pending_confirm", confirmation_id} 且 ok_any=True（挂起是进展）；若 ok 且 data 为 dict→ data[key]=result.data；若 denied/failed→ 不写，留给 missing；
+  3) 若无 report_key 但 ok 且 data 为 dict→ 按工具名兜底。
+  required=tuple(agent.report_schema)，missing=[k for k in required if k not in data]。返回 AgentReport（ok=ok_any，供上层判断“有无进展”，missing 仅提示，不作判决）。
+- _child_budget(agent, turn): max_steps 沿用 agent 声明，max_tokens/wall_clock 各按 0.6 折算，tool_timeout 不折。
+调试体位：用 _RecordingLLM delay=0.2 并发三支，断言 elapsed<0.45s 且三支 llm.calls==3；并发派三支同名 travel 断言 scope 分别为 travel#1/2/3；检查 _collectors(ctx) 在跑完后为空（监听者已卸载）。
+坑点：collect 必须按 agent_id 过滤，否则并发兄弟串味；_reserved 必须与日志并集，否则同名前缀撞号；_build_report 对 suspended 的冻结参数必须与 confirmation.suspend 冻结的同一份一致（参数照搬），否则后续冻结重放的金额对不上。
+
+-- 1.6 core/todo.py（todo/write 真进度）
+意图：把“进度条”从前端启发式改成后端事件的事实。
+- 状态机：PENDING/in_progress/COMPLETED；TodoItem(content,status) 刻意无 id、无 priority，整列表覆盖写 last-write-wins。
+- normalize(raw): 兼容 str 列表（默认 pending）与 dict 列表；校验 content 非空、status 合法，否则 TodoError  loud。
+- write(log, session_id, todos, agent_id=MAIN_SCOPE, user_id, turn_id, step_id): 归一化→ log.append(TODO_WRITE, {todos:[...]})，返回 items；调用方 main_agent.todo_write 再 emit("todo", {todos, progress}, persist=False) 推 SSE，但不重复落库（log 已落）。
+- current(log, session_id, agent_id): 倒序扫最后一个 TODO_WRITE 的投影；未写过即 []。
+- progress(items): {total, done, doing}。
+调试体位：连续写入两次不同清单，断言第二次覆盖第一次且仅最后一条事件有效；hydrate 后重读应一致；跨作用域各写各的清单，投影互不覆盖。
+坑点：normalize 对 str 的 trim 与空串校验；progress 的 done 仅计 completed，in_progress 不算 done；前端 StepTimeline 必须只渲染快照，不自己推进状态。
+
+-- 1.7 core/guards.py（loop_guards：timeout-policy + repeat-tool-reminder）
+意图：内核卫生，挂钩子实现“卡不死、少复读”。
+- make_timeout_policy(default_s=20.0): 环绕 TOOLS_EXECUTE，deadline=tool.timeout_s or default；await asyncio.wait_for(next_(), timeout=deadline)，超时返回 {ok:false, timed_out:true, summary:"<tool> 等了 X 秒…"}，记 warning。旧实现无单工具 deadline，SSE 会悬住转圈。
+- make_repeat_tool_reminder(window=6): 挂 TOOLS_POST_EXECUTE，建议性提醒。按 (scope, tool, JSON(args, sort_keys=True)) 记 seen 计数，超 window*8 条则 clear 防膨胀；count>1 时在 result.summary 尾追加 REPEAT_HINT，附 repeat_count。绝不阻断（启发式“提醒不裁决”）。
+- install_loop_guards(bus, tool_timeout_s): 返回两个 disposer（order=-100 的 timeout 在外层，order=100 的 repeat 在后置）。
+坑点：repeat 必须在有序 post 阶段计数才确定；timeout 的 timed_out 标志需在 ToolOutcome 中透出供前端区分“失败 vs 超时”。
+
+-- 1.8 core/compaction.py（压缩：先裁工具输出，再摘要）
+意图：长会话不 400，但压缩只改送进模型的 messages，不改事件日志。
+- 常量：TOOL_RESULT_MAX_CHARS=1800、COMPACT_TRIGGER_CHARS=24000、KEEP_RECENT=8、TRUNCATED_MARK/SUMMARY_PREFIX。
+- prune_tool_results(messages): 超长 tool 报文保留头半与尾四分之一，中段换 …（结果较长，已省略…）。
+- summarize(messages, keep_recent): system 首条保留，body 分 old/recent，old 折成一条 {role:"user", content:"【前情摘要】…"}，统计 asked（最近 3 条 user 60 字）与 tools_used 去重；折叠后首条不能是 role:tool，否则剔除（避免无主 tool 消息）。
+- make_compactor(...): agent/pre-step 中间件，先 await next_() 让终端派生 messages，再算 chars，先 prune 再判是否 summarize，after<before 则改写 target.messages 并记 info。
+- install_compaction(bus): order=100（在其它 pre-step 之后收尾）。
+调试体位：构造 30 条含超长 tool 文本的 messages，观察 prune 后再 summarize 的两级触发；断言折叠后第一条非 tool。
+坑点：压缩改的是 StepRequest.messages，不是 _events；hydrate 后的历史仍全量可回放。
+
+-- 1.9 core/context.py（AppContext / TurnContext）
+意图：把“进程级装配”与“单轮环境”分开，明确可替换边界。
+- AppContext(settings, registry, repos, event_log, tools, bus, broadcast, guards, post_filters, confirmation, privacy, agents, subagents, dispatcher, disposers)：bootstrap 一次性装配。
+- resolve(name): 委托 registry.resolve。
+- dispose(): 依次弹出 disposers 并调用，幂等。
+- TurnContext(ctx, session_id, user, queue=Queue, agent_id=MAIN_SCOPE, turn_id, step_id): scoped(agent_id) 派生子视角（共享 queue，前端仍看到全部动静；作用域独立）；emit(event,payload,persist=True) 时先 durable_type 翻译再 log.append(..., agent_id, turn_id, step_id)，再 queue.put(SSEEvent)；status(agent,text) 只走 SSE 不落库（persist=False 的过程性提示）。
+坑点：scoped 必须把 turn_id/step_id 清掉，否则子 Agent 的事件会挂到父的 turn/step 上；queue 必须是同一个对象，否则前端收不到子 Agent 的 report/card。
+
+-- 1.10 core/registry.py（ServiceRegistry：能力接缝）
+意图：换真实 12306/DeepSeek/讯飞/Supabase 只改一行注册。
+- ServiceDefinition(name, protocol)；ServiceProvider(name, create(ctx)->P)；ServiceRegistry(_definitions/_providers/_instances/_singletons)。
+- define(def): 登记契约；register(provider, singleton=True): 覆盖旧 provider 并失效旧实例，singleton 加入集合；resolve(name): 若已在 _instances 则直接返回，否则 provider.create(ctx)，若 singleton 则缓存。ctx 由 bootstrap 回填 registry.ctx。
+- provider_name(name): 取已注册 provider 的 name（用于 /api/health 自检）。
+坑点：register 后必须 pop 旧实例，否则“覆盖注册即失效”不成立（_use_llm 测试依赖它）；未 define 先 register 会抛 KeyError。
+
+-- 1.11 core/broadcast.py（SessionBroadcast）
+意图：给“子女批准后老人若仍在线立即收到”的扇出。
+- _queues[session_id]=list[Queue]；register/unregister 按 session_id 管理；push/push_sync 均 put_nowait，QueueFull 静默丢弃；live_sessions() 列存活会话。
+- confirmation.py _announce 用 push_sync 同步推 confirmation/resolved + agent_msg + final + card。
+坑点：push_sync 在 HTTP 请求线程里被调（approve_and_execute 的重放上下文非 agent turn），需先 hydrate 再 append，否则 seq 撞号。
+
+-- 1.12 core/sse.py（SSEEvent）
+- dataclass(event:str, data:dict)；encode() -> {event, data: json.dumps(ensure_ascii=False)} 供 sse-starlette EventSourceResponse。
+- 事件名清单见 routes_chat.ws 与 SESSION_FLUSH 注释：session/plan/agent_status/delta/tool_call/tool_result/card/suspended/final/error。
+坑点：encode 的 data 必须是 JSON 字符串，EventSourceResponse 期望 {event, data: str}。
+
+-- 1.13 core/guard.py（Guard 抽象）
+- GuardVerdict.ALLOW/INTERCEPT/DENY；GuardResult(verdict, reason, risk_level, amount, payload)；Guard(name, check(turn,tool,args)->GuardResult)。AllowAll 测试桩。
+
+================================================================================
+2. 安全管控中间层 safety/
+================================================================================
+-- 2.1 safety/risk_rules.py（守卫 + 出口改写 + 后置免责）
+意图：把 R1-R6 从“提示词自觉”落到“代码强制”。
+- HIGH_RISK_TOOLS={"book_ticket","book_hotel","register_appointment","pay","order_service"}（与金额无关一律 INTERCEPT；见 PRD R5）。
+- HEALTH_TOOLS={"interpret_report","diet_advice","register_appointment","search_hospital","check_scam"}（成功结果强制追加免责声明；见 R4）。
+- DISCLAIMER / GENERIC_DISCLAIMER 两版措辞，DISCLAIMER 给 interpret_report（有报告原文），GENERIC 给其余健康域；两版均含“辅助/不是诊断结论/遵医嘱”三要素，去重判据含“遵医嘱”或“不能替代”。
+- _DISCLAIMER_BY_TOOL={"interpret_report": DISCLAIMER}，默认走 GENERIC，避免新增健康工具漏登记时拿错。
+- _SCAM_PATTERNS 六条 + _URL_RE + 白名单 _TRUSTED_DOMAINS，命中即 DENY，直接拒执行并给 advice“千万别转账，先给儿子打个电话”。
+- _JUDGES_CONTENT={"check_scam"}：反诈工具本身豁免 ScamContentRule，因为它入参就是那条可疑短信，若不豁免则永远被 DENY，拿不到语料库建议且不留档。
+- PaymentRiskRule(amount_threshold=50.0): check 读 _extract_amount(args)——若 tool 在 HIGH_RISK_TOOLS 直接 INTERCEPT（risk_level 按 amount>=阈值判 high 否则 medium）；否则若 amount>=阈值也 INTERCEPT，否则 ALLOW。_extract_amount 对 price 单价会乘 _quantity(nights/count/quantity) 算总额，对 amount/total/fee 直接取；_as_float 过滤 bool。
+- ScamContentRule: 先判豁免集，再扫文本中 SCAM_PATTERNS 与 URL 白名单，命中即 DENY。
+- HealthDisclaimerGuard.apply(turn, tool, result): 仅在 tool.name in HEALTH_TOOLS 且 result.ok 为真时，对 summary 与 announce 追加 note（若已含“遵医嘱/不能替代”则不重复）。
+- R1/R2 诊断口吻整句改写：_DIAGNOSIS_PATTERNS 5 条、_PRESCRIPTION_PATTERNS 5 条、DIAGNOSIS_REPLACEMENT="这我不能替医生下判断…"/PRESCRIPTION_REPLACEMENT="吃什么药…得听医生的…"，_SENTENCE_RE 切句，scrub_medical_text(text)->(cleaned, hits) 逐句命中即整句替换，同类只留一句替代话，空则回单一句替代。
+- make_diagnosis_scrubber()：REQUEST 瀑布最外层中间件（order=-100），await next_() 得最终应答，对 content 做 scrub，若命中则改 response.content 并记 warning。
+- install_medical_safety(bus)：bus.on(REQUEST, scrubber, order=-100, label="diagnosis-scrubber") 返回 disposer 列表；测试 test_the_scrubber_is_the_outermost_request_listener 断言 listeners(REQUEST)==["diagnosis-scrubber"] 且可逆卸载。
+诚实边界：流式 delta 比改写更早到前端，persist=False 不进日志；进日志与前端定稿的是改写后的 agent_msg，前端必须用 agent_msg 覆盖 delta（DESIGN.md §6.1，test_medical_safety 钉住）。
+调试体位：直接调 scrub_medical_text 对 6+6+4+3+2 用例做 parametrize，观察 hits 与替换句是否各一；构造含 diagnosis 的 LLMResponse 走 REQUEST 瀑布，观察 content 是否被改、tool_calls 是否保留、warning 是否一条。
+
+-- 2.2 safety/confirmation.py（ConfirmationService：状态机 + 冻结重放）
+意图：ADR-1 延迟执行，不做跨请求协程挂起。
+- 状态机：pending —approve→ executing —成功→ executed / 失败→ failed；pending —reject→ rejected；pending —超时30m/惰性清扫→ expired。非 pending 再审批 ⇒ 409；过期后审批 ⇒ 409 并标记 expired。
+- __init__(repo, timeout_min)：_repo、_timeout timedelta。
+- suspend(turn, tool, args, guard_result): 先找 family_bindings 得 child_id 与 relation，child_summary 优先 tool.child_summary(args) 否则 f"妈妈想执行 {tool.name}：{args}"，组 card{title,specific...risk_level,amount,relation}，插入 confirmation_tasks{session_id,elder_id,child_id,tool_name,tool_args(冻结),risk_level,amount,summary_for_child,status="pending",expires_at=now+timeout}，插 audit_log{actor=elder, action=confirmation_created, target=task.id, detail:{tool,args,risk_level}}，emit("suspended", {confirmation_id,tool,summary,amount,expires_at,message:"这步要先过您{relation}的确认..."})，返回 {ok:false,suspended:true,confirmation_id,summary}。
+- check_bypass(confirmation_id, tool_name, args): 取 task，校验 status=="approved"、tool_name 一致、tool_args==args（精确比对防篡改重放），否则 False。
+- approve_and_execute(task_id, ctx, child_id): _get_valid_pending(task_id) 校验存在且 pending 且未过期（过期则 update 为 expired 并抛 409），update 为 approved、插 audit(confirmation_approved)，hydrate 会话，取 elder，重建 TurnContext(session_id=task.session_id, user=elder)，await ctx.dispatcher.execute(turn, tool_name, tool_args, bypass_confirmation_id=task_id) 重放，结果 status=executed/failed，update task{status,result=_jsonable(result)}，_announce。
+- reject(...): 同步校验 pending，未过期则 update rejected、插 audit(confirmation_rejected)、_announce。
+- list_for_child(child_id, status): 先 _expire_stale(child_id) 惰性清扫，再 list where={child_id, status?} order -created_at limit 50。
+- _get_valid_pending(task_id): 取 task，非存在/非 pending 抛 ConfirmationError(409/404)，parse expires_at 若已过期则 update expired 并抛。
+- _expire_stale(child_id?): 掃 status=pending 的行，逐条 parse expires_at，已过期则 update expired，返回清扫数。
+- _announce(ctx, task, elder, result, status): 若无 session_id 则 return；先 hydrate(session_id)（否则 seq 从 1 重发号撞库），取 announce = result.announce or summary or "事情办好啦。"，依次 append + push_sync 三件：confirmation/resolved{confirmation_id,tool,ok,status}、agent_msg{text:announce, agent:"main"}、final{text:announce}；若有 card 则再 append durable_type("card") + push_sync；最后 ctx.event_log.flush(session_id)（重放发生在 HTTP 请求里，非 agent 轮次，需自落库）。
+调试体位：suspend 后查 confirmation_tasks.tool_args 是否与入参逐键相等；approve 前改一个字段（如 price 1.0）观察 check_bypass False；无 binding 时观察 child_id==None 且 list_for_child 对原 child 不可见；并发 approve 两次观察第二次 409。
+坑点：bypass 凭证一次性、精确比对；_announce 必须 hydrate 再 append；status 三态（executed/rejected/failed）必须与 ok 分开发，ok=False 可能是 rejected 也可能是 executed 但失败，合成一句“没成功”会替家人表态；老人端按 confirmation_resolved 精确找回黄卡就地改状态，不另推新卡。
+
+-- 2.3 safety/privacy.py（PrivacyService + 纯裁剪函数）
+意图：R6 不越级，且“降级是数据变形不是报错”。
+- 等级词表：LOCATION_LEVELS=("realtime","city","off")、HEALTH_LEVELS=("full","summary","off")，索引即权限强弱；DEFAULT_LOCATION_LEVEL="city"、DEFAULT_HEALTH_LEVEL="summary"（授权行缺失时取中间档，direction 只有“没明说就只给粗”）；MASKED="老人未开放此项"；_DISTRICT_SUFFIXES/_CITY_SUFFIXES/_CITY_NOTE 供 coarse_place 与 note 重建。
+- PrivacyGrant(elder_id, child_id, location_level, health_level, bound=True)：不可变；location_off/health_off 按 bound 与 level 判；allows_location(need)/allows_health(need) 按 _rank 比较，need 不在词表直接 False（fail-closed 在需求侧，防笔误把闸门打开）；to_dict 把未绑定统一吐 off。
+- denied(elder_id, child_id): 返 bound=False 的全 off 授权（无绑定时 fail-closed）。
+- PrivacyService(repo): grant_for(elder_id, child_id) 先查 family_bindings，无则 denied；再查 privacy_permissions，无则用 _normalize 取默认档；audit(grant, scope, action="privacy_read") 记 audit_log，失败仅 warning 不让子女端白屏。
+- 纯函数（可直接断言“这一档到底给了什么”，与 DB 无关）：
+  coarse_place(place): 按首个行政区划后缀截断，否则前 3 字，绝不原样透出。
+  filter_checkpoint(grant, checkpoint): off→None；realtime 透传并标 precision=realtime；city 档将 location 粗化、lng/lat 置 None、precision=city、note 按 status 重建为 _CITY_NOTE 中对应句（非洗原文，避免冒号后地址泄漏）。
+  filter_alert(grant, alert): 未绑定→None；location_off 仍给“有异常”但去 location/lng/lat 并换 MASKED + “有一次行程异常…” + precision off；否则走 filter_checkpoint 同路径。
+  filter_medication(grant, medication): health_off→None；full 透传副本；summary 仅给 {drug=MASKED,dose="",times,taken_today,precision=summary}，副本隔离。
+  filter_health_text(grant, text): off→""；full→原文；summary→“老人有一份体检解读记录，具体内容未开放。”。
+调试体位：构造同一 checkpoint 分别过 realtime/city/off 三档，对比 location/lng/lat/note/precision；构造未绑定 grant 观察四条路径皆 None/""；在 routes_guardian 实际落库后观察“库里仍全量、只出不进”。
+坑点：授权行缺失≠未绑定（前者给默认档，后者给 denied）；city 档必须把 lng/lat 清掉，否则地图一样戳到门牌号；filter_medication summary 必须深拷贝 times/taken_today，防止上层改动回灌库事实。
+
+================================================================================
+3. 智能体 agents/
+================================================================================
+-- 3.1 agents/base.py（BaseAgent 薄壳）
+意图：把“循环、预算、作用域”收进 AgentDriver，这里只剩身份声明。
+- 常量：MAX_STEPS=8、SUSPENDED_REPLY（带 {relation} 占位）。
+- BaseAgent(name, display_name, description, system_prompt, tool_names, max_steps, report_schema): 声明身份与可用工具、承诺回报字段；run(turn,instruction) 委托 run_turn；run_turn 先 status 播报，取 scope=turn.agent_id 建 AgentDriver(scope, scopes=[scope])，await driver.run；若 suspended 且 final_text 为空则替模型补一句 SUSPENDED_REPLY.format(relation=relation_name(turn))（老人必须知道“为什么停在这儿”）。
+- relation_name(turn): 取 user.child_relation or "家人"。
+坑点：report_schema 仅声明“能给哪些键”，不代表每次必给；missing 是提示而非判决（test_subagents 钉住）。
+
+-- 3.2 agents/main_agent.py（总智能体·老友记：真调度器）
+意图：把 README/PRD 里的“多智能体调度”从会说的布景做成机制。
+- SYSTEM_PROMPT：强调听懂模糊指令→todo_write→delegate 成批派活（tasks 列表一次派多个）→compose_deliverable 确定性交付；闲聊直答不派发；大白话短句、称呼“您”；红线（不诊断、拦截话术固定）。
+- _KIND_ALIASES / _KIND_ANNOUNCE：kind 别名收口与播报句。
+- MainAgent(name="main", display_name="老友记", description, system_prompt, tool_names=["todo_write","delegate","compose_deliverable","ask_user","get_weather","plain_say"])。
+- todo_write(turn, args): 调 todo.write(log, session_id, todos, agent_id, user_id, turn_id, step_id)，失败回 fail；payload={todos, progress}；emit("todo", payload, persist=False) 推 SSE（log 已落，不重复记账）；返 ok summary 含清单行。
+- delegate(turn, args): 兼容 tasks/task 单/多形，解析为 SubagentSpec 列表；校验 known 集合（ctx.subagents.names()），未知即 fail 列出可选；并行 await ctx.subagents.run_parallel(turn,specs)，逐条 emit("report", report.to_dict()) 落日志；组 summary 行（✔/⏳/✘ + 已获得字段 + missing + digest），返 {ok=any ok or suspended, summary, data:{reports:[...]}}。
+- compose_deliverable(turn, args): kind 经别名归一，reports=_reports_from_log(turn)（读本会话全部 agent/report 事件按 seq），无则 fail；按 kind 调 plan_builder.build(kind, elder, reports, city?)，若 trip_plan 则 insert trips{elder_id,purpose=title,plan=card,status="planned"}；计 pages/missing 组 summary 与 announce（有 missing 加“有几项还没定下来…”），返 ok{announce, data:{kind,missing,pages,complete}, card}；注意 card 由 session._run_tools 统一 emit，不在此处重复 emit。
+- _reports_from_log(turn): 扫 events 中 type==AGENT_REPORT 的 payload 转 AgentReport。
+- _DIGEST_FIELDS：report 摘要中仅带标识符（appointment/ticket/hotel/weather/service_order/canteen 的少数关键列），用于让模型写第二波指令时能说出“订北京积水潭医院附近的酒店”中的医院名（明细不进摘要，由渲染器直接取字段）。
+- ask_user(turn, args): emit("agent_msg", {text:question, agent:"main"}) 并返 ok。
+- register_main_agent_tools(registry): 注册四件工具，delegate 超时 180s（子 Agent 预算更紧，扇出可能几十秒），compose_deliverable/ask_user 皆为 main 专属。
+坑点：delegate 必须接列表（tasks），旧版 route_to_agent 一次派一个且串行；compose_deliverable 必须在 delegate 之后，否则 missing 全为待补；todo 的 progress 仅计数 completed，in_progress 不算 done。
+
+-- 3.3 agents/travel_agent.py / health_agent.py / community_agent.py
+意图：三个子 Agent 各管一域，工具集 + 提示词 + report_schema 三件对齐。
+- TravelAgent(name="travel", display_name="银发导航", description 出行，system_prompt 强调先 search 再 book、参数照抄查询结果、高危被拦截属正常、短句不编车次酒店、report_schema=("ticket","hotel")（计划书二三页来源）。
+- HealthAgent(name="health", display_name="安康助手", description 健康，system_prompt 强调不诊断不处方、挂号前先 search_hospital 且照抄参数、被拦截属正常、report_schema=("appointment",)（计划书第一页来源）。
+- CommunityAgent(name="community", display_name="邻里帮", description 社区，system_prompt 强调订餐小额直下、保洁陪诊高危会拦、陪诊在就医时优先、report_schema=("service_order",)（社区预约单来源）。
+坑点：子 Agent 的 tool_names 与 ToolRegistry report_key 必须一致，否则 _build_report 归档不到正确键；report_schema 缺的键会进 missing，渲染为“待补”是正常而非失败。
+
+-- 3.4 agents/plan_builder.py（确定性交付物渲染管线）
+意图：把“方案书第三步 20 分的可打印计划书”从 LLM 自由拼字典改成确定性模板渲染。
+- 常量：MISSING="待补"、BASE_CHECKLIST 6 项政策模板、DISCLAIMER、MOCK_NOTE（模拟披露）、Row/Page dataclass、BUILDERS 字典。
+- 合并：merge_reports(reports) 按“先到者不被后到者空覆盖”合并 data。
+- 回填：_enrich(data) 做严格按标识符的 join——ticket 凭 train_no 对 train_options.trains 补 from/to/depart/arrive/duration；hotel 凭 hotel/name 对 hotel_options.hotels 补 address/phone/walk/distance/price/accessible_note/city；appointment 凭 hospital 对 hospital_options.hospitals 补 address/city/specialty/level，并按医生名回填 title/fee/time（按 date 匹配 slot.time）。walk 由 walk_min/distance_m 合成；weather temp_range 由 temp_low/high 合成。
+- 取值：_dig(path) 按点分深入，遇 list 取首项；_first(paths) 按序取首个非空；_row(label,source,path,fmt,missing_list) 取不到即记 missing 并返 MISSING，list 值用“、”连接；_human_date(value) 经 resolve_date 转 ISO 再按 weekday 添“（周X）”，认不出原样返回；_date_row 同 _row 但多一层 human_date；_status_row 按 node.status 分 pending_confirm→“已选定，等家人…”、rejected→“家人这次没同意”、否则“已办好”；_label_service 把 cleaning/accompany 换中文。
+- 五页计划书：build_medical_trip_plan(elder, reports, city, today) → merge→enrich→建 missing 列表→ pages=[_page_appointment,_page_ticket,_page_hotel,_page_checklist,_page_weather]→ return {type:"trip_plan", title=f"{name}·{city}就医出行计划书"（无书名号、无“老人”二字，name 来自 seed 张桂芳，city 优先入参否则从 appointment.city 或 _guess_city 推断）、subtitle、printable、generated_on、pages、body=_flatten、missing、complete、disclaimer、footnote=MOCK_NOTE}。
+  _page_appointment：医院/科室/医生/就诊时间/时段/挂号费/地址/状态，带 registration_no 时插一行。
+  _page_ticket：车次/乘车日期/出发/开车时间/到达/到站时间/座位/票价/状态，带 ticket_no 时插一行；notes 为返程建议（不伪装已订票）。
+  _page_hotel：酒店/地址/电话/到医院/入住日期/住几晚/_price_row/无障碍/状态；_price_row 优先 total，次用 price*nights 算 ≈，再退每晚单价，否则待补。
+  _page_checklist：BASE_CHECKLIST + 按 weather.umbrella 加伞 + low<=10 加厚外套 + 有 hotel 加订单信息，永不待补。
+  _page_weather：日期/天气/气温/穿衣建议/带伞（布尔推导，缺 weather 则待补），精细区分“没查到”与“查到不用带”。
+- 轻量卡片：build_health_card / build_community_card 同样策略，分别渲染用药复查与服务预约，community 按 service_order/canteen 双路径兼容 pending_confirm 与已下单两种形态。
+- build(kind, elder, reports, **kwargs) 唯一分叉；_flatten 供旧渲染器扁平视图。
+调试体位：人为抽掉酒店 report 观察第三页是否全待补且 missing 计数一致；冻结 args 的 price 缺失时观察 _price_row 是否正确回退到每晚单价或待补；用 _human_date 对 "+3"/"tomorrow"/"2026-09-04" 做断言。
+坑点：_join 必须按标识符精确匹配，对不上一个字都不补；_first 的多路径为兼容 seat/seat_type 等异名；MISSING 与 missing 列表必须严格一一对应（前端据此画灰底虚线）。
+
+================================================================================
+4. 工具层 tools/
+================================================================================
+-- 4.1 tools/common.py（构造辅助 + human_date）
+意图：统一 JSON Schema 风格与返回结构约定。
+- human_date(value): 相对日期（模型原话的 "tomorrow"/"+3"）换算为人话 “2026-09-04（周五）”，纯算术同一天，认不出原样返回，不编新日期；用于家人确认卡与计划书的可读性。
+- make_tool(name, description, params, handler, agent, child_summary, execution_mode, timeout_s, report_key) → Tool(parameters={type:"object",properties:params})。
+- ok(summary,**extra)/fail(summary,**extra) 统一 {ok, summary, ...}（可带 announce/data/card/report）。
+坑点：child_summary 仅高危工具有意义，其文案中必须含真实日期（human_date），否则家人不知批的是哪天；report/report_key 是交付物唯一入口，键名即契约。
+
+-- 4.2 tools/common_tools.py（公共工具）
+- get_weather(turn,args): 调 weather provider，返 summary/announce/data=w。
+- plain_say(turn,args): 调 plain_language.to_plain。
+- get_user_profile(turn,args): 回 user 镜像。
+- 注册：get_weather report_key="weather"、plain_say 无 report_key、get_user_profile 无。
+
+-- 4.3 tools/travel_tools.py（出行工具）
+意图：report_key 与计划书契约对齐，订票订房为 BARRIER。
+- search_train(turn,args): 取 from_city 默 turn.user.city，to_city 必填，provider.search，返 {trains,from_city,to_city}。
+- book_ticket(turn,args): provider.book(train_no,date,passenger,seat_type)，返 {ticket_no,...} + card(车次/出发/到达/座位/票价/取票号/家人确认已确认)。
+- search_hotel: 补“先查后订”的缺口，provider.search(city, near_hospital, accessible)，返 {hotels,city,near_hospital}。
+- plan_route/hail_ride/book_hotel 类似；book_hotel/book_ticket 皆 BARRIER、report_key 分别 "ticket"/"hotel"，child_summary 均经 human_date 渲染真实日期。
+坑点：book_ticket 的 from_station/to_station/depart/arrive 必须照抄 search 结果，否则冻结参数与计划书第二页对不上；book_hotel 需带 price（每晚）以便守卫正确算总额。
+
+-- 4.4 tools/health_tools.py（健康工具）
+意图：R1/R2/R4 的业务侧落点 + 反诈判定分流。
+- search_hospital：symptom→provider.suggest_department→provider.search(city,department)，返 {hospitals,department}。
+- register_appointment：provider.register，成功则插 health_records{elder_id,record_type=appointment,title,content}，返 card(医院/科室/医生/时间/挂号费/地址/已确认)，BARRIER、report_key="appointment"，child_summary 含人话日期+时段。
+- interpret_report：plain_language.chat_with_rules 大白话解读，插 health_records{record_type=report, plain_summary}，R1 边界在提示词与后置改写两处，R4 免责由 HealthDisclaimerGuard 注入。
+- add_medication：插 medication_plans{elder_id,drug_name,dose,times,notes,active:true}，report_key="medication"。
+- 反诈：_SCAM_MATCH_MIN=0.34 的二元字组包含度（非字符集重合度，避免“我、了、先、钱”凑满阈值）；_SCAM_MARKERS 窄/宽两份分工（见 risk_rules 注释）；_bigrams 去标点取连续两字集；_judge_scam 先算语料库最佳包含度，命中即按语料 verdict 返四元组(verdict,reason,advice,announce)，否则扫高信号词，再否则 _judge_by_model 仅认“像诈骗/不像诈骗”判定词，否则 unknown；check_scam 三级从确定到不确定，语料→词表→模型，判不出给 unknown，且每次检查都插 health_records{record_type=scam_check, plain_summary=advice} 供子女追溯，返 {verdict,reason,advice} 供前端三档渲染（high_risk/normal/unknown，unknown 必须显式“拿不准”）。
+- diet_advice：plain_language 3-4 句家常建议，report_key="diet"。
+坑点：interpret_report 的输入是报告原文，输出不得含诊断句（会被整句替换）；check_scam 的离线路径模型回“好的，我在呢。”必须被判 unknown 而非 normal（_judge_by_model 已通过判定词收口）；_judge_by_model 的系统提示词限定回答格式，否则下游无法识别。
+
+-- 4.5 tools/community_tools.py（社区工具）
+- canteen_order：provider.menu()→按 menu_item 模糊匹配→计 amount=price*count→插 orders{service_type=canteen,items,amount,status=dispatching,provider_name=社区食堂,timeline}，返 card(套餐/菜品/标签/金额/送达/订单号)，BARRIER、report_key="canteen"。
+- order_service：service_catalog(service_type)→首个 provider→计 amount（保洁按小时，陪诊半日价）→插 orders{status=pending_confirm}（高危，待家人确认），report_key="service_order"。
+- query_order_status/push_activities：查 orders/activities 返最近条目。
+坑点：canteen 小额（<50）可直下不拦截；order_service 大额必拦，state pending_confirm 与 dashboard 展示一致。
+
+================================================================================
+5. Provider 接缝与数据 providers/ db/ shared/
+================================================================================
+-- 5.1 providers/llm/mock.py（MockLLM：离线剧本兜底）
+意图：拔网线也能把旗舰场景演完，且启发式按“已跑过哪些工具”而非中文措辞判分支。
+- 构造 script 队列（测试/冒烟确定性）或 heuristic（离线剧本）。
+- chat(messages, tools, on_delta): 若 script 有余则按序消费，否则 _heuristic(messages, tools)；on_delta 按 6 字一片模拟流式。
+- _heuristic：tool_names=工具集；transcript=非 system 的 content 拼接（还原 \n）；user_text=最后一条 user；按 delegate/search_train/register_appointment/canteen_order 分派：
+  _main(text, transcript) 对 medical_trip 关键词走两波并行+交付：waves=_ran(transcript,"delegate") 计数，第 0 波 todo+delegate([health 查医院挂号, travel 查票订票])，第 1 波 todo+delegate([travel 酒店天气])（hospital 名从 digest 里 _hospital_from(transcript) 取，非印象），再 waves==2 且未跑 compose_deliverable 时 todo+compose_deliverable(trip_plan, city=北京)，否则收尾句。
+  _travel(transcript) 分酒店支线与车票支线：酒店先 search_hotel(北京, 积水潭) → book_hotel(名字与房价同取自摘要行“X：329元/晚，离…步行8分钟”经 _hotel_choice_from) → get_weather；车票先 search_train(南京→北京) → book_ticket(G102, tomorrow, 南京南/北京南, 08:00/12:18, 二等座, 553.5)。
+  _health(instruction, transcript) 分反诈与挂号：含骗等关键词走 check_scam(instruction)；否则 search_hospital(北京, 腿疼→骨科) → register_appointment(积水潭, 骨科, 田伟, +3, 上午, 100)。
+  community 一律 canteen_order。
+- 辅助：_cid 全局唯一、_ran(transcript, tool) 数 '"tool": "<tool>"'（依赖 _finalize 盖的 tool 字段）、意图词 _wants_* 与 _wants_scam_check 窄分支、_hospital_from/_hotel_choice_from/_digest_field 解析摘要标识符。
+坑点：_ran 依赖 tool 字段，若工具结果未走 _finalize 会误判 waves；hotel 的 price 必须与酒店名同一行解析，否则守卫算金额为 0。
+
+-- 5.2 providers/llm/deepseek.py（DeepSeek 真模型）
+- chat 3 次指数退避（0.8*2^attempt 秒），stream=True，tools 时 tool_choice=auto，httpx stream 解析 delta.content 与 delta.tool_calls 的 index 聚合（id/name/arguments 分片），最终聚合为 ToolCallReq 列表。
+坑点：工具参数 arguments 可能分片到达，需按 index 累加后 json.loads，失败则空对象；content 的 stream 需逐片 on_delta 透给上层以便 SSE delta。
+
+-- 5.3 providers/asr/* 与 shared/plain_language.py
+- MockASR：按文件名关键字回预置话术（beijing/ticket/...），否则默认“我想去北京…”。
+- Iflytek：hmac 鉴权 URL + WebSocket 分片发送（status 0/1/2），取 ws[*].cw[*].w 拼 text；DIALECT_ENGINES 映射 4 种方言（mandarin/southwestern/cantonese/shanghainese），讯飞服务本身支持 23 种方言引擎，正式接入时按控制台开通情况扩展映射即可。
+- PlainLanguageEngine：GLOSSARY 确定性替换 + PLAIN_RULES 正则，再可选走 LLM 规则改写（失败回退词典）；chat_with_rules 供 interpret_report/diet_advice。
+
+-- 5.4 providers/external/*（Mock 业务域：确定性 + 同输入同输出）
+- base：load_fixture 读 app/data/*.json；resolve_date 处理 None/tomorrow/+N/ISO；derive_no(prefix, *parts) md5("|".join(parts))%10M 派生编号（可复现，不受 PYTHONHASHSEED 影响）。
+- hospital/train/hotel/weather/map/ride/community/community：Mock*Provider 均 asyncio.sleep 模拟延迟，数据来自 fixtures，Real*Provider 为空壳。
+- 细节：hospital register 按 slot_date 精确挑 slot，挑不到即失败并回带“有号的时间”；train book 按 seat_type 挑价格派生 ticket_no 与座位号；hotel book 带 address/distance/walk 供计划书；weather 按 city|date 的 md5 挑模板并叠 city_bias。
+坑点：同输入同输出是 E2E 对账（100/553.5/658）的根；resolve_date 的相对日期必须与 _human_date/human_date 同源，否则卡面与确认卡日期不一致。
+
+-- 5.5 db/repositories.py（Repository 协议 + 双实现）
+- TABLES 13 张按 reset 依赖序清空；utcnow_iso。
+- Repository Protocol：insert/update/get/find_one/list/delete/reset 均为 async。
+- SupabaseRepo(url, service_key)：延迟导入 supabase，_client.table(t).insert/update/select/delete.eq/order/limit，包 asyncio.to_thread；reset 逐表 delete neq 哨兵。
+- LocalFileRepo(data_dir)：每表一 JSON 文件，_cache + _lock 线程锁，_flush 原子写 tmp→replace，_match 全等匹配，list 支持 order（前缀 "-" 倒序）与 limit；insert 自动补 id/created_at，update/delete 均加锁并 _flush。
+坑点：LocalFileRepo 的 get/find_one 读 _cache 需加锁或拷贝，否则并发下迭代被改；order 对 None 的排序用 (is None, value) 保证确定性；门禁 219 用例皆在 local 上，supabase 路径零覆盖（首次执行风险）。
+
+-- 5.6 db/seed.py / scripts/*
+- seed_demo(repo): reset→插 users(张桂芳 elder 南西南官话, 李明 child) → family_bindings(儿子) → privacy_permissions(realtime/summary) → medication_plans(硫酸氨基葡萄糖/钙片)。
+- scripts/seed_demo.py 等价 POST /api/seed；scripts/demo_smoke.py 六步冒烟（旗舰→待确认→逐项批准重放→守护告警→反诈判定→事件回放），含消费者对 todo/report/card 的打印与 flush。
+
+================================================================================
+6. 配置与装配 bootstrap / config
+================================================================================
+-- config.Settings：llm_provider/mock|deepseek、asr_provider/mock|iflytek、storage_backend/local|supabase、预算与阈值（risk_amount_threshold 50.0、confirm_timeout_min 30、budget_max_tokens 60k、budget_wall_clock_s 90s、tool_timeout_s 20s、tool_concurrency 4）。
+-- bootstrap.build_context(cfg): 组合根。
+  1) repo=build_repo(cfg)（按 storage 后端二选一，supabase 缺 key 时抛 ValueError）；
+  2) registry=ServiceRegistry，tools=ToolRegistry 注册全部工具与主智能体工具；
+  3) 定义 ServiceDefinition 11 个（llm/asr/train/hospital/hotel/weather/map/ride/community/payment/plain_language）；
+  4) AppContext(ctx, registry, repos, event_log(SessionEventLog(repo)), tools, bus, broadcast) 并回填 registry.ctx；
+  5) 按 .env 装配 Provider（llm 深思/mol、asr 讯飞/mock、8 业务域全 Mock、plain_language 依赖 llm 实例）；
+  6) 安全层：guards=[ScamContentRule, PaymentRiskRule(threshold)]、post_filters=[HealthDisclaimerGuard]、confirmation=ConfirmationService(repo, timeout)、privacy=PrivacyService(repo)；
+  7) 内核：dispatcher=ToolDispatcher(tools, guards, confirmation, post_filters, bus, concurrency) 单例、subagents=SubagentRegistry(ctx)、disposers=[install_loop_guards, install_compaction, install_medical_safety]、bus.on(SESSION_FLUSH, flush_session)；
+  8) agents 家族 main/travel/health/community。
+坑点：dispatcher 必须单例，旧版 @property 每次新建导致中间件附着不上（缺陷 #9）；plain_language 依赖的 llm 需先 resolve 再注入，避免循环；Provider 覆盖注册必须失效旧实例。
+
+================================================================================
+7. API 层 api/
+================================================================================
+-- deps.get_app_context() lru_cache(1) 单例；get_ctx() 取它供路由用。
+-- routes_chat POST /api/chat/stream (SSE)：校验 user/body.session_id→hydrate 或新建会话→TurnContext→register 广播→event_stream 生成器：先 yield session 事件与 user_msg→起 mainAgent 异步任务→while 轮询 turn.queue（0.25s 超时）逐个 yield encode()→异常时 yield error("哎呀…再说一遍")→finally unregister；EventSourceResponse 包起来。注意 final 的额外 session/flush 在 agent 侧已在 driver finally 中做，chat 侧再补一次防止 final 本身未落库。
+-- routes_confirm / routes_child / routes_guardian / routes_privacy / routes_health / routes_misc / routes_asr 均 thin controller，核心逻辑在 safety/core。
+  关键路径：
+  * GET /api/child/{id}/dashboard：聚合 pending_confirmations + trips + alerts(经 filter_alert) + medications(经 filter_medication + taken_today) + privacy grant；无绑定时 early return 且不带 privacy（前端需按 DENIED 全关兜底）。
+  * GET /api/trips/{id}?child_id=：若不带 child_id 视为老人查看自己的行程，原样返回全量（precision owner，设计意图，非越级）；带则按 grant 裁剪并回 precision 与 grant。
+  * PUT /api/privacy/{elder_id}：body 含 child_id/location_level/health_level/actor_id；校验 word 在词表内，否则 422；若 actor_id 且 !=elder_id 则 403“只能由老人本人改”，否则 upsert 并记 audit(privacy_changed)。
+  * POST /api/asr/upload：读 file bytes，转 provider.transcribe，mock 时按 filename 关键字回预置语料。
+  * GET /api/sessions/{id}/events?after_seq=N 与 GET /sessions/{id} 供轮询回放与断线恢复；recent/after 均 hydrate 后取内存。
+调试体位：故意不带 child_id 调 /api/trips/{id} 观察 precision=owner 的全量泄漏是否被前端误用（旧 guardian.vue 即因此踩过）；用错误 actor_id 调 PUT privacy 观察 403 与审计。
+
+================================================================================
+8. 前端 src/（uni-app H5 为主）
+================================================================================
+-- App.vue / pages.json：tabBar 4 项（elder/home, elder/chat, elder/medications, elder/profile），子女端无 tabBar，仅靠 LyjSegment 分段控件 + 页面栈；禁止 uni.redirectTo，老人切 tab 用 switchTab（不能带参，靠 handoff 交接）、子女平级根视图互切与登录用 reLaunch、下钻用 navigateTo。
+-- store/handoff.js：模块级 pending 单次交接（首次首页→聊天），putUtterance(text, autoSend) 与 takeUtterance()（一次性）；快/慢两通道——快捷入口 autoSend=false 只填输入框等老人按发送，语音 autoSend=true 直接发。
+-- store/user.js：本地演示态（无真实鉴权），localStorage 存当前 user 与 lyj_family。
+-- api/client.js：BASE_URL=http://127.0.0.1:8000，request/get/post/put 封装 uni.request/uploadFile，错误 detail 归一。
+-- api/sse.js：主链路 fetch + ReadableStream 手工解析 SSE（parseChunk 按空行切块），兜底 pollEvents(sessionId) 轮询 GET /sessions/{id}/events?after_seq（2s 间隔，最长 60 轮≈2m，读到 final 即收），rowToEvent 经 _DURABLE_TO_SSE 反向翻譯，未登記行返回 null 跳过；onEvent/onDone/onError 回调；sessionId 在首帧 session 事件后更新，供断线后轮询用。
+-- api/asr.js：三链路——录音上传后端 ASR（主）、Web Speech 直连做 interim 预览、文字输入兜底；MediaRecorder/WebSocket 细节见 LyjMic。
+-- pages/elder/chat.vue：会话流核心。
+  _consumeHandoff 区分 autoSend；_run(text) 先 _stopWatch(()=>) 停掉跨轮轮询（防两条链路同时推 agent_msg 说两遍），推 isUser 气泡，建空 bubble{kind:text, text:"", agent:main}，调 chatStream({user_id,session_id,text}, {onEvent:_handle, onDone, onError})；finally 推 _latestSeq() 更新 _watchSeq 并 _watchConfirmations() 重启盯表。
+  _handle 按 ev.event 分发：
+   session→记 sessionId；
+   todo→整表覆盖：若已有一张 todoMsg 则覆盖其 todos/progress，否则 push；
+   agent_status→推 status 气泡；
+   delta→若 bubble 为空先 openBubble 再 bubble.text+=delta（预览）；
+   agent_msg→若 bubble 为空先 open 再 bubble.text = d.text ?? ""（覆盖预览，含 R1/R2 改写后的定稿）；
+   tool_call→推 tool 气泡（按 call_id 建）；
+   tool_result→按 call_id 找回 tool 气泡并用 d.summary 覆盖（使 R4 免责声明可见），blocked=!!denied；
+   card→push _toCard(d)（_toCard 把 pages→sections、subtitle/disclaimer/footnote 合进 notes、type 决定 compact）；
+   suspended→push suspend 卡（带 confirmationId/message/summary/amount/expiresAt/status pending）；
+   confirmation_resolved→_resolveCard(id,status,ok) 就地改那张卡状态；
+   report→推 status 文案“银发导航/安康助手已经查好了”（扇出唯一可见证据）；
+   guardian_alert→推“位置有变化，已通知家人”；
+   final→兜底定稿（仅当 bubble 仍空）；
+   error→推“哎呀…”气泡。
+  _resolveCard：按 confirmationId 精确找卡，next=status|| (ok?"executed":"rejected")，幂等。
+  _watchConfirmations：盯“家人点了没”。若 _watchTimer/_watchStarting 或 !sessionId 或无 pending 卡则 return；首次起表时（_watchSeq==0）await _latestSeq() 取基线且不渲染（该基线前的历史已在屏幕），续表沿用旧 _watchSeq（避免把停表期间落的行跳过而黄卡永不绿）；起 setInterval 5s 调 _pollResolutions。
+  _pollResolutions：读 fetchEvents(sessionId, _watchSeq)，逐行推进 _watchSeq，遇 confirmation_resolved 则 _resolveCard，遇 agent_msg 则推新气泡并滚底；无 pending 卡则 _stopWatch。
+  _toCard：把后端 card 形状转前端 props，footnote（MOCK_NOTE）必须取（合规披露）。
+-- LyjMic.vue：120px 适老麦克风，从 chat 抽出供首页复用；touchstart/mousedown 起录（startRecording），touchend/mouseup 停录（recorder.stop→若无 interim 則 recognizeAudio），interim 经 Web Speech 回调实时显示，beforeUnmount _teardown 关轨（防红点常亮）。
+-- pages/elder/home.vue：首屏第一件事就是麦克风，今日提醒卡（两条用药）、快捷入口（只填话不自发）、天气卡；putUtterance + switchTab 到 chat。
+-- pages/child/*：dashboard 5s 轮询聚合看板（pending 震动仅在 length 增加时）、confirm-detail 一次性拉全量 confirmations 并按 id 找卡、批准/拒绝带 child_id 记审计、guardian 按 child_id 裁剪轨迹并对粗化地点双向 includes 匹配、privacy 只读展示（家庭端只可看、改在老人端）。
+调试体位：用 SSE 断点观察 delta→agent_msg 的覆盖时序；在 chat _handle 中对 tool_result 未找到 callId 的分支打 log（应静默丢，不另起气泡）；在 _watchConfirmations 首帧前后各发一次 approve，观察黄卡是否只变绿一次。
+坑点：delta 不落库，刷新即丢；confirmation_resolved 可能在轮询里到达也可能在 SSE 主链路里到达（家人手快时），两条路径都需 _resolveCard 且幂等；_watchConfirmations 的基线续表必须沿用旧值，否则停表窗口内落的 confirmation/resolved 会被一次性跳过。
+
+================================================================================
+9. 数据与测试
+================================================================================
+-- fixtures (backend/app/data/*.json)：hospitals/trains/hotels/weather/canteen_menu/scam_corpus，Mock determinism 依赖它。
+-- 13 表：users/family_bindings/sessions/session_events/confirmation_tasks/trips/trip_checkpoints/medication_plans/medication_logs/health_records/orders/privacy_permissions/audit_log（见 TODO 门禁与 DATA_MODEL）。
+-- 219 用例分 12 文件：内核(19) seq/因果/作用域/不变式、子智能体(17) 并发/隔离/回报、预算(18) 三级止损/单工具超时/墙钟、todo(13) 整表覆盖、plan_builder(22) 确定性/缺字段/回填/日期、privacy(34) 纯函数+实地守护、medical_safety(27+5 parametrize 展开 21) 出口改写+R4、三态确认(13) 状态机+流水线耦合、mock确定性(11)、全链路(若干)。
+-- 关键门禁：test_kernel 并发 100 条 seq 1..100、tool 因果配对与 orphan 剔除；test_subagents 并发墙钟<0.45s、三作用域隔离与 _reserved 防撞号；test_privacy city 档 note 重建与坐标清零；test_medical_safety 预览≠定稿且预览不落库；test_plan_builder 五页页序与缺字段不编造；E2E 46 条断言（23 工具/4 Agent/4 步骤/3 挂起卡与金额/5 页计划书/3→1→2 待确认与黄卡就地绿）。
+
+================================================================================
+10. 常见问题排查清单
+================================================================================
+- “步骤条不动”：查 main_agent 是否调 todo_write 且 chat 是否收到 todo 事件；若前端仍用 tool_call 启发式推进，属旧实现回退。
+- “子 Agent 互相看到对方话”：查 derive_messages(scopes) 是否按 agent_id 过滤；查 _next_scope 的 _reserved 是否生效。
+- “一分钱没花却显示已办好”：查 plan_builder 状态行与 suspended 挂起路径；真挂起时 ticket/appointment/hotel 的 status 必须为 pending_confirm，非“已办好”。
+- “家人点了同意但老人端不变绿”：查 confirmation._announce 是否 hydrate+flush；查 chat _watchSeq 基线是否在续表时被错误重取；查 confirmation_resolved 是否被前端 switch 漏接。
+- “子女端看到全量坐标”：查 guardian 是否带 child_id；不带即 owner 精度原样透出（R6 被前端缺参绕过）。
+- “反诈建议牛头不对马嘴”：查 _judge_scam 的二元字组得分阈值 0.34 与语料命中那条的 advice 是否对应；查 _PRESET/ _SCAM_MARKERS 是否窄宽分工。
+- “预算超限不收尾”：查 AgentDriver exhausted 顺序与 _tokens_of 粗估下限 1；查 tool_timeout_s 是否被具体 Tool 覆盖。
+- “刷新后挂起卡消失”：预期内——chat 无会话回放 History 能力（DESIGN 预留但未接），确认依赖 _watchConfirmations 的轮询与本地 messages 内存，刷新即丢。
+
+—— 完 ——
