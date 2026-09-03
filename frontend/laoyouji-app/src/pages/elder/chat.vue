@@ -1,10 +1,22 @@
 <template>
   <view class="chat-page">
-    <LyjBack />
-    <!-- 顶栏 -->
+    <!-- 顶栏：回退、标题与状态（返回用顶栏内联 back-btn，不再叠加 LyjBack） -->
     <view class="topbar">
-      <text class="title">和老友记聊聊</text>
-      <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
+      <view class="back-btn" @tap="goBack">
+        <text class="back-icon">‹</text>
+        <text class="back-text">首页</text>
+      </view>
+      <view class="topbar-main">
+        <text class="title">和老友记聊聊</text>
+        <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
+      </view>
+      <view class="topbar-right">
+        <view class="new-chat-btn" @tap="startNewChat" title="开启新对话">
+          <text class="new-chat-icon">＋</text>
+          <text class="new-chat-text">新对话</text>
+        </view>
+        <text class="agent-tag" v-if="user">{{ currentAgent }}</text>
+      </view>
     </view>
 
     <!-- 会话流 -->
@@ -91,6 +103,7 @@ import StepTimeline from '../../components/StepTimeline.vue'
 import PlanCard from '../../components/PlanCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
+import { get, post } from '../../api/client'
 import { chatStream, fetchEvents } from '../../api/sse'
 import { getCurrentUser } from '../../store/user'
 import { takeUtterance } from '../../store/handoff'
@@ -125,18 +138,25 @@ export default {
       _lastScrollAt: 0,
     }
   },
-  onShow() {
+  computed: {
+    currentAgent() {
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        const m = this.messages[i]
+        if (m.agent && AGENT_LABEL[m.agent]) {
+          return `${AGENT_ICON[m.agent] || '🤵'} ${AGENT_LABEL[m.agent]}`
+        }
+      }
+      return '🤵 生活管家'
+    },
+  },
+  async onShow() {
     this.user = getCurrentUser()
     if (!this.user) {
       uni.reLaunch({ url: '/pages/login/login' })
       return
     }
     if (!this.messages.length) {
-      this.messages.push({
-        kind: 'text',
-        text: `${this.user.name}您好，我是老友记。您想做什么，按住下面的大按钮跟我说就行——看病挂号、买票出门、订饭找保洁，我都办得了。`,
-        agent: 'main',
-      })
+      await this.initSessionHistory()
     }
     this._consumeHandoff()
     // 回到这一页时，之前挂起的事可能已经被家人点过了
@@ -150,6 +170,71 @@ export default {
     this._stopWatch()
   },
   methods: {
+    async initSessionHistory() {
+      try {
+        let sid = uni.getStorageSync('laoyouji_elder_session_id')
+        if (!sid) {
+          const res = await get('/api/chat/sessions', { user_id: this.user.id })
+          if (res && res.latest_session) {
+            sid = res.latest_session.id
+            uni.setStorageSync('laoyouji_elder_session_id', sid)
+          }
+        }
+        if (sid) {
+          this.sessionId = sid
+          const hist = await get('/api/chat/history', { session_id: sid })
+          if (hist && Array.isArray(hist.messages) && hist.messages.length > 0) {
+            this.messages = hist.messages.map((m) => {
+              if (m.kind === 'card' && !m.sections) {
+                return this._toCard(m)
+              }
+              return m
+            })
+            this._watchSeq = hist.latest_seq || 0
+            this.$nextTick(() => this._scrollBottom(true))
+            return
+          }
+        }
+      } catch (e) {
+        console.warn('获取历史会话失败：', e)
+      }
+      this._resetDefaultGreeting()
+    },
+
+    _resetDefaultGreeting() {
+      this.messages = [
+        {
+          kind: 'text',
+          text: `${this.user.name}您好，我是老友记。您想做什么，按住下面的大按钮跟我说就行——看病挂号、买票出门、订饭找保洁，我都办得了。`,
+          agent: 'main',
+        },
+      ]
+      this.$nextTick(() => this._scrollBottom(true))
+    },
+
+    async startNewChat() {
+      if (this.thinking) return
+      uni.showLoading({ title: '正在开启…' })
+      try {
+        const res = await post('/api/chat/sessions/new', { user_id: this.user.id })
+        if (res && res.session_id) {
+          this.sessionId = res.session_id
+          uni.setStorageSync('laoyouji_elder_session_id', this.sessionId)
+          this._stopWatch()
+          this._watchSeq = 0
+          this._todoMsg = null
+          this._resetDefaultGreeting()
+          uni.showToast({ title: '已开启新对话', icon: 'success' })
+        }
+      } catch (e) {
+        console.error('开启新对话失败', e)
+        const msg = (e && e.message) || '开启失败，请重试'
+        uni.showToast({ title: msg.length > 25 ? msg.slice(0, 25) + '…' : msg, icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    },
+
     /**
      * 接首页交过来的一句话。
      * autoSend=true 是老人自己说的 → 直接办；
@@ -168,6 +253,15 @@ export default {
 
     toggleInputMode() {
       this.inputMode = this.inputMode === 'voice' ? 'text' : 'voice'
+    },
+
+    goBack() {
+      const pages = getCurrentPages()
+      if (pages && pages.length > 1) {
+        uni.navigateBack()
+      } else {
+        uni.switchTab({ url: '/pages/elder/home' })
+      }
     },
 
     // ------------------------------------------------------------ 发送
@@ -236,6 +330,9 @@ export default {
       switch (ev.event) {
         case 'session':
           this.sessionId = d.session_id
+          if (d.session_id) {
+            uni.setStorageSync('laoyouji_elder_session_id', d.session_id)
+          }
           break
 
         /**
@@ -557,19 +654,64 @@ export default {
 @import '../../uni.scss';
 
 .chat-page {
-  /* H5 适老全高：自适应视口高度，排除顶部与底部原生 tabBar，杜绝双滚动条打架 */
-  height: calc(100vh - var(--window-top) - var(--window-bottom));
+  /* #ifdef H5 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--window-bottom, 50px);
+  /* #endif */
+  /* #ifndef H5 */
+  height: 100vh;
+  /* #endif */
   display: flex;
   flex-direction: column;
   background: $lyj-bg;
+  box-sizing: border-box;
+  overflow: hidden;
+  z-index: 10;
 }
 .topbar {
-  padding: calc(var(--status-bar-height) + #{$lyj-space-lg}) $lyj-space-lg $lyj-space-sm;
+  padding: 20rpx $lyj-space-lg;
   background: $lyj-card;
   border-bottom: 2rpx solid $lyj-line;
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: $lyj-space-md;
+  flex-shrink: 0;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 8rpx 18rpx;
+  background: $lyj-field;
+  border: 2rpx solid $lyj-line;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.back-btn:active {
+  opacity: 0.7;
+}
+.back-icon {
+  font-size: 38rpx;
+  line-height: 1;
+  color: $lyj-primary;
+  font-weight: 800;
+}
+.back-text {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  font-weight: 700;
+}
+.topbar-main {
+  display: flex;
+  align-items: baseline;
+  gap: $lyj-space-sm;
+  flex: 1;
 }
 .title {
   font-size: $lyj-font-lg;
@@ -580,12 +722,55 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-success;
 }
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-sm;
+  flex-shrink: 0;
+}
+.new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 8rpx 18rpx;
+  background: #fdfaf6;
+  border: 2rpx solid #e7dcce;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.new-chat-btn:active {
+  background: #f2e9dc;
+}
+.new-chat-icon {
+  font-size: 26rpx;
+  color: $lyj-primary;
+  font-weight: 800;
+  line-height: 1;
+}
+.new-chat-text {
+  font-size: $lyj-font-nav;
+  color: $lyj-primary;
+  font-weight: 700;
+  line-height: 1;
+}
+.agent-tag {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  background: $lyj-primary-soft;
+  padding: 6rpx 18rpx;
+  border-radius: $lyj-radius-pill;
+  font-weight: 600;
+  flex-shrink: 0;
+}
 .stream {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  background: $lyj-bg;
 }
 .stream-inner {
-  padding: $lyj-space-md 0 $lyj-space-lg;
+  padding: $lyj-space-md 0 40rpx;
 }
 .tool-bubble {
   display: flex;
@@ -604,7 +789,6 @@ export default {
 }
 .tool-text {
   flex: 1;
-  /* 免责声明会落在这里，所以它不能是一行小灰字 */
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
   line-height: $lyj-line-height;
@@ -621,12 +805,15 @@ export default {
   color: $lyj-text-light;
 }
 .bottom-anchor {
-  height: $lyj-space-md;
+  height: 40rpx;
 }
 .input-area {
   background: $lyj-card;
   border-top: 2rpx solid $lyj-line;
-  padding: $lyj-space-sm $lyj-space-md calc(#{$lyj-space-sm} + env(safe-area-inset-bottom));
+  padding: $lyj-space-sm $lyj-space-md;
+  padding-bottom: calc(#{$lyj-space-sm} + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.03);
 }
 .input-bar {
   display: flex;
@@ -682,5 +869,30 @@ export default {
 .send-btn[disabled] {
   opacity: 0.5;
   background: $lyj-disabled;
+}
+
+/* 电脑端宽屏自适应：固定在 960px 舒适阅读区，消灭底部大面积空洞留白与悬浮孤岛 */
+@media screen and (min-width: 768px) {
+  .chat-page {
+    max-width: 960px;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 auto !important;
+    border-left: 2rpx solid $lyj-line;
+    border-right: 2rpx solid $lyj-line;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
+  }
+  .topbar {
+    padding: 24rpx 32rpx;
+  }
+  .stream-inner {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 24rpx 20rpx 40rpx;
+  }
+  .input-bar {
+    max-width: 860px;
+    margin: 0 auto;
+  }
 }
 </style>

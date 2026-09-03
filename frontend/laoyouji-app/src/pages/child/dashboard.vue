@@ -15,68 +15,71 @@
       <text class="privacy-note-text">🔒 {{ privacyNote }}</text>
     </view>
 
-    <!-- 待确认（高危操作拦截） -->
-    <view class="section">
-      <view class="section-head">
-        <text class="section-title">✋ 待我确认（{{ pending.length }}）</text>
-      </view>
-      <view v-if="!pending.length" class="empty-row">
-        <text>暂无待确认事项，老人家的操作都安全</text>
-      </view>
-      <view v-for="t in pending" :key="t.id" class="confirm-item" @tap="goDetail(t)">
-        <view class="confirm-main">
-          <text class="confirm-summary">{{ cardOf(t).summary }}</text>
-          <text class="confirm-reason">{{ cardOf(t).reason }}</text>
+    <!-- 响应式铺砌布局：电脑端大屏网格平铺展示 -->
+    <view class="sections-grid">
+      <!-- 待确认（高危操作拦截） -->
+      <view class="section">
+        <view class="section-head">
+          <text class="section-title">✋ 待我确认（{{ pending.length }}）</text>
         </view>
-        <view class="confirm-side">
-          <text v-if="t.amount" class="confirm-amount">¥{{ t.amount }}</text>
-          <text class="confirm-go">去处理 ›</text>
+        <view v-if="!pending.length" class="empty-row">
+          <text>暂无待确认事项，老人家的操作都安全</text>
+        </view>
+        <view v-for="t in pending" :key="t.id" class="confirm-item" @tap="goDetail(t)">
+          <view class="confirm-main">
+            <text class="confirm-summary">{{ cardOf(t).summary }}</text>
+            <text class="confirm-reason">{{ cardOf(t).reason }}</text>
+          </view>
+          <view class="confirm-side">
+            <text v-if="t.amount" class="confirm-amount">¥{{ t.amount }}</text>
+            <text class="confirm-go">去处理 ›</text>
+          </view>
         </view>
       </view>
-    </view>
 
-    <!-- 行程状态 -->
-    <view class="section">
-      <view class="section-head">
-        <text class="section-title">🧭 出行行程</text>
+      <!-- 行程状态 -->
+      <view class="section">
+        <view class="section-head">
+          <text class="section-title">🧭 出行行程</text>
+        </view>
+        <view v-if="!trips.length" class="empty-row"><text>暂无行程</text></view>
+        <view v-for="t in trips" :key="t.id" class="trip-item" @tap="goGuardian(t)">
+          <text class="trip-purpose">{{ t.purpose }}</text>
+          <text class="trip-status" :class="t.status">{{ statusText(t.status) }}</text>
+        </view>
       </view>
-      <view v-if="!trips.length" class="empty-row"><text>暂无行程</text></view>
-      <view v-for="t in trips" :key="t.id" class="trip-item" @tap="goGuardian(t)">
-        <text class="trip-purpose">{{ t.purpose }}</text>
-        <text class="trip-status" :class="t.status">{{ statusText(t.status) }}</text>
-      </view>
-    </view>
 
-    <!-- 守护告警 -->
-    <view class="section">
-      <view class="section-head">
-        <text class="section-title">🔔 最近告警</text>
+      <!-- 守护告警 -->
+      <view class="section">
+        <view class="section-head">
+          <text class="section-title">🔔 最近告警</text>
+        </view>
+        <view v-if="!alerts.length" class="empty-row"><text>一切正常，没有告警</text></view>
+        <view v-for="(a, i) in alerts" :key="a.id || i" class="alert-item">
+          <text class="alert-icon">⚠️</text>
+          <view class="alert-body">
+            <text class="alert-note">{{ a.note }}</text>
+            <text class="alert-meta">
+              {{ a.location }}<text v-if="a.created_at"> · {{ fmtTime(a.created_at) }}</text>
+            </text>
+          </view>
+        </view>
       </view>
-      <view v-if="!alerts.length" class="empty-row"><text>一切正常，没有告警</text></view>
-      <view v-for="(a, i) in alerts" :key="a.id || i" class="alert-item">
-        <text class="alert-icon">⚠️</text>
-        <view class="alert-body">
-          <text class="alert-note">{{ a.note }}</text>
-          <text class="alert-meta">
-            {{ a.location }}<text v-if="a.created_at"> · {{ fmtTime(a.created_at) }}</text>
+
+      <!-- 今日用药 -->
+      <view class="section">
+        <view class="section-head">
+          <text class="section-title">💊 今日用药</text>
+        </view>
+        <view v-if="!medications.length" class="empty-row">
+          <text>{{ medEmptyText }}</text>
+        </view>
+        <view v-for="(m, i) in medications" :key="i" class="med-item">
+          <text class="med-drug" :class="{ masked: m.precision === 'summary' }">
+            {{ drugLabel(m) }}
           </text>
+          <text class="med-taken">今日 {{ takenCount(m) }}/{{ (m.times || []).length }} 次</text>
         </view>
-      </view>
-    </view>
-
-    <!-- 今日用药 -->
-    <view class="section">
-      <view class="section-head">
-        <text class="section-title">💊 今日用药</text>
-      </view>
-      <view v-if="!medications.length" class="empty-row">
-        <text>{{ medEmptyText }}</text>
-      </view>
-      <view v-for="(m, i) in medications" :key="i" class="med-item">
-        <text class="med-drug" :class="{ masked: m.precision === 'summary' }">
-          {{ drugLabel(m) }}
-        </text>
-        <text class="med-taken">今日 {{ takenCount(m) }}/{{ (m.times || []).length }} 次</text>
       </view>
     </view>
   </view>
@@ -431,5 +434,28 @@ export default {
 .med-taken {
   font-size: $lyj-font-sm;
   color: $lyj-success;
+}
+
+.sections-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 电脑端宽屏铺砌自适应：大屏两列网格平铺，内容饱满舒展 */
+@media screen and (min-width: 768px) {
+  .dash {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 30rpx 32rpx 100rpx;
+  }
+  .sections-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24rpx;
+    align-items: start;
+  }
+  .section {
+    margin: 0;
+  }
 }
 </style>

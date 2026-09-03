@@ -1,29 +1,31 @@
 <template>
   <view class="login">
-    <view class="logo-area">
-      <text class="logo">🤵</text>
-      <text class="app-name">老友记</text>
-      <text class="slogan">您的贴心生活管家</text>
-    </view>
-
-    <view class="form-card">
-      <view class="input-row">
-        <text class="label">账号</text>
-        <input class="input" v-model="username" placeholder="请输入用户名/手机号" />
+    <view class="login-box">
+      <view class="logo-area">
+        <text class="logo">🤵</text>
+        <text class="app-name">老友记</text>
+        <text class="slogan">您的贴心生活管家</text>
       </view>
-      <view class="input-row">
-        <text class="label">密码</text>
-        <input class="input" v-model="password" password placeholder="请输入密码" />
-      </view>
-      <button class="btn-main login-btn" :loading="loading" @tap="submitLogin">登录</button>
-      <button class="btn-ghost reg-btn" @tap="goRegister">没有账号？去注册</button>
-    </view>
 
-    <view class="demo-card">
-      <text class="demo-title">演示账号快捷填入</text>
-      <view class="demo-actions">
-        <button class="demo-pill" size="mini" @tap="fillDemo('elder')">👵 张桂芳（老人）</button>
-        <button class="demo-pill" size="mini" @tap="fillDemo('child')">👨 李明（家人）</button>
+      <view class="form-card">
+        <view class="input-row">
+          <text class="label">账号</text>
+          <input class="input" v-model="username" placeholder="请输入用户名/手机号" />
+        </view>
+        <view class="input-row">
+          <text class="label">密码</text>
+          <input class="input" v-model="password" password placeholder="请输入密码" />
+        </view>
+        <button class="btn-main login-btn" :loading="loading" @tap="submitLogin">登录</button>
+        <button class="btn-ghost reg-btn" @tap="goRegister">没有账号？去注册</button>
+      </view>
+
+      <view class="demo-card">
+        <text class="demo-title">演示账号快捷填入</text>
+        <view class="demo-actions">
+          <button class="demo-pill" size="mini" @tap="fillDemo('elder')">👵 张桂芳（老人）</button>
+          <button class="demo-pill" size="mini" @tap="fillDemo('child')">👨 李明（家人）</button>
+        </view>
       </view>
     </view>
   </view>
@@ -91,9 +93,13 @@ export default {
   background: $lyj-bg;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 40rpx $lyj-space-lg;
+  padding: 60rpx $lyj-space-lg;
   box-sizing: border-box;
+}
+.login-box {
+  width: 100%;
+  max-width: 500px;
+  margin: auto;
 }
 .logo-area {
   display: flex;

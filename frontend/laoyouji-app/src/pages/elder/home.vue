@@ -9,55 +9,59 @@
       <text class="header-logo">🤵</text>
     </view>
 
-    <!--
-      首屏第一件事 = 按住说话。
-      老人的主入口就是说话，麦克风不该藏在二级页里等着被找到。
-      说完直接转交聊天页执行（autoSend = true —— 这句话是老人自己说的）。
-    -->
-    <view class="mic-zone">
-      <LyjMic
-        :dialect="user ? user.dialect : ''"
-        hint="想办什么事，按住上面的大按钮说给我听"
-        @text="onSpoken"
-      />
-    </view>
+    <!-- 响应式铺砌容器：手机端纵向排列，电脑端大屏两列自适应平铺 -->
+    <view class="home-grid">
+      <view class="home-col">
+        <!-- 首屏第一件事 = 按住说话 -->
+        <view class="mic-zone">
+          <LyjMic
+            :dialect="user ? user.dialect : ''"
+            hint="想办什么事，按住上面的大按钮说给我听"
+            @text="onSpoken"
+          />
+        </view>
 
-    <!-- 今日提醒大卡片 -->
-    <view class="reminder-card">
-      <view class="reminder-head">
-        <text class="reminder-title">⏰ 今天的提醒</text>
+        <!-- 快捷入口 -->
+        <view class="quick">
+          <view
+            v-for="q in quicks"
+            :key="q.label"
+            class="quick-item"
+            @tap="quick(q.text)"
+          >
+            <text class="quick-icon">{{ q.icon }}</text>
+            <text class="quick-label">{{ q.label }}</text>
+          </view>
+        </view>
       </view>
-      <view v-if="!meds.length" class="reminder-empty">
-        <text class="reminder-empty-text">今天没有要吃的药，好好休息～</text>
-      </view>
-      <view v-for="m in meds" :key="m.id" class="med-row">
-        <text class="med-drug">{{ m.drug_name }}</text>
-        <text class="med-times">{{ (m.times || []).join(' / ') }}</text>
-        <text class="med-status" :class="takenCount(m) === (m.times || []).length ? 'ok' : 'todo'">
-          {{ takenCount(m) }}/{{ (m.times || []).length }} 次
-        </text>
-      </view>
-      <button class="btn-main go-med" @tap="goMed">去吃药打卡</button>
-    </view>
 
-    <!-- 快捷入口：只把话**填进**聊天页的输入框，不替老人把话说出去 -->
-    <view class="quick">
-      <view
-        v-for="q in quicks"
-        :key="q.label"
-        class="quick-item"
-        @tap="quick(q.text)"
-      >
-        <text class="quick-icon">{{ q.icon }}</text>
-        <text class="quick-label">{{ q.label }}</text>
-      </view>
-    </view>
+      <view class="home-col">
+        <!-- 今日提醒大卡片 -->
+        <view class="reminder-card">
+          <view class="reminder-head">
+            <text class="reminder-title">⏰ 今天的提醒</text>
+          </view>
+          <view v-if="!meds.length" class="reminder-empty">
+            <text class="reminder-empty-text">今天没有要吃的药，好好休息～</text>
+          </view>
+          <view v-for="m in meds" :key="m.id" class="med-row">
+            <text class="med-drug">{{ m.drug_name }}</text>
+            <text class="med-times">{{ (m.times || []).join(' / ') }}</text>
+            <text class="med-status" :class="takenCount(m) === (m.times || []).length ? 'ok' : 'todo'">
+              {{ takenCount(m) }}/{{ (m.times || []).length }} 次
+            </text>
+          </view>
+          <button class="btn-main go-med" @tap="goMed">去吃药打卡</button>
+        </view>
 
-    <view class="weather-card" v-if="weather">
-      <text class="weather-icon">{{ weather.icon }}</text>
-      <view class="weather-info">
-        <text class="weather-main">{{ weather.text }}</text>
-        <text class="weather-tip">{{ weather.tip }}</text>
+        <!-- 天气卡片 -->
+        <view class="weather-card" v-if="weather">
+          <text class="weather-icon">{{ weather.icon }}</text>
+          <view class="weather-info">
+            <text class="weather-main">{{ weather.text }}</text>
+            <text class="weather-tip">{{ weather.tip }}</text>
+          </view>
+        </view>
       </view>
     </view>
   </view>
@@ -300,5 +304,40 @@ export default {
 .weather-tip {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+}
+
+.home-grid {
+  display: flex;
+  flex-direction: column;
+}
+.home-col {
+  width: 100%;
+}
+
+/* 电脑端宽屏铺砌自适应：大屏两列栅格平铺，卡片饱满铺开 */
+@media screen and (min-width: 768px) {
+  .home {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 30rpx 32rpx 120rpx;
+  }
+  .header {
+    padding: 20rpx 0 40rpx;
+  }
+  .home-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32rpx;
+    align-items: start;
+  }
+  .reminder-card {
+    margin: 0 0 24rpx;
+  }
+  .weather-card {
+    margin: 0;
+  }
+  .quick {
+    padding: 0;
+  }
 }
 </style>

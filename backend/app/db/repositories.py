@@ -57,8 +57,11 @@ class SupabaseRepo:
         self._client = create_client(url, service_key)
 
     async def insert(self, table: str, data: dict) -> dict:
-        if "id" not in data:
-            data = {"id": str(uuid.uuid4()), **data}
+        data = dict(data)
+        if table == "session_events":
+            data.pop("id", None)
+        elif "id" not in data:
+            data["id"] = str(uuid.uuid4())
         row = await asyncio.to_thread(
             self._client.table(table).insert(data).execute
         )
@@ -163,7 +166,10 @@ class LocalFileRepo:
             row = dict(data)
             with self._lock:
                 if "id" not in row:
-                    row = {"id": str(uuid.uuid4()), **row}
+                    if table == "session_events":
+                        row = {"id": len(self._rows(table)) + 1, **row}
+                    else:
+                        row = {"id": str(uuid.uuid4()), **row}
                 if "created_at" not in row:
                     row = {**row, "created_at": utcnow_iso()}
                 self._rows(table).append(row)

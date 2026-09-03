@@ -1,9 +1,14 @@
 <template>
   <view class="med-page">
-    <LyjBack />
     <view class="topbar">
-      <text class="title">今天的药</text>
-      <text class="sub">吃完点一下，家人就放心了</text>
+      <view class="back-btn" @tap="goBack">
+        <text class="back-icon">‹</text>
+        <text class="back-text">首页</text>
+      </view>
+      <view class="topbar-info">
+        <text class="title">今天的药</text>
+        <text class="sub">吃完点一下，家人就放心了</text>
+      </view>
     </view>
 
     <view v-if="!meds.length" class="empty">
@@ -52,6 +57,14 @@ export default {
     this.load()
   },
   methods: {
+    goBack() {
+      const pages = getCurrentPages()
+      if (pages && pages.length > 1) {
+        uni.navigateBack()
+      } else {
+        uni.switchTab({ url: '/pages/elder/home' })
+      }
+    },
     async load() {
       try {
         const d = await get('/api/medications', { elder_id: this.user.id, with_logs: true })
@@ -88,7 +101,38 @@ export default {
   box-sizing: border-box;
 }
 .topbar {
-  padding: calc(var(--status-bar-height) + #{$lyj-space-lg}) $lyj-space-lg $lyj-space-md;
+  padding: 24rpx $lyj-space-lg;
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-md;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 10rpx 20rpx;
+  background: $lyj-card;
+  border: 2rpx solid $lyj-line;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.back-btn:active {
+  opacity: 0.7;
+}
+.back-icon {
+  font-size: 38rpx;
+  line-height: 1;
+  color: $lyj-primary;
+  font-weight: 800;
+}
+.back-text {
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  font-weight: 700;
+}
+.topbar-info {
   display: flex;
   flex-direction: column;
   gap: $lyj-space-xs;
@@ -176,5 +220,13 @@ export default {
 }
 .slot.taken .slot-state {
   color: $lyj-success;
+}
+
+@media screen and (min-width: 768px) {
+  .med-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20rpx 40rpx 120rpx;
+  }
 }
 </style>
