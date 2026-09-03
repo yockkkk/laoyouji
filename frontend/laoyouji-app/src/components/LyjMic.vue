@@ -9,7 +9,7 @@
     组件只负责把话变成文字，然后 emit('text', 文字)。**怎么用这句话是页面的事** ——
     聊天页直接发给老友记，首页则交接过去。
   -->
-  <view class="mic-wrap">
+  <view class="mic-wrap" :class="'mode-' + mode">
     <view
       class="mic"
       :class="{ recording, disabled }"
@@ -38,6 +38,7 @@ export default {
     disabled: { type: Boolean, default: false },
     dialect: { type: String, default: '' },
     hint: { type: String, default: '' }, // 静止时的一行提示，如"按住说话，说完松开"
+    mode: { type: String, default: 'circle' }, // circle (首页大圆) | bar (聊天页横向胶囊)
   },
   emits: ['text'],
   data() {
@@ -170,5 +171,30 @@ export default {
 .hint {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+}
+
+/* 紧凑横向录音条模式（用于聊天室底部，释放垂直消息可视区域） */
+.mic-wrap.mode-bar {
+  width: 100%;
+  gap: $lyj-space-xs;
+  .mic {
+    width: 100%;
+    height: 96rpx;
+    border-radius: $lyj-radius-pill;
+    flex-direction: row;
+    justify-content: center;
+    gap: $lyj-space-sm;
+    box-shadow: 0 4rpx 16rpx rgba(232, 84, 30, 0.25);
+    .mic-icon {
+      font-size: 48rpx;
+    }
+    .mic-label {
+      font-size: $lyj-font-md;
+      font-weight: 700;
+    }
+  }
+  .mic.recording {
+    transform: scale(1.02);
+  }
 }
 </style>

@@ -252,6 +252,7 @@ export default {
 .empty {
   color: $lyj-child-muted;
   font-size: $lyj-font-sm;
-  padding: $lyj-space-sm 0;
+  padding: $lyj-space-md 0;
+  text-align: center;
 }
 </style>

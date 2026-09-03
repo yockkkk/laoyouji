@@ -33,7 +33,7 @@ export default {
   methods: {
     go(item) {
       if (this.current === item.key) return
-      uni.reLaunch({ url: item.path })
+      uni.redirectTo({ url: item.path })
     },
   },
 }

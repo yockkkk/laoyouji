@@ -62,4 +62,33 @@ button {
   margin: $lyj-space-md;
   box-shadow: $lyj-shadow-card;
 }
+
+/* #ifdef H5 */
+/* PC 桌面端大屏居中自适应：模拟精致手机外框，防止在 1920px 宽屏下横向拉扯失真 */
+@media screen and (min-width: 500px) {
+  body {
+    background-color: #ede7de !important;
+  }
+  uni-app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    box-shadow: 0 0 35px rgba(0, 0, 0, 0.1);
+    position: relative;
+    background-color: $lyj-bg;
+    overflow-x: hidden;
+  }
+  uni-page-head {
+    max-width: 480px;
+    left: 50% !important;
+    transform: translateX(-50%);
+  }
+  uni-tabbar,
+  .uni-tabbar {
+    max-width: 480px;
+    left: 50% !important;
+    transform: translateX(-50%);
+  }
+}
+/* #endif */
 </style>

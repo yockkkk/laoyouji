@@ -303,7 +303,8 @@ export default {
   color: $lyj-child-text;
 }
 .empty-row {
-  padding: $lyj-space-sm 0;
+  padding: $lyj-space-md 0;
+  text-align: center;
 }
 .empty-row text {
   font-size: $lyj-font-sm;

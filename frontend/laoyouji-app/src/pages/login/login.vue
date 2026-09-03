@@ -91,14 +91,15 @@ export default {
   background: $lyj-bg;
   display: flex;
   flex-direction: column;
-  padding: 80rpx $lyj-space-lg 40rpx;
+  justify-content: center;
+  padding: 40rpx $lyj-space-lg;
   box-sizing: border-box;
 }
 .logo-area {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 50rpx;
+  margin-bottom: 40rpx;
 }
 .logo {
   font-size: 110rpx;
@@ -162,13 +163,25 @@ export default {
 }
 .demo-actions {
   display: flex;
-  gap: $lyj-space-md;
+  width: 100%;
+  gap: $lyj-space-sm;
+  justify-content: center;
 }
 .demo-pill {
+  flex: 1;
   font-size: $lyj-font-sm;
   background: $lyj-primary-soft;
   color: $lyj-primary;
   border: 2rpx solid $lyj-primary;
   border-radius: $lyj-radius-pill;
+  padding: 0 $lyj-space-xs;
+  height: 64rpx;
+  line-height: 60rpx;
+  text-align: center;
+  white-space: nowrap;
+  transition: transform 0.1s;
+}
+.demo-pill:active {
+  transform: scale(0.96);
 }
 </style>
