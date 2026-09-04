@@ -167,7 +167,10 @@ async def test_parallel_fanout_is_concurrent_not_serial(ctx, elder):
     每支模型请求固定睡 0.2 秒。判据用"在飞峰值 == 3"而不是墙钟数字：
     墙钟只是间接证据，跑全量套件时 Windows 上的调度开销就能把 0.2 秒的扇出
     抬到 0.5 秒，于是一条测真并发的断言变成了测这台机器忙不忙。
-    墙钟仍然留着，但只卡在串行下限（3 × 0.2 = 0.6 秒）上做个兜底。
+    墙钟仍然留着，但只卡在串行下限（3 × 0.2 = 0.6 秒）上做个兜底 ——
+    **只留上限**：下限（"至少睡了 0.2 秒，说明桩真被调了"）看着像个保险，
+    实际上 Windows 的时钟粒度能让 asyncio.sleep(0.2) 在 perf_counter 上量出
+    0.187 秒，于是保险自己成了闪断源；桩到底调了没有，llm.calls 说得更准。
     """
     llm = _use_llm(ctx, _RecordingLLM(delay=0.2))
     turn = await _turn(ctx, elder, "扇出")
@@ -182,7 +185,6 @@ async def test_parallel_fanout_is_concurrent_not_serial(ctx, elder):
     assert llm.calls == 3, "三支各请求一次"
     assert llm.peak_inflight == 3, (
         f"同时在飞的请求峰值只有 {llm.peak_inflight}，扇出退化成串行了")
-    assert elapsed >= 0.2, "桩没被真正调用，这条断言就是空的"
     assert elapsed < 0.6, f"墙钟到了串行下限：{elapsed:.2f}s"
     assert _collectors(ctx) == [], "采集监听者跑完即卸载"
 
