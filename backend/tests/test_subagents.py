@@ -44,13 +44,22 @@ class _RecordingLLM(LLMProvider):
     def __init__(self, delay: float = 0.0):
         self.delay = delay
         self.seen: list[list[dict]] = []
+        # 同时在飞的请求数峰值。并发与否**看这个**，不看墙钟：
+        # 墙钟在忙机器上会被调度噪声抬高，峰值不会 —— 三支真同时跑，峰值就是 3。
+        self._inflight = 0
+        self.peak_inflight = 0
 
     async def chat(self, messages: list[dict], tools: list[dict] | None = None,
                    on_delta=None) -> LLMResponse:
         self.seen.append([dict(m) for m in messages])
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        return LLMResponse(content="好的，我知道了。")
+        self._inflight += 1
+        self.peak_inflight = max(self.peak_inflight, self._inflight)
+        try:
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            return LLMResponse(content="好的，我知道了。")
+        finally:
+            self._inflight -= 1
 
     @property
     def calls(self) -> int:
@@ -153,10 +162,12 @@ def test_spec_parse_refuses_a_dispatch_without_a_target():
 
 
 async def test_parallel_fanout_is_concurrent_not_serial(ctx, elder):
-    """三支同时跑：墙钟贴近单支耗时，而不是三支之和（缺陷 #2 的正面验收）。
+    """三支同时跑：三个模型请求同时在飞，而不是一支接一支（缺陷 #2 的正面验收）。
 
-    每支模型请求固定睡 0.2 秒。串行至少 0.6 秒，并发约 0.2 秒 ——
-    这个差距不需要精密计时也分得清。
+    每支模型请求固定睡 0.2 秒。判据用"在飞峰值 == 3"而不是墙钟数字：
+    墙钟只是间接证据，跑全量套件时 Windows 上的调度开销就能把 0.2 秒的扇出
+    抬到 0.5 秒，于是一条测真并发的断言变成了测这台机器忙不忙。
+    墙钟仍然留着，但只卡在串行下限（3 × 0.2 = 0.6 秒）上做个兜底。
     """
     llm = _use_llm(ctx, _RecordingLLM(delay=0.2))
     turn = await _turn(ctx, elder, "扇出")
@@ -169,8 +180,10 @@ async def test_parallel_fanout_is_concurrent_not_serial(ctx, elder):
 
     assert [r.agent for r in reports] == ["travel", "health", "community"]
     assert llm.calls == 3, "三支各请求一次"
+    assert llm.peak_inflight == 3, (
+        f"同时在飞的请求峰值只有 {llm.peak_inflight}，扇出退化成串行了")
     assert elapsed >= 0.2, "桩没被真正调用，这条断言就是空的"
-    assert elapsed < 0.45, f"扇出退化成串行了：{elapsed:.2f}s（串行下限 0.6s）"
+    assert elapsed < 0.6, f"墙钟到了串行下限：{elapsed:.2f}s"
     assert _collectors(ctx) == [], "采集监听者跑完即卸载"
 
 

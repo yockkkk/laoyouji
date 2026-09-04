@@ -90,15 +90,19 @@
 ## 2. 当前配置（`laoyouji/backend/.env`）
 
 ```ini
+# 大模型已从 NVIDIA NIM 切回 DeepSeek 官方（此前借用 DEEPSEEK_* 字段名接 NIM，
+# 字段名和实际服务不符，排查时很容易被骗）。key 留空时 bootstrap 自动退化 mock LLM，
+# 演示照跑，只是不走真模型。
 LLM_PROVIDER=deepseek
-DEEPSEEK_API_KEY=<REDACTED 见本机 backend/.env>
-DEEPSEEK_BASE_URL=https://integrate.api.nvidia.com/v1
-DEEPSEEK_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+DEEPSEEK_API_KEY=<REDACTED 见本机 backend/.env，sk- 开头>
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
 
+# 注意字段名：主线统一用 TENCENT_*，xt 分支那版的 TENCENTCLOUD_* 已弃用
 ASR_PROVIDER=tencent
-TENCENTCLOUD_SECRET_ID=<REDACTED 见本机 backend/.env>
-TENCENTCLOUD_SECRET_KEY=<REDACTED 见本机 backend/.env>
-TENCENTCLOUD_REGION=ap-shanghai
+TENCENT_SECRET_ID=<REDACTED 见本机 backend/.env>
+TENCENT_SECRET_KEY=<REDACTED 见本机 backend/.env>
+TENCENT_REGION=ap-shanghai
 IFLYTEK_APP_ID=
 IFLYTEK_API_KEY=
 IFLYTEK_API_SECRET=
@@ -112,7 +116,7 @@ RISK_AMOUNT_THRESHOLD=50
 CONFIRM_TIMEOUT_MIN=30
 ```
 
-⚠️ 本段密钥已在并入 main 时**脱敏**为占位符（此前 xt 分支误把完整密钥随本文件与 `test_tencent_asr.py` 提交进了 Git）。真实密钥只应存在于各本机 `backend/.env`（已 gitignore）。若此仓库曾公开，**必须轮换**：腾讯云 SecretKey（新建后旧 key 不可找回，直接禁用重建）、NVIDIA key、Supabase service key。
+⚠️ 本段密钥已在并入 main 时**脱敏**为占位符（此前 xt 分支误把完整密钥随本文件与 `test_tencent_asr.py` 提交进了 Git）。真实密钥只应存在于各本机 `backend/.env`（已 gitignore）。若此仓库曾公开，**必须轮换**：腾讯云 SecretKey（新建后旧 key 不可找回，直接禁用重建）、NVIDIA key（已停用但历史里仍在）、Supabase service key。
 
 ---
 
