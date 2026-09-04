@@ -26,6 +26,70 @@
            {"seat_type": "商务座", "price": 1748.5, "remaining": 2}
          ]}
       ]
+    },
+    {
+      "from_city": "北京",
+      "to_city": "南京",
+      "from_station": "北京南站",
+      "to_station": "南京南站",
+      "trains": [
+        {"train_no": "G105", "depart": "07:23", "arrive": "11:41", "duration": "4小时18分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 33},
+           {"seat_type": "一等座", "price": 932.0, "remaining": 9}
+         ]},
+        {"train_no": "G107", "depart": "10:05", "arrive": "14:26", "duration": "4小时21分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 12}
+         ]},
+        {"train_no": "G31", "depart": "16:00", "arrive": "19:38", "duration": "3小时38分",
+         "seats": [
+           {"seat_type": "二等座", "price": 553.5, "remaining": 4},
+           {"seat_type": "商务座", "price": 1748.5, "remaining": 2}
+         ]}
+      ]
+    },
+    {
+      "from_city": "南京",
+      "to_city": "上海",
+      "from_station": "南京南站",
+      "to_station": "上海虹桥站",
+      "trains": [
+        {"train_no": "G7002", "depart": "07:15", "arrive": "08:38", "duration": "1小时23分",
+         "seats": [
+           {"seat_type": "二等座", "price": 134.5, "remaining": 58},
+           {"seat_type": "一等座", "price": 219.5, "remaining": 20}
+         ]},
+        {"train_no": "G7016", "depart": "09:20", "arrive": "10:47", "duration": "1小时27分",
+         "seats": [
+           {"seat_type": "二等座", "price": 134.5, "remaining": 26}
+         ]},
+        {"train_no": "D3018", "depart": "13:40", "arrive": "15:24", "duration": "1小时44分",
+         "seats": [
+           {"seat_type": "二等座", "price": 95.5, "remaining": 41}
+         ]}
+      ]
+    },
+    {
+      "from_city": "上海",
+      "to_city": "南京",
+      "from_station": "上海虹桥站",
+      "to_station": "南京南站",
+      "trains": [
+        {"train_no": "G7031", "depart": "08:05", "arrive": "09:32", "duration": "1小时27分",
+         "seats": [
+           {"seat_type": "二等座", "price": 134.5, "remaining": 47},
+           {"seat_type": "一等座", "price": 219.5, "remaining": 15}
+         ]},
+        {"train_no": "G7139", "depart": "15:10", "arrive": "16:41", "duration": "1小时31分",
+         "seats": [
+           {"seat_type": "二等座", "price": 134.5, "remaining": 9}
+         ]},
+        {"train_no": "D3024", "depart": "18:20", "arrive": "20:07", "duration": "1小时47分",
+         "seats": [
+           {"seat_type": "二等座", "price": 95.5, "remaining": 22}
+         ]}
+      ]
     }
   ]
 }

@@ -92,14 +92,38 @@ class MockWeatherProvider(WeatherProvider):
 
 # ---------------------------------------------------------------- 地图 / 路线
 
-# 演示用静态坐标（南京 → 北京 关键点位，供子女端守护地图画线）
-_ROUTE_POINTS = [
-    {"location": "家（南京鼓楼区）", "lng": 118.77, "lat": 32.06},
-    {"location": "南京南站", "lng": 118.79, "lat": 31.97},
-    {"location": "济南西站", "lng": 116.90, "lat": 36.66},
-    {"location": "北京南站", "lng": 116.37, "lat": 39.86},
-    {"location": "北京积水潭医院", "lng": 116.37, "lat": 39.94},
-]
+
+def _mentions(text: str, name: str) -> bool:
+    """"南京"、"南京南站"、"家（南京鼓楼区）" 指的可能是同一段路的同一头。
+
+    地名的粒度是**模型说出口时才定的**：老人说"去北京"，模型可能填 ``北京``、
+    ``北京南站``，也可能照抄上一步查到的 ``北京积水潭医院``。fixture 里只能写一种
+    写法，按等号比对的话绝大多数说法都对不上 —— 对不上就没有路线，
+    子智能体拿不到任何点位，子女端守护地图上是一条空线。
+    """
+    text, name = (text or "").strip(), (name or "").strip()
+    if not text or not name:
+        return False
+    return name in text or text in name
+
+
+def _landmark(landmarks: dict, text: str) -> dict | None:
+    """把一个说法落到一个坐标点上。没有对应地标就返回 None（不编坐标）。
+
+    挑选顺序是"越具体越优先"：``南京南站`` 里同时含着 ``南京``，
+    此时该认站不该认市；反过来只说 ``南京`` 时，就退回市中心那个点。
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    exact = [n for n in landmarks if n == text]
+    inside = sorted((n for n in landmarks if n in text), key=len, reverse=True)
+    outside = sorted((n for n in landmarks if text in n), key=len)
+    picks = exact or inside or outside
+    if not picks:
+        return None
+    name = picks[0]
+    return {"location": name, **landmarks[name]}
 
 
 class MapProvider:
@@ -108,17 +132,43 @@ class MapProvider:
 
 
 class MockMapProvider(MapProvider):
+    """演示路线库（data/routes.json）：跨城两条 + 市内两条，另附地标坐标兜底。
+
+    旧实现把点位写死在模块常量里，并且**无论去哪都把济南西站塞进折线** ——
+    从家到南京鼓楼医院这种市内两公里的路，画出来也要经过济南。
+    现在济南西站只出现在它真正在途中的那条线上（南京→北京）。
+    """
+
     name = "mock_map"
 
     async def plan_route(self, origin: str, destination: str) -> dict:
         await asyncio.sleep(random.uniform(0.2, 0.4))
-        points = [p for p in _ROUTE_POINTS
-                  if origin in p["location"] or destination in p["location"]
-                  or p["location"] == "济南西站"]
+        data = load_fixture("routes")
+        for route in data["routes"]:
+            if _mentions(origin, route["from"]) and _mentions(destination, route["to"]):
+                return {
+                    "ok": True, "matched": True,
+                    "origin": origin, "destination": destination,
+                    "mode": route["mode"], "duration": route["duration"],
+                    "distance_km": route.get("distance_km"),
+                    "polyline": route["points"],
+                    "steps": route["steps"],
+                    "summary": (f"从{origin}到{destination}：{route['mode']}，"
+                                f"全程{route['duration']}。"
+                                + "".join(route["steps"])),
+                }
+
+        # 库里没有这条线路：只画两头的直线，并且**说出来**没有详细走法。
+        # 编一个"全程约4小时20分"比承认不知道糟糕得多 —— 老人会照着那个时间出门。
+        ends = [pt for pt in (_landmark(data["landmarks"], origin),
+                              _landmark(data["landmarks"], destination)) if pt]
         return {
-            "ok": True, "origin": origin, "destination": destination,
-            "polyline": points,
-            "summary": f"从{origin}到{destination}：高铁直达，全程约4小时20分钟。",
+            "ok": True, "matched": False,
+            "origin": origin, "destination": destination,
+            "mode": "", "duration": "", "distance_km": None,
+            "polyline": ends, "steps": [],
+            "summary": (f"从{origin}到{destination}：这条路线我这儿只有大致方向，"
+                        f"具体怎么走、要多久，出门前问一下家里人或站里的工作人员。"),
         }
 
 
@@ -130,19 +180,28 @@ class RideProvider:
 
 
 class MockRideProvider(RideProvider):
+    """演示司机库（data/rides.json，3 位师傅）。"""
+
     name = "mock_ride"
-    _PLATES = ["苏A88888", "苏A66666", "苏A12345"]
 
     async def hail(self, origin: str, destination: str) -> dict:
         await asyncio.sleep(3.0)  # 模拟司机接单等待
-        plate = self._PLATES[int(hashlib.md5(origin.encode()).hexdigest()[0], 16) % 3]
+        drivers = load_fixture("rides")["drivers"]
+        # 派单按"这一趟"算，不只看出发地：老人多半都是从家出发，
+        # 只用 origin 的话每次都派同一位师傅、同一块车牌，演示里一眼假。
+        key = f"{origin}|{destination}"
+        idx = int(hashlib.md5(key.encode("utf-8")).hexdigest()[:8], 16) % len(drivers)
+        driver = drivers[idx]
         return {
             "ok": True,
             "order_no": derive_no("D", origin, destination, date.today()),
-            "driver": "王师傅", "plate": plate, "rating": 4.9,
-            "eta_min": 5,
-            "announce": f"车叫好啦！王师傅的车（{plate}）5分钟到，"
-                        f"从{origin}去{destination}。到车了他会给您打电话。",
+            "driver": driver["name"], "plate": driver["plate"],
+            "car": driver.get("car", ""), "rating": driver["rating"],
+            "eta_min": driver["eta_min"], "phone": driver.get("phone", ""),
+            "note": driver.get("note", ""),
+            "announce": (f"车叫好啦！{driver['name']}的车，{driver['car']}，"
+                         f"车牌{driver['plate']}，{driver['eta_min']}分钟到，"
+                         f"从{origin}去{destination}。到车了他会给您打电话。"),
         }
 
 
