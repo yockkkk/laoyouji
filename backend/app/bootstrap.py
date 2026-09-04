@@ -27,6 +27,7 @@ from app.core.guards import install_loop_guards
 from app.core.registry import ServiceDefinition, ServiceProvider, ServiceRegistry
 from app.core.subagents import SubagentRegistry
 from app.core.tool import ToolDispatcher, ToolRegistry
+from app.core.turn_gate import SessionTurnGate
 from app.db.client import build_repo
 from app.providers.external.community import MockCommunityProvider
 from app.providers.external.services import (
@@ -89,6 +90,10 @@ def build_context(cfg: Settings | None = None) -> AppContext:
         tools=tools,
         bus=bus,
         broadcast=SessionBroadcast(),
+        turn_gate=SessionTurnGate(
+            # 比预算墙钟略宽：前一轮最迟也会在墙钟到点时收尾，
+            # 等到那时候还等不到，说明真出了别的问题，不该继续等
+            max_wait_s=float(getattr(cfg, "budget_wall_clock_s", 90.0)) + 15.0),
     )
     registry.ctx = ctx
 

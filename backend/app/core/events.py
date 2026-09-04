@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -126,12 +127,34 @@ class InvariantViolation(RuntimeError):
 
 
 class SessionEventLog:
+    # 一条事件最多试这么多次落库。给上限是因为"永久重排队"会让一条坏事件
+    # 每轮都重试、日志刷满，而它本来只是某一条 payload 有问题。
+    MAX_FLUSH_ATTEMPTS = 3
+
+    # 内存里最多同时驻留这么多个会话的日志。超了就把最久没碰过的那些让出去
+    # （只让已全部落库的），下次访问自动 hydrate 回来。
+    # 没有上界的话，一个长期开着的服务进程会把每个曾经打开过的会话永久留在内存里
+    # —— 演示跑不出问题，连着跑一周就是慢性泄漏。
+    MAX_LIVE_SESSIONS = 200
+
     def __init__(self, repo: Repository):
         self._repo = repo
         self._events: dict[str, list[SessionEvent]] = {}
         self._seq: dict[str, int] = {}
         self._pending: dict[str, list[SessionEvent]] = {}
         self._hydrated: set[str] = set()
+        # 已确认落库的 seq。flush 可能被重复触发（轮次末尾 + 确认重放 + 断线补写），
+        # 没有这张表就会往 uq_session_events_session_seq 上撞重复键。
+        self._persisted: dict[str, set[int]] = {}
+        self._attempts: dict[tuple[str, int], int] = {}
+        # 每会话一把锁。``append`` 是纯同步的、没有读改写窗口，所以它不需要锁；
+        # 但 ``hydrate`` 和 ``flush`` 中间都有 await，两个请求同时唤醒同一个冷会话时
+        # 会各自读到旧的 max(seq)、各自分配同一个号：内存里后写的把先写的顶掉，
+        # 库里两条都进去撞 uq_session_events_session_seq。锁就是为了关掉那个窗口。
+        self._locks: dict[str, asyncio.Lock] = {}
+        # 最近使用序。**不能拿 ``_hydrated`` 当 LRU** —— 它是 set，没有顺序，
+        # 照它的迭代序驱逐等于随机挑一个会话让出去，可能正是老人当前在聊的那个。
+        self._lru: dict[str, None] = {}
 
     # ---------------------------------------------------------------- 会话
     async def create_session(self, user_id: str, title: str = "") -> dict:
@@ -140,19 +163,34 @@ class SessionEventLog:
         sid = session["id"]
         self._events.setdefault(sid, [])
         self._seq[sid] = 0
+        self._persisted.setdefault(sid, set())
         self._hydrated.add(sid)
+        self._touch(sid)
         return session
 
     async def hydrate(self, session_id: str) -> None:
-        """续接已有会话时把历史读进内存（幂等）。之后内存日志即权威。"""
+        """续接已有会话时把历史读进内存（幂等，并发安全）。之后内存日志即权威。
+
+        锁 + 进锁后再查一次 ``_hydrated``（双检）：两个请求同时唤醒同一个冷会话时，
+        第二个进来发现第一个已经读完了就直接返回，不会把内存日志重置成刚读的那份
+        —— 重置会丢掉这中间 append 进来的事件，并让 seq 计数器退回去发重号。
+        """
         if session_id in self._hydrated:
+            self._touch(session_id)
             return
-        rows = await self._repo.list(
-            "session_events", where={"session_id": session_id}, order="seq")
-        events = [SessionEvent.from_row(r) for r in rows]
-        self._events[session_id] = events
-        self._seq[session_id] = max((e.seq for e in events), default=0)
-        self._hydrated.add(session_id)
+        async with self._lock(session_id):
+            if session_id in self._hydrated:     # 双检：等锁期间别人已经读好了
+                self._touch(session_id)
+                return
+            rows = await self._repo.list(
+                "session_events", where={"session_id": session_id}, order="seq")
+            events = [SessionEvent.from_row(r) for r in rows]
+            self._events[session_id] = events
+            self._seq[session_id] = max((e.seq for e in events), default=0)
+            # 读回来的都是已落库的事实，登记进去，免得后续 flush 又写一遍
+            self._persisted[session_id] = {e.seq for e in events}
+            self._hydrated.add(session_id)
+            self._touch(session_id)
 
     # ---------------------------------------------------------------- 追加
     def append(self, session_id: str, user_id: str | None, type: str,
@@ -174,21 +212,136 @@ class SessionEventLog:
         )
         self._events.setdefault(session_id, []).append(event)
         self._pending.setdefault(session_id, []).append(event)
+        self._touch(session_id)
         return event
 
     async def flush(self, session_id: str | None = None) -> int:
-        """把写后缓冲落库（session/flush 检查点调用）。返回落库条数。"""
+        """把写后缓冲落库（session/flush 检查点调用）。返回落库条数。
+
+        与旧实现的两处差别，都是"聊天记录不能丢"这一条要求逼出来的：
+
+        1. **整批一次写**。一轮对话几十条事件，逐条 insert 就是几十个网络往返，
+           老人问下一句时还在排空上一句的缓冲。批量失败才退回逐条，好定位坏行。
+        2. **失败重排队**。旧实现把 batch 从 ``_pending`` 摘下来就不管了，
+           insert 抛异常那条事件**只存在于内存里**，进程一重启就没了 ——
+           日志里留一行 warning，用户看到的是"上次说的话不见了"。
+           现在失败的排回缓冲，下个检查点再试，试满 ``MAX_FLUSH_ATTEMPTS`` 才放弃。
+        """
         keys = [session_id] if session_id else list(self._pending)
         written = 0
         for sid in keys:
-            batch, self._pending[sid] = self._pending.get(sid, []), []
-            for event in batch:
-                try:
-                    await self._repo.insert("session_events", event.to_row())
-                    written += 1
-                except Exception as exc:  # noqa: BLE001 —— 落库失败不该吞掉演示
-                    logger.warning("事件落库失败 seq=%s: %s", event.seq, exc)
+            # 同一个会话的两次 flush 不能同时在飞：两边会各自摘走一半缓冲，
+            # 失败重排队时互相覆盖 ``_pending[sid]``，被摘走的那批就凭空消失了。
+            async with self._lock(sid):
+                written += await self._flush_one(sid)
         return written
+
+    async def _flush_one(self, sid: str) -> int:
+        batch, self._pending[sid] = self._pending.get(sid, []), []
+        done = self._persisted.setdefault(sid, set())
+        batch = [e for e in batch if e.seq not in done]
+        if not batch:
+            return 0
+        ok, failed = await self._write(batch)
+        requeue = []
+        for event in failed:
+            key = (sid, event.seq)
+            attempts = self._attempts.get(key, 0) + 1
+            if attempts >= self.MAX_FLUSH_ATTEMPTS:
+                self._attempts.pop(key, None)
+                logger.error("事件落库连续失败 %d 次，放弃 session=%s seq=%s",
+                             attempts, sid, event.seq)
+            else:
+                self._attempts[key] = attempts
+                requeue.append(event)
+        if requeue:
+            self._pending[sid] = requeue + self._pending.get(sid, [])
+        return ok
+
+    async def _write(self, events: list[SessionEvent]) -> tuple[int, list[SessionEvent]]:
+        """写一批事件，返回 ``(成功条数, 失败事件)``。"""
+        insert_many = getattr(self._repo, "insert_many", None)
+        if insert_many is not None:
+            try:
+                await insert_many("session_events", [e.to_row() for e in events])
+                for event in events:
+                    self._mark_persisted(event)
+                return len(events), []
+            except Exception as exc:  # noqa: BLE001 —— 整批失败退回逐条，定位坏行
+                logger.warning("批量落库失败（%d 条），退回逐条：%s", len(events), exc)
+
+        ok, failed = 0, []
+        for event in events:
+            try:
+                await self._repo.insert("session_events", event.to_row())
+                self._mark_persisted(event)
+                ok += 1
+            except Exception as exc:  # noqa: BLE001 —— 落库失败不该吞掉演示
+                logger.warning("事件落库失败 seq=%s: %s", event.seq, exc)
+                failed.append(event)
+        return ok, failed
+
+    def _mark_persisted(self, event: SessionEvent) -> None:
+        self._persisted.setdefault(event.session_id, set()).add(event.seq)
+        self._attempts.pop((event.session_id, event.seq), None)
+
+    # ---------------------------------------------------------------- 内存治理
+    def _lock(self, session_id: str) -> asyncio.Lock:
+        lock = self._locks.get(session_id)
+        if lock is None:
+            lock = self._locks[session_id] = asyncio.Lock()
+        return lock
+
+    def _touch(self, session_id: str) -> None:
+        """标记"刚碰过"，并在超出上界时让出最久未用的会话。
+
+        用 dict 的插入序当 LRU：删掉再插回去就等于挪到队尾（Python 3.7+ 保序）。
+        """
+        self._lru.pop(session_id, None)
+        self._lru[session_id] = None
+        if len(self._events) > self.MAX_LIVE_SESSIONS:
+            self._evict_idle()
+
+    def _evict_idle(self) -> None:
+        """让出最久未用的会话日志。**只让已全部落库的** —— 还有 pending 的
+        一让就等于把没写进库的事件丢了，那正是持久化要防的事。
+        """
+        target = len(self._events) - self.MAX_LIVE_SESSIONS
+        for sid in list(self._lru):            # 最久未用的排在前面
+            if target <= 0:
+                return
+            if self._pending.get(sid):
+                continue                       # 还没落库，不能让
+            if self.release(sid):
+                target -= 1
+
+    def release(self, session_id: str) -> bool:
+        """把一个会话的内存日志让出去（下次访问自动 hydrate 回来）。
+
+        返回是否真的让了 —— 还有未落库事件时拒绝让出，返回 False。
+        """
+        if self._pending.get(session_id):
+            return False
+        self._events.pop(session_id, None)
+        self._seq.pop(session_id, None)
+        self._persisted.pop(session_id, None)
+        self._pending.pop(session_id, None)
+        self._hydrated.discard(session_id)
+        self._lru.pop(session_id, None)
+        lock = self._locks.get(session_id)
+        if lock is not None and not lock.locked():
+            self._locks.pop(session_id, None)
+        return True
+
+    def live_count(self) -> int:
+        """内存里驻留的会话数（/health 与测试用）。"""
+        return len(self._events)
+
+    def pending_count(self, session_id: str | None = None) -> int:
+        """还没落库的事件条数（0 = 内存与库一致）。测试与 /health 用得上。"""
+        if session_id is not None:
+            return len(self._pending.get(session_id, []))
+        return sum(len(v) for v in self._pending.values())
 
     # ---------------------------------------------------------------- 读取
     def events(self, session_id: str, *,

@@ -20,6 +20,7 @@ from app.core.guard import Guard
 from app.core.registry import ServiceRegistry
 from app.core.sse import SSEEvent
 from app.core.tool import ConfirmationPort, PostToolFilter, ToolDispatcher, ToolRegistry
+from app.core.turn_gate import SessionTurnGate
 
 
 @dataclass
@@ -31,6 +32,8 @@ class AppContext:
     tools: ToolRegistry
     bus: EventBus = field(default_factory=EventBus)
     broadcast: SessionBroadcast = field(default_factory=SessionBroadcast)
+    # 同一会话的轮次闸门：老人连点两次发送时后一句排队，而不是两轮交错跑
+    turn_gate: SessionTurnGate = field(default_factory=SessionTurnGate)
     guards: list[Guard] = field(default_factory=list)
     post_filters: list[PostToolFilter] = field(default_factory=list)
     confirmation: ConfirmationPort | None = None
