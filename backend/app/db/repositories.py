@@ -39,6 +39,9 @@ class Repository(Protocol):
     """业务代码唯一依赖的存储协议。"""
 
     async def insert(self, table: str, data: dict) -> dict: ...
+    # 批量插入：一轮对话会产生几十条 session_events，逐条 insert 就是几十个
+    # 往返。落库在轮次末尾的检查点做，那里一次写完才不拖住下一句话。
+    async def insert_many(self, table: str, rows: list[dict]) -> list[dict]: ...
     async def update(self, table: str, row_id: str, data: dict) -> dict | None: ...
     async def get(self, table: str, row_id: str) -> dict | None: ...
     async def find_one(self, table: str, where: dict) -> dict | None: ...
@@ -66,6 +69,22 @@ class SupabaseRepo:
             self._client.table(table).insert(data).execute
         )
         return row.data[0]
+
+    async def insert_many(self, table: str, rows: list[dict]) -> list[dict]:
+        if not rows:
+            return []
+        payload = []
+        for data in rows:
+            data = dict(data)
+            if table == "session_events":
+                data.pop("id", None)
+            elif "id" not in data:
+                data["id"] = str(uuid.uuid4())
+            payload.append(data)
+        res = await asyncio.to_thread(
+            self._client.table(table).insert(payload).execute
+        )
+        return res.data or []
 
     async def update(self, table: str, row_id: str, data: dict) -> dict | None:
         row = await asyncio.to_thread(
@@ -175,6 +194,31 @@ class LocalFileRepo:
                 self._rows(table).append(row)
                 self._flush(table)
                 return dict(row)
+
+        return await asyncio.to_thread(_do)
+
+    async def insert_many(self, table: str, rows: list[dict]) -> list[dict]:
+        """整批一次锁、一次写盘（逐条 insert 会把同一个文件写 N 遍）。"""
+        if not rows:
+            return []
+
+        def _do() -> list[dict]:
+            out = []
+            with self._lock:
+                target = self._rows(table)
+                for data in rows:
+                    row = dict(data)
+                    if "id" not in row:
+                        if table == "session_events":
+                            row = {"id": len(target) + 1, **row}
+                        else:
+                            row = {"id": str(uuid.uuid4()), **row}
+                    if "created_at" not in row:
+                        row = {**row, "created_at": utcnow_iso()}
+                    target.append(row)
+                    out.append(dict(row))
+                self._flush(table)
+            return out
 
         return await asyncio.to_thread(_do)
 

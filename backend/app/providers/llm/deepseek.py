@@ -12,6 +12,14 @@ from app.providers.llm.base import DeltaCallback, LLMProvider, LLMResponse, Tool
 
 logger = logging.getLogger(__name__)
 
+# 这些状态码重试多少次都是同一个结果：key 不对、余额没了、模型名写错、参数非法。
+# 退避重试只会把"立刻能看懂的报错"拖成 5 秒后的同一个报错。
+_FATAL_STATUS = {400, 401, 402, 403, 404, 422}
+
+
+class LLMConfigError(RuntimeError):
+    """凭据/配置层面的错误 —— 不重试，直接把 API 的原话报出来。"""
+
 
 class DeepSeekProvider(LLMProvider):
     name = "deepseek"
@@ -41,6 +49,8 @@ class DeepSeekProvider(LLMProvider):
         for attempt in range(3):  # ADR：流式不稳 → 3 次指数退避
             try:
                 return await self._request_once(url, headers, payload, on_delta)
+            except LLMConfigError:
+                raise                       # 配置错，重试无意义
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 wait = 0.8 * (2 ** attempt)
@@ -57,7 +67,15 @@ class DeepSeekProvider(LLMProvider):
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    # 流式响应的 body 是懒读的，不 aread 就只能拿到干巴巴的
+                    # "Client error 401"，看不出是 key 错了还是余额没了。
+                    detail = (await resp.aread()).decode("utf-8", "replace")[:500]
+                    message = (f"DeepSeek 接口 {resp.status_code}"
+                               f"（model={self._model}）：{detail}")
+                    if resp.status_code in _FATAL_STATUS:
+                        raise LLMConfigError(message)
+                    raise RuntimeError(message)
                 async for line in resp.aiter_lines():
                     if not line.startswith("data:"):
                         continue

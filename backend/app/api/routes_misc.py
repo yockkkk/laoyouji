@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.deps import get_ctx
+from app.api.deps import get_ctx, valid_session_id
 from app.db.seed import seed_demo
 
 router = APIRouter(prefix="/api", tags=["misc"])
@@ -59,6 +59,7 @@ async def weather(city: str = "南京", date_offset: str | None = None):
 async def session_events(session_id: str, after_seq: int = 0):
     """轮询兜底 / 断线恢复 / 会话回放（append-only 唯一事实源）。"""
     ctx = get_ctx()
+    session_id = valid_session_id(session_id)
     rows = await ctx.event_log.after(session_id, after_seq)
     return {"items": rows, "latest_seq": rows[-1]["seq"] if rows else after_seq}
 
@@ -66,6 +67,7 @@ async def session_events(session_id: str, after_seq: int = 0):
 @router.get("/sessions/{session_id}")
 async def session_detail(session_id: str):
     ctx = get_ctx()
+    session_id = valid_session_id(session_id)
     session = await ctx.repos.get("sessions", session_id)
     if not session:
         raise HTTPException(404, "会话不存在")
