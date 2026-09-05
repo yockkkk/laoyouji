@@ -27,11 +27,37 @@
           v-for="t in m.times || []"
           :key="t"
           class="slot"
-          :class="{ taken: isTaken(m, t) }"
+          :class="{ taken: isTaken(m, t), taking: isTaking(m, t) }"
           @tap="take(m, t)"
         >
           <text class="slot-time">{{ t }}</text>
-          <text class="slot-state">{{ isTaken(m, t) ? '✓ 已吃' : '点我打卡' }}</text>
+          <text class="slot-state">
+            <template v-if="isTaking(m, t)">打卡中...</template>
+            <template v-else-if="isTaken(m, t)">✓ 已吃</template>
+            <template v-else>点我打卡</template>
+          </text>
+        </view>
+      </view>
+      <view class="del-btn-wrap">
+        <text class="del-btn" :class="{ busy: deleting }" @tap="deleteMed(m)">🗑️ 删除此药</text>
+      </view>
+    </view>
+    
+    <view class="add-btn-wrap">
+      <view class="add-btn" @tap="showAdd = true">➕ 添加新药</view>
+    </view>
+
+    <!-- 简单的添加弹窗 -->
+    <view v-if="showAdd" class="modal-mask">
+      <view class="modal">
+        <view class="modal-header">添加新药</view>
+        <input class="modal-input" v-model="newMed.drug_name" placeholder="药品名称 (如：阿司匹林)" />
+        <input class="modal-input" v-model="newMed.dose" placeholder="剂量 (如：1片)" />
+        <input class="modal-input" v-model="newMed.times" placeholder="时间 (如：08:00,12:00)" />
+        <input class="modal-input" v-model="newMed.notes" placeholder="医嘱 (如：饭后服用)" />
+        <view class="modal-footer">
+          <view class="modal-btn cancel" @tap="showAdd = false">取消</view>
+          <view class="modal-btn confirm" @tap="addMed">确定</view>
         </view>
       </view>
     </view>
@@ -39,13 +65,21 @@
 </template>
 
 <script>
-import { get, post } from '../../api/client'
+import { get, post, del } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { speak } from '../../api/asr'
 
 export default {
   data() {
-    return { user: null, meds: [] }
+    return { 
+      user: null, 
+      meds: [],
+      taking: {}, // { 'm.id-time': true }
+      deleting: false,
+      adding: false,
+      showAdd: false,
+      newMed: { drug_name: '', dose: '', times: '08:00', notes: '' }
+    }
   },
   onShow() {
     this.user = getCurrentUser()
@@ -76,17 +110,85 @@ export default {
     isTaken(m, time) {
       return (m.logs || []).some((l) => l.scheduled_time === time && l.status === 'taken')
     },
+    isTaking(m, time) {
+      return this.taking[`${m.id}-${time}`]
+    },
     async take(m, time) {
-      if (this.isTaken(m, time)) return
+      if (this.isTaken(m, time) || this.isTaking(m, time)) return
+      
+      this.taking[`${m.id}-${time}`] = true
       try {
         await post(`/api/medications/${m.id}/taken?scheduled_time=${encodeURIComponent(time)}`)
         uni.showToast({ title: '真棒，吃过啦！', icon: 'success' })
         speak(`好样的，${m.drug_name}吃过了。`)
-        this.load()
+        await this.load()
       } catch (e) {
         uni.showToast({ title: e.message, icon: 'none' })
+      } finally {
+        this.taking[`${m.id}-${time}`] = false
       }
     },
+    deleteMed(m) {
+      if (this.deleting) return
+      uni.showModal({
+        title: '删除药品',
+        content: `确定不再吃「${m.drug_name}」了吗？以前的打卡记录会保留。`,
+        confirmText: '删除',
+        cancelText: '先留着',
+        success: async (res) => {
+          if (!res.confirm) return
+          this.deleting = true
+          uni.showLoading({ title: '正在删除…' })
+          try {
+            await del(`/api/medications/${m.id}`)
+            uni.showToast({ title: '已删除', icon: 'success' })
+            await this.load()
+          } catch (e) {
+            uni.showToast({ title: e.message || '删除失败', icon: 'none' })
+          } finally {
+            uni.hideLoading()
+            this.deleting = false
+          }
+        },
+      })
+    },
+    async addMed() {
+      if (this.adding) return
+      const name = (this.newMed.drug_name || '').trim()
+      if (!name) {
+        return uni.showToast({ title: '请输入药品名称', icon: 'none' })
+      }
+      // 老人（或帮忙填的子女）很可能用中文逗号、顿号，甚至空格分隔，都收下
+      const times = (this.newMed.times || '')
+        .split(/[,，、;；\s]+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+      if (!times.length) {
+        return uni.showToast({ title: '请填服药时间，如 08:00', icon: 'none' })
+      }
+      const bad = times.find((t) => !/^([01]?\d|2[0-3]):[0-5]\d$/.test(t))
+      if (bad) {
+        return uni.showToast({ title: `时间「${bad}」看不懂，请写成 08:00`, icon: 'none' })
+      }
+      this.adding = true
+      try {
+        await post('/api/medications', {
+          elder_id: this.user.id,
+          drug_name: name,
+          dose: (this.newMed.dose || '').trim(),
+          times,
+          notes: (this.newMed.notes || '').trim(),
+        })
+        uni.showToast({ title: '添加成功', icon: 'success' })
+        this.showAdd = false
+        this.newMed = { drug_name: '', dose: '', times: '08:00', notes: '' }
+        await this.load()
+      } catch (e) {
+        uni.showToast({ title: e.message || '添加失败', icon: 'none' })
+      } finally {
+        this.adding = false
+      }
+    }
   },
 }
 </script>
@@ -209,6 +311,9 @@ export default {
 .slot.taken {
   background: $lyj-success-bg;
 }
+.slot.taking {
+  opacity: 0.6;
+}
 .slot-time {
   font-size: $lyj-font-lg;
   font-weight: 800;
@@ -220,6 +325,84 @@ export default {
 }
 .slot.taken .slot-state {
   color: $lyj-success;
+}
+
+.del-btn-wrap {
+  margin-top: $lyj-space-md;
+  text-align: right;
+}
+.del-btn {
+  font-size: $lyj-font-sm;
+  color: $lyj-text-light;
+  padding: 10rpx;
+}
+.del-btn.busy {
+  opacity: 0.5;
+}
+
+.add-btn-wrap {
+  margin: $lyj-space-xl $lyj-space-md;
+}
+.add-btn {
+  background: $lyj-primary;
+  color: white;
+  text-align: center;
+  padding: $lyj-space-md;
+  border-radius: $lyj-radius-pill;
+  font-size: $lyj-font-lg;
+  font-weight: 700;
+}
+
+/* Modal styles */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.modal {
+  background: white;
+  width: 80%;
+  border-radius: $lyj-radius;
+  padding: $lyj-space-lg;
+}
+.modal-header {
+  font-size: $lyj-font-lg;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: $lyj-space-md;
+}
+.modal-input {
+  background: $lyj-bg;
+  padding: 20rpx;
+  border-radius: $lyj-radius;
+  margin-bottom: $lyj-space-sm;
+}
+.modal-footer {
+  display: flex;
+  gap: $lyj-space-sm;
+  margin-top: $lyj-space-md;
+}
+.modal-btn {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx;
+  border-radius: $lyj-radius-pill;
+  font-weight: bold;
+}
+.modal-btn.cancel {
+  background: $lyj-bg;
+  color: $lyj-text;
+}
+.modal-btn.confirm {
+  background: $lyj-primary;
+  color: white;
 }
 
 @media screen and (min-width: 768px) {
