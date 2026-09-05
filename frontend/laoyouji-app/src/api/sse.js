@@ -3,6 +3,7 @@
  */
 import { BASE_URL } from './client'
 import { getAccessToken } from '../store/user'
+import { NOT_SENT_TEXT } from './messages'
 
 const _DURABLE_TO_SSE = {
   'user/message': 'user_msg',
@@ -98,7 +99,7 @@ export async function chatStream(body, handlers) {
 
 async function pollEvents(sessionId, handlers) {
   if (!sessionId) {
-    throw new Error('这一句没有发出去，您再说一遍试试')
+    throw new Error(NOT_SENT_TEXT)
   }
   let afterSeq = 0
   let done = false

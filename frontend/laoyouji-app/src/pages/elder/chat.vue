@@ -11,6 +11,10 @@
         <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
       </view>
       <view class="topbar-right">
+        <view class="history-btn" @tap="openHistory" title="历史记录">
+          <text class="history-icon">📜</text>
+          <text class="history-text">历史</text>
+        </view>
         <view class="new-chat-btn" @tap="startNewChat" title="开启新对话">
           <text class="new-chat-icon">＋</text>
           <text class="new-chat-text">新对话</text>
@@ -94,6 +98,25 @@
         </view>
       </view>
     </view>
+    <!-- 历史记录弹窗 -->
+    <view v-if="showHistory" class="modal-mask" @tap="showHistory = false">
+      <view class="modal" @tap.stop>
+        <view class="modal-header">历史对话</view>
+        <scroll-view class="history-list" scroll-y>
+          <view 
+            v-for="s in sessionList" 
+            :key="s.id" 
+            class="history-item" 
+            :class="{ active: s.id === sessionId }"
+            @tap="loadSession(s.id)"
+          >
+            <view class="history-time">{{ s.created_at.substring(5, 16).replace('T', ' ') }}</view>
+            <view class="history-preview">{{ s.title || '与老友记的聊天' }}</view>
+          </view>
+          <view v-if="!sessionList.length" class="history-empty">暂无历史记录</view>
+        </scroll-view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -104,6 +127,7 @@ import PlanCard from '../../components/PlanCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
 import { get, post } from '../../api/client'
+import { NET_FAILED_TEXT, TURN_FAILED_TEXT } from '../../api/messages'
 import { chatStream, fetchEvents } from '../../api/sse'
 import { getCurrentUser } from '../../store/user'
 import { takeUtterance } from '../../store/handoff'
@@ -136,6 +160,8 @@ export default {
       _watchSeq: 0, // 盯到哪一行了（只补这一行之后的新事实）
       _scrollTimer: null,
       _lastScrollAt: 0,
+      showHistory: false,
+      sessionList: [],
     }
   },
   computed: {
@@ -199,6 +225,31 @@ export default {
         console.warn('获取历史会话失败：', e)
       }
       this._resetDefaultGreeting()
+    },
+
+    async openHistory() {
+      try {
+        const res = await get('/api/chat/sessions', { user_id: this.user.id })
+        if (res && res.items) {
+          this.sessionList = res.items
+        }
+      } catch(e) {
+        uni.showToast({ title: '获取历史失败', icon: 'none' })
+      }
+      this.showHistory = true
+    },
+
+    async loadSession(sid) {
+      uni.setStorageSync('laoyouji_elder_session_id', sid)
+      this.sessionId = sid
+      this.showHistory = false
+      this._stopWatch()
+      this._watchSeq = 0
+      this._todoMsg = null
+      this.messages = []
+      uni.showLoading({ title: '加载中…' })
+      await this.initSessionHistory()
+      uni.hideLoading()
     },
 
     _resetDefaultGreeting() {
@@ -300,9 +351,11 @@ export default {
             }),
           onDone: () => {},
           onError: (e) => {
+            // 话术走 api/messages.js：这里原来自己写了一句"您再说一遍试试"，
+            // 后端把兜底文案改好了也传不到老人眼前。
             this.messages.push({
               kind: 'text',
-              text: '哎呀，网络出了点问题，您再说一遍试试。',
+              text: NET_FAILED_TEXT,
               agent: 'main',
             })
           },
@@ -476,7 +529,7 @@ export default {
         case 'error':
           this.messages.push({
             kind: 'text',
-            text: d.message || '哎呀，我这儿出了点小问题，您再说一遍试试。',
+            text: d.message || TURN_FAILED_TEXT,
             agent: 'main',
           })
           this._scrollBottom()

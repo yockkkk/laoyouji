@@ -21,6 +21,7 @@ from app.core.events import (
     TODO_WRITE,
     USER_MESSAGE,
 )
+from app.core.session import TURN_FAILED_REPLY
 from app.core.turn_gate import QUEUED_HINT, TurnBusy
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -162,9 +163,10 @@ async def chat_stream(
                     {"message": exc.message}, ensure_ascii=False)}
             elif exc is not None:
                 logger.exception("智能体执行失败", exc_info=exc)
+                # 话术走 session.py 的常量：之前这里硬编码了一句"您再说一遍试试"，
+                # 改兜底文案时只改了那边、漏了这边，死循环那句就一直活着。
                 yield {"event": "error", "data": json.dumps(
-                    {"message": "哎呀，我这儿出了点小问题，您再说一遍试试。"},
-                    ensure_ascii=False)}
+                    {"message": TURN_FAILED_REPLY}, ensure_ascii=False)}
             elif task.done():
                 while not turn.queue.empty():
                     yield turn.queue.get_nowait().encode()
