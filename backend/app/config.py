@@ -26,11 +26,32 @@ class Settings(BaseSettings):
     tencent_secret_key: str = ""
     tencent_region: str = "ap-shanghai"
 
-    # 存储
-    storage_backend: str = "local"  # supabase | local
+    # 存储：local（JSON 文件）| mariadb（服务器直连/SSH 隧道）| supabase（已弃用）| ssh（SFTP JSON）
+    storage_backend: str = "local"
     supabase_url: str = ""
     supabase_service_key: str = ""
     local_data_dir: str = str(BASE_DIR / "local_data")
+
+    # STORAGE_BACKEND=ssh：把 JSON 直接存在服务器上（SFTP），给没装数据库的机器兜底
+    ssh_host: str = ""
+    ssh_user: str = ""
+    ssh_password: str = ""
+    ssh_data_dir: str = "/tmp/laoyouji_data"
+
+    # STORAGE_BACKEND=mariadb
+    mariadb_host: str = ""
+    mariadb_port: int = 3306
+    mariadb_user: str = ""
+    mariadb_password: str = ""
+    mariadb_db: str = ""
+    # MariaDB 默认 bind-address=127.0.0.1，公网连不上；开这个开关就先拉一条 SSH
+    # 隧道再连本机端口，服务器一行配置都不用改，也不用把 3306 暴露到公网。
+    # 关掉它就是裸连 MARIADB_HOST:MARIADB_PORT（前提：你已改 bind-address + 放行安全组）。
+    mariadb_ssh_tunnel: bool = False
+    mariadb_ssh_host: str = ""      # 留空则复用 ssh_host
+    mariadb_ssh_port: int = 22
+    mariadb_ssh_user: str = ""      # 留空则复用 ssh_user
+    mariadb_ssh_password: str = ""  # 留空则复用 ssh_password
 
     # 安全管控
     risk_amount_threshold: float = 50.0

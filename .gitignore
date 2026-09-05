@@ -36,3 +36,5 @@ Thumbs.db
 # ===== 日志 =====
 *.log
 npm-debug.log*
+*.log.err
+backend/.uvicorn.log*
