@@ -420,8 +420,7 @@ class SessionEventLog:
                                   ensure_ascii=False),
                 })
 
-        messages = _drop_orphan_tool_messages(messages)
-        return messages[-limit:] if limit else messages
+        return _slice_turn_safe(messages, limit)
 
     # ---------------------------------------------------------------- 不变式
     def check_invariants(self, session_id: str) -> list[str]:
@@ -496,6 +495,26 @@ def _drop_orphan_tool_messages(messages: list[dict]) -> list[dict]:
         else:
             out.append(message)
     return out
+
+
+def _slice_turn_safe(messages: list[dict], limit: int | None = None) -> list[dict]:
+    """按完整轮次安全截断历史消息，且绝不让 messages 以孤立的 role:tool 开头。"""
+    if not limit or len(messages) <= limit:
+        return _drop_orphan_tool_messages(messages)
+
+    sliced = messages[-limit:]
+    # 找到截断区域里的第一个 user 消息，保证从完整轮次开始
+    first_user_idx = None
+    for idx, msg in enumerate(sliced):
+        if msg.get("role") == "user":
+            first_user_idx = idx
+            break
+
+    if first_user_idx is not None and first_user_idx > 0:
+        sliced = sliced[first_user_idx:]
+
+    # 截断后再清理孤儿 tool 消息，绝对杜绝以 tool 消息开头导致的 400 报错
+    return _drop_orphan_tool_messages(sliced)
 
 
 def new_uuid() -> str:

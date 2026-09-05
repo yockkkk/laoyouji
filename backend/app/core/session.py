@@ -275,8 +275,22 @@ class AgentDriver:
 
         async def build(req: StepRequest) -> StepRequest:
             # 唯一的历史来源：按作用域派生。绝不手搓跨步 messages 列表。
+            user = getattr(self.turn, "user", None) or {}
+            user_anchor = ""
+            if user and isinstance(user, dict):
+                name = user.get("name") or "长辈"
+                city = user.get("city") or "本地"
+                dialect = user.get("dialect") or "普通话"
+                user_anchor = (
+                    f"# 当前服务对象档案（系统已知核心事实，绝对严禁重复询问老人）：\n"
+                    f"- 姓名：{name}\n"
+                    f"- 角色：老人（银发长辈）\n"
+                    f"- 常住城市：{city}（极其重要：若老人未指定其他出发城市，老人当前所在位置默认即为此城市）\n"
+                    f"- 方言习惯：{dialect}\n\n"
+                )
+            system_prompt = user_anchor + (self.agent.system_prompt or "")
             req.messages = ([{"role": "system",
-                              "content": self.agent.system_prompt}]
+                              "content": system_prompt}]
                             + self.log.derive_messages(self.turn.session_id,
                                                        scopes=self.scopes))
             req.tools = self.ctx.tools.schemas(self.agent.tool_names) or None
