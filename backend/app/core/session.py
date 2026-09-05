@@ -363,6 +363,7 @@ class AgentDriver:
                 "summary": outcome.result.get("summary", ""),
                 # content 是模型侧要读的那份（derive_messages 用它配对 tool 消息）
                 "content": outcome.to_model_content(),
+                "data": outcome.result.get("data"),
             }
             if outcome.suspended:
                 payload["suspended"] = True

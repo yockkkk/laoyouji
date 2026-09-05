@@ -26,11 +26,15 @@ class MockHospitalProvider(HospitalProvider):
         await asyncio.sleep(random.uniform(0.2, 0.5))
         data = load_fixture("hospitals")
         out = []
+        city_clean = (city or "").replace("市", "").strip()
+        dep_clean = (department or "").replace("科", "").strip()
         for h in data["hospitals"]:
-            if h["city"] != city:
+            h_city = h["city"].replace("市", "").strip()
+            if city_clean and (city_clean not in h_city and h_city not in city_clean):
                 continue
             for dep in h["departments"]:
-                if department in dep["name"]:
+                d_name = dep["name"]
+                if not department or department in d_name or d_name in department or (dep_clean and dep_clean in d_name):
                     out.append({
                         "hospital": h["name"], "level": h["level"],
                         "specialty": h["specialty"], "address": h["address"],
@@ -53,8 +57,9 @@ class MockHospitalProvider(HospitalProvider):
 
     async def suggest_department(self, symptom: str) -> str | None:
         mapping = load_fixture("hospitals")["symptom_to_department"]
+        s_clean = symptom or ""
         for key, dep in mapping.items():
-            if key in (symptom or ""):
+            if key in s_clean or (s_clean and s_clean in key):
                 return dep
         return None
 
@@ -63,10 +68,10 @@ class MockHospitalProvider(HospitalProvider):
         await asyncio.sleep(random.uniform(0.4, 0.9))
         data = load_fixture("hospitals")
         for h in data["hospitals"]:
-            if h["name"] != hospital:
+            if h["name"] != hospital and hospital not in h["name"] and h["name"] not in hospital:
                 continue
             for dep in h["departments"]:
-                if department not in dep["name"]:
+                if department not in dep["name"] and dep["name"] not in department:
                     continue
                 for d in dep["doctors"]:
                     if d["name"] == doctor or not doctor:

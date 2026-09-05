@@ -24,8 +24,14 @@ class MockTrainProvider(TrainProvider):
                      date: str | None = None) -> list[dict]:
         await asyncio.sleep(random.uniform(0.2, 0.5))
         data = load_fixture("trains")
+        fc_clean = (from_city or "").replace("市", "").strip()
+        tc_clean = (to_city or "").replace("市", "").strip()
         for route in data["routes"]:
-            if route["from_city"] == from_city and route["to_city"] == to_city:
+            rfc = route["from_city"].replace("市", "").strip()
+            rtc = route["to_city"].replace("市", "").strip()
+            fc_match = (route["from_city"] == from_city or fc_clean == rfc or (fc_clean and fc_clean in rfc) or (rfc and rfc in fc_clean))
+            tc_match = (route["to_city"] == to_city or tc_clean == rtc or (tc_clean and tc_clean in rtc) or (rtc and rtc in tc_clean))
+            if fc_match and tc_match:
                 date_iso = resolve_date(date)
                 return [
                     {

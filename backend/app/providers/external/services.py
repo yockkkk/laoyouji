@@ -28,12 +28,17 @@ class MockHotelProvider(HotelProvider):
                       accessible: bool = True) -> list[dict]:
         await asyncio.sleep(random.uniform(0.2, 0.4))
         data = load_fixture("hotels")
-        out = [
-            h for h in data["hotels"]
-            if h["city"] == city
-            and (not near_hospital or h["near_hospital"] == near_hospital)
-            and (not accessible or h["accessible"])
-        ]
+        c_clean = (city or "").replace("市", "").strip()
+        out = []
+        for h in data["hotels"]:
+            hc_clean = h["city"].replace("市", "").strip()
+            if c_clean and (c_clean not in hc_clean and hc_clean not in c_clean):
+                continue
+            if near_hospital and (near_hospital not in h["near_hospital"] and h["near_hospital"] not in near_hospital):
+                continue
+            if accessible and not h["accessible"]:
+                continue
+            out.append(h)
         return sorted(out, key=lambda h: h["distance_m"])
 
     async def book(self, hotel_name: str, checkin: str | None, nights: int = 1,
@@ -41,7 +46,7 @@ class MockHotelProvider(HotelProvider):
         await asyncio.sleep(random.uniform(0.4, 0.8))
         data = load_fixture("hotels")
         for h in data["hotels"]:
-            if h["name"] == hotel_name:
+            if h["name"] == hotel_name or hotel_name in h["name"] or h["name"] in hotel_name:
                 checkin_iso = resolve_date(checkin)
                 total = h["price"] * max(1, nights)
                 return {

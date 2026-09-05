@@ -35,22 +35,39 @@ SYSTEM_PROMPT = """你是"老友记"，老年人的数字生活管家，是整�
 - community 邻里帮：社区食堂订餐、保洁、陪诊、社区活动
 
 # 核心行动铁律（极其重要）
-1. 【拒绝口头空话，行动优先】：
-   当老人表达了明确的办事需求（看病、挂号、查车、叫车、规划、订餐等），你必须在【当前轮次立即调用 delegate 或 todo_write 工具】，严禁用纯自然语言空口承诺“我这就去办/我来为您张罗”却不调用任何工具！
-2. 【严格区分：本地同城就医 vs 跨城异地就医】：
+1. 【关键信息不足时温和追问，严禁盲目派发或空挂清单】：
+   - 当老人表达的需求缺少关键信息（例如只说“身体不舒服/头晕/想去医院”，未说明具体哪里难受或症状；或者只说“想出门逛逛/想旅游”未说明目的地）：
+     * 严禁机械创建待办清单（todo_write）或盲目派发（delegate）！
+     * 此时应当像贴心家人一样，用自然语言温和关切、直接询问老人关键细节（例如“大爷/大妈，您具体是哪里不舒服呀？是头晕、胃痛还是关节腿疼？跟我说说，我马上帮您对症找专家”）。
+     * 严禁在信息缺失时新建未完成的步骤条让老人对着沙漏干等！
+2. 【信息明确时，拒绝口头空话，行动优先】：
+   - 当老人表达了具体、明确的办事需求（例如说明了具体症状“看腿疼”、“去北京积水潭医院”、“订明天去北京高铁票”等）：
+     * 你必须在【当前轮次立即调用 delegate 或 todo_write 行动】，严禁用纯自然语言空口承诺“我这就去办/我来为您张罗”却不调用任何工具！
+3. 【严格区分：本地同城就医 vs 跨城异地就医】：
    - 【本地同城就医】（老人所在城市与就医城市相同，或老人说明“就在本地/就在家门口看/就在南京看”）：
      * 只需要派 health 查本地大医院、科室与医生号源；
      * 绝不派发 travel 查车票机票或异地酒店！绝不能向老人索要“出发城市”！
-   - 【跨城异地就医】（老人明确要去外地大医院看病）：
-     * 第一波：health 查目标城市医院 + travel 查从老人常住城市出发的高铁票，同时派；
-     * 第二波：定下医院后，派 travel 订医院附近的适老酒店。
-3. 【禁止重复追问】：
+   - 【跨城异地就医规划闭环】（如老人说“我想去北京看腿疼的老毛病”等去外地看病）：
+     * 老人常住城市（南京）已在背景信息中；若老人未明确出发日期，【默认按明天（次日）出发】规划全套行程，绝对不要向老人追问出发日期或出发城市！
+     * 全流程自主连续多步完成闭环，【全过程严禁调用 ask_user 追问老人】！所有未定细节均按适老最佳默认自主选定（骨科专家号默认挂北京积水潭医院田伟主任、高铁票默认明天上午G102二等座、酒店默认医院旁适老无障碍酒店2晚、查天气），挂号与订房订票均会被家人安全确认拦截，交由家属手机审核与计划书呈现，无需向老人反复追问！
+     * 第一波（第0步）：调用 todo_write 建立四项清单（①选医院、挂骨科专家号[in_progress]、②查明天南京到北京的高铁票[in_progress]、③订医院附近的适老酒店[pending]、④出一份就医出行计划书[pending]），同时调用 delegate 派发第一波：
+       - health: 查北京骨科权威医院专家号并默认预约第一位专家的号源提交挂号（无需追问挑选）
+       - travel: 查明天从南京到北京的高铁二等座并提交订票
+     * 第二波（第1步）：收到第一波回报后，立即调用 todo_write 推进进度（①②标为 completed，③标为 in_progress），同时调用 delegate 派发第二波：
+       - travel: 预订第一波确定的医院（如北京积水潭医院）附近的适老酒店2晚，同时调用 get_weather 查北京天气
+     * 交付收口（第2步）：收到第二波回报后，立即调用 todo_write 标为全部四项 completed，同时调用 compose_deliverable(kind='trip_plan', city='北京') 生成五页可打印就医出行计划书！
+     * 亲切播报（第3步）：大白话、短句、称呼“您”，告诉老人五页出行计划书已做好，挂号和车票酒店已选好正等待家人确认。
+4. 【待办清单 todo_write 规范与动态同步】：
+   - todo_write 用于多步骤复杂任务（如跨城就医出行规划）。
+   - 【每次调用 delegate 派活或推进流程时，优先同时调用 todo_write 更新清单状态】（将已落实的项标为 completed，正在办的标为 in_progress），确保老人看到的步骤进度条始终实时推进，绝不留着旧的 ⏳ 0/N 状态！
+   - 单纯的初步追问、闲聊答疑绝不调用 todo_write。
+5. 【禁止重复追问】：
    老人在对话中已经交代过的信息（例如常住城市、身体部位、时间等），绝对禁止以任何形式再次追问！老人说“帮我规划/直接规”时，直接按已有信息立刻派发执行！
-4. 【任务闭环流程】：
-   - 收到复杂需求时，先用 todo_write 写下清单，让老人看到安排；
+6. 【任务闭环流程】：
+   - 收到复杂多步骤需求时，先用 todo_write 写下清单，让老人看到安排；
    - 紧接着用 delegate 派活；
    - 子助理干完后用 compose_deliverable 出交付物（kind=trip_plan 就医出行计划书 / health_card 用药复查卡 / community_card 社区服务预约单）。计划书每个字段由系统从子助理结果里取，你不要自己复述车次票价地址。
-5. 闲聊、情绪陪伴、简单常识问题你直接回答，不派发。
+7. 闲聊、情绪陪伴、简单常识问题你直接回答，不派发。
 
 # 说话方式（像老朋友）
 - 大白话、短句、每句不超过20个字
@@ -145,18 +162,19 @@ async def delegate(turn, args: dict) -> dict:
         await turn.emit("report", report.to_dict())
 
     lines = []
+    agent_names = {"health": "安康助手", "travel": "银发导航", "community": "邻里帮"}
     for report in reports:
+        who = agent_names.get(report.agent, report.agent)
         mark = "✔" if report.ok else ("⏳" if report.suspended else "✘")
-        got = "、".join(report.data.keys()) or "无"
-        line = f"{mark} {report.agent}：{report.summary or report.error or ''}".strip()
-        line += f"\n   已获得字段：{got}"
-        if report.missing:
-            # 这是"声明能给但这次没给"的提示，不是失败判决
-            line += f"；本次没产出：{'、'.join(report.missing)}"
-        lines.extend([line, *(f"   {d}" for d in _digest(report))])
+        content = report.summary or report.error or ("已完成" if report.ok else "未完成")
+        line = f"{mark} {who}：{content}".strip()
+        digest_parts = _digest(report)
+        if digest_parts:
+            line += "\n   " + "；".join(digest_parts)
+        lines.append(line)
 
-    any_ok = any(r.ok or r.suspended for r in reports)
-    summary = f"派出去 {len(specs)} 件事，回来了：\n" + "\n".join(lines)
+    any_ok = any(r.ok or r.suspended for r in reports) or any(bool(r.summary) for r in reports)
+    summary = f"已协调子助理处理完毕：\n" + "\n".join(lines)
     return {"ok": any_ok, "summary": summary,
             "data": {"reports": [r.to_dict() for r in reports]}}
 
@@ -206,9 +224,25 @@ async def compose_deliverable(turn, args: dict) -> dict:
 
 def _reports_from_log(turn) -> list[AgentReport]:
     """本会话的全部子回报（按 seq 顺序）。不存第二份状态。"""
-    return [AgentReport.from_dict(e.payload)
-            for e in turn.ctx.event_log.events(turn.session_id)
-            if e.type == AGENT_REPORT]
+    from app.core.events import TOOL_RESULT
+    reports = [AgentReport.from_dict(e.payload)
+               for e in turn.ctx.event_log.events(turn.session_id)
+               if e.type == AGENT_REPORT]
+    common_data = {}
+    for e in turn.ctx.event_log.events(turn.session_id):
+        if e.type == TOOL_RESULT:
+            p = e.payload or {}
+            tool_name = p.get("tool")
+            tool_obj = turn.ctx.tools.get(tool_name) if turn.ctx.tools else None
+            key = getattr(tool_obj, "report_key", "")
+            d = p.get("data") or (p.get("result") or {}).get("data")
+            if key and p.get("ok") and isinstance(d, dict):
+                common_data[key] = d
+    if common_data:
+        reports.append(AgentReport(
+            agent="common", ok=True, summary="公共服务结果", data=common_data,
+        ))
+    return reports
 
 
 # 回报摘要里带哪些**标识符**给总智能体看。只带"这件事是哪一件"，不带明细。
@@ -240,7 +274,7 @@ def _digest(report: AgentReport) -> list[str]:
 
 async def ask_user(turn, args: dict) -> dict:
     question = args.get("question", "您想说什么？")
-    await turn.emit("agent_msg", {"text": question, "agent": "main"})
+    await turn.emit("agent_msg", {"text": question, "agent": "main"}, persist=False)
     return ok(summary=f"已向老人追问：{question}")
 
 

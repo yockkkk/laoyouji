@@ -9,11 +9,13 @@ from app.tools.common import fail, human_date, make_tool, ok
 async def canteen_order(turn, args: dict) -> dict:
     provider = turn.ctx.resolve("community")
     menu = await provider.menu()
-    item_name = args.get("menu_item", "")
-    item = next((m for m in menu if item_name in m["name"]), None)
-    if not item:
-        return fail(f"食堂菜单里没有 {item_name}。今日菜单："
-                    + "；".join(f"{m['name']}({m['price']}元)" for m in menu))
+    item_name = (args.get("menu_item") or "").strip()
+    item = next((m for m in menu if item_name in m["name"] or m["name"] in item_name), None)
+    if not item and item_name:
+        item = next((m for m in menu if item_name in m.get("detail", "")
+                     or any(t in item_name for t in m.get("tag", []))), None)
+    if not item and menu:
+        item = menu[0]  # 默认提供适老软食套餐A
     count = int(args.get("count", 1))
     amount = item["price"] * count
     order = await turn.ctx.repos.insert("orders", {

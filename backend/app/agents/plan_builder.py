@@ -142,20 +142,29 @@ def _enrich(data: dict) -> dict:
     hospitals = _dig(out, "hospital_options.hospitals")
     if isinstance(appointment, dict) and isinstance(hospitals, list):
         for hosp in hospitals:
-            if hosp.get("hospital") != appointment.get("hospital"):
+            h_name = str(hosp.get("hospital") or "")
+            a_name = str(appointment.get("hospital") or "")
+            if h_name != a_name and not (h_name and a_name and (h_name in a_name or a_name in h_name)):
                 continue
             for doc in hosp.get("doctors") or []:
-                if doc.get("doctor") != appointment.get("doctor"):
+                d_name = str(doc.get("doctor") or "")
+                ad_name = str(appointment.get("doctor") or "")
+                if d_name != ad_name and not (d_name and ad_name and (d_name in ad_name or ad_name in d_name)):
                     continue
                 appointment.setdefault("title", doc.get("title"))
                 if _empty(appointment.get("fee")):
                     appointment["fee"] = doc.get("fee")
                 if _empty(appointment.get("time")):
                     slots = doc.get("slots") or []
+                    app_date = appointment.get("date")
+                    app_iso = resolve_date(app_date) if app_date else ""
                     match = next((s for s in slots
-                                  if s.get("date") == appointment.get("date")), None)
+                                  if s.get("date") == app_date
+                                  or (app_iso and resolve_date(s.get("date")) == app_iso)), None)
                     if match:
                         appointment["time"] = match.get("time")
+                    elif slots:
+                        appointment["time"] = slots[0].get("time")
     return out
 
 
@@ -174,6 +183,11 @@ def _join(data: dict, target: str, candidates_path: str, *, key: str,
         return
     match = next((c for c in candidates
                   if isinstance(c, dict) and c.get(cand_key or key) == wanted), None)
+    if match is None and isinstance(wanted, str) and wanted:
+        w_clean = wanted.strip()
+        match = next((c for c in candidates
+                      if isinstance(c, dict) and isinstance(c.get(cand_key or key), str)
+                      and (w_clean in str(c.get(cand_key or key)) or str(c.get(cand_key or key)) in w_clean)), None)
     if match is None:
         return
     for field_name in fields:
@@ -214,13 +228,18 @@ def _row(label: str, source: dict, path: str | tuple[str, ...], *,
     """取值 → 成行。取不到就是"待补"，并把路径记进 missing。"""
     value, hit = _first(source, path)
     if isinstance(value, (list, tuple)):
-        # 直接 str() 出来是 "['08:00', '20:00']" —— 方括号和引号老人读不了
-        value = "、".join(str(v) for v in value if v not in (None, "")) or None
+        parts = []
+        for v in value:
+            if isinstance(v, dict) and "name" in v:
+                parts.append(str(v["name"]))
+            elif v not in (None, ""):
+                parts.append(str(v))
+        value = "、".join(parts) or None
     if value is None:
         if missing_list is not None and hit not in missing_list:
             missing_list.append(hit)
         return Row(label=label, value=MISSING, missing=True)
-    return Row(label=label, value=fmt.format(value))
+    return _label_service(Row(label=label, value=fmt.format(value), missing=False))
 
 
 _WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")

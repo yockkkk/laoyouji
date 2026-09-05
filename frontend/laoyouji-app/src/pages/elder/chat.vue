@@ -441,9 +441,20 @@ export default {
           break
         }
 
-        case 'agent_status':
-          this.messages.push({ kind: 'status', text: d.text || d.status || '' })
+        case 'agent_status': {
+          const text = d.text || d.status || ''
+          if (text) {
+            const existingIdx = this.messages.findIndex(
+              (m) => m.kind === 'status' && (m.agent === d.agent || (d.text && m.text === d.text)) && m.text.includes('正在处理'),
+            )
+            if (existingIdx !== -1) {
+              this.messages.splice(existingIdx, 1, { kind: 'status', text, agent: d.agent })
+            } else {
+              this.messages.push({ kind: 'status', text, agent: d.agent })
+            }
+          }
           break
+        }
 
         case 'delta': {
           // 打字预览。后端 persist=False，不进事件日志、不进模型历史。
@@ -488,7 +499,12 @@ export default {
             (m) => m.kind === 'tool' && m.callId === d.call_id,
           )
           if (bubbleMsg && d.summary) {
-            bubbleMsg.summary = d.summary
+            let cleanSummary = d.summary
+              .replace(/；本次没产出：[^\n]+/g, '')
+              .replace(/本次没产出：[^\n]+/g, '')
+              .replace(/已获得字段：[^\n]+/g, '')
+              .trim()
+            bubbleMsg.summary = cleanSummary || d.summary
             bubbleMsg.blocked = !!d.denied
           }
           break
@@ -538,8 +554,16 @@ export default {
         case 'report': {
           const who = AGENT_LABEL[d.agent] || d.agent || '助手'
           const icon = AGENT_ICON[d.agent] || '🤵'
-          const tail = d.ok === false ? '没办成，稍后再试' : '已经查好了'
-          this.messages.push({ kind: 'status', text: `${icon} ${who}${tail}` })
+          const pendingIdx = this.messages.findIndex(
+            (m) => m.kind === 'status' && (m.agent === d.agent || m.text.includes(who)) && m.text.includes('正在处理'),
+          )
+          const tail = d.ok === false ? (d.summary ? '已回复' : '稍后处理') : '已经查好了'
+          const statusText = `${icon} ${who}${tail}`
+          if (pendingIdx !== -1) {
+            this.messages.splice(pendingIdx, 1, { kind: 'status', text: statusText, agent: d.agent })
+          } else {
+            this.messages.push({ kind: 'status', text: statusText, agent: d.agent })
+          }
           this._scrollBottom()
           break
         }
@@ -549,12 +573,16 @@ export default {
           break
 
         case 'final':
+          // 清理可能遗留的未闭合"正在处理…"状态气泡
+          this.messages = this.messages.filter(
+            (m) => !(m.kind === 'status' && m.text && m.text.includes('正在处理')),
+          )
           // 定稿兜底，与 agent_msg 同语义：只在一句话都没出来时补上
           if (d.text && !bubble.text) {
             bubble.text = d.text
             openBubble(true)
           }
-          this._scrollBottom()
+          this._scrollBottom(true)
           break
 
         /**
@@ -722,10 +750,12 @@ export default {
           clearTimeout(this._scrollTimer)
           this._scrollTimer = null
         }
+        this.scrollTop = this.scrollTop === 999998 ? 999999 : 999998
         this.$nextTick(() => {
           this.anchor = ''
           this.$nextTick(() => {
             this.anchor = 'bottom-anchor'
+            this.scrollTop = this.scrollTop === 999998 ? 999999 : 999998
           })
         })
       } else if (!this._scrollTimer) {

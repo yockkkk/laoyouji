@@ -18,15 +18,23 @@ def load_fixture(name: str) -> dict:
 
 
 def resolve_date(offset_or_date: str | int | None = None) -> str:
-    """'tomorrow' / '+N' / 'YYYY-MM-DD' / None → ISO 日期。"""
+    """'tomorrow' / '+N' / 'YYYY-MM-DD' / '今天' / '明天' / '后天' / None → ISO 日期。"""
     today = date.today()
     if offset_or_date is None:
         return today.isoformat()
     if isinstance(offset_or_date, int):
         return (today + timedelta(days=offset_or_date)).isoformat()
-    s = str(offset_or_date)
-    if s == "tomorrow":
-        return (today + timedelta(days=1)).isoformat()
+    s = str(offset_or_date).strip()
+    chinese_map = {
+        "今天": 0, "当日": 0, "当天": 0, "today": 0,
+        "明天": 1, "次日": 1, "第二天": 1, "tomorrow": 1,
+        "后天": 2, "大后天": 3,
+    }
+    if s in chinese_map:
+        return (today + timedelta(days=chinese_map[s])).isoformat()
+    for kw, offset in chinese_map.items():
+        if kw in s:
+            return (today + timedelta(days=offset)).isoformat()
     if s.startswith("+"):
         try:
             return (today + timedelta(days=int(s[1:]))).isoformat()

@@ -480,29 +480,70 @@ class SessionEventLog:
             raise InvariantViolation("；".join(problems))
 
 
-def _drop_orphan_tool_messages(messages: list[dict]) -> list[dict]:
-    """剔除没有前置声明的 role:tool 消息（防御性；正常流程不该出现）。"""
-    declared: set[str] = set()
+def _ensure_valid_tool_turns(messages: list[dict]) -> list[dict]:
+    """严格保证 OpenAI/DeepSeek 的工具调用上下文合法性：
+    1. 含有 tool_calls 的 assistant 消息，后面必须【紧跟】对应的 role: tool 消息。
+    2. 绝不允许在 assistant(tool_calls) 与 tool 之间插入任何 user 或 assistant 消息。
+    3. 剔除没有任何工具结果的 tool_calls；若 assistant 无内容且无有效 tool_calls，则略去该消息。
+    4. 剔除孤儿 tool 消息。
+    """
     out: list[dict] = []
-    for message in messages:
-        if message.get("role") == "assistant":
-            for call in message.get("tool_calls") or []:
-                declared.add(call["id"])
-            out.append(message)
-        elif message.get("role") == "tool":
-            if message.get("tool_call_id") in declared:
-                out.append(message)
+    i = 0
+    n = len(messages)
+    while i < n:
+        msg = messages[i]
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            calls = msg["tool_calls"]
+            call_map = {c["id"]: c for c in calls if isinstance(c, dict) and "id" in c}
+            matched_tools: dict[str, dict] = {}
+            deferred_others: list[dict] = []
+            j = i + 1
+            while j < n and len(matched_tools) < len(call_map):
+                nxt = messages[j]
+                if nxt.get("role") == "tool" and nxt.get("tool_call_id") in call_map:
+                    matched_tools[nxt["tool_call_id"]] = nxt
+                else:
+                    deferred_others.append(nxt)
+                j += 1
+
+            valid_calls = [c for c in calls if c.get("id") in matched_tools]
+            if valid_calls:
+                new_asst = dict(msg)
+                new_asst["tool_calls"] = valid_calls
+                out.append(new_asst)
+                for c in valid_calls:
+                    out.append(matched_tools[c["id"]])
+            elif msg.get("content"):
+                new_asst = dict(msg)
+                new_asst.pop("tool_calls", None)
+                out.append(new_asst)
+
+            for deferred in deferred_others:
+                if deferred.get("role") == "tool" and deferred.get("tool_call_id") not in call_map:
+                    continue
+                out.append(deferred)
+            i = j
+        elif msg.get("role") == "tool":
+            # 孤儿 tool 消息，跳过
+            i += 1
         else:
-            out.append(message)
+            out.append(msg)
+            i += 1
     return out
+
+
+def _drop_orphan_tool_messages(messages: list[dict]) -> list[dict]:
+    """保证消息历史合法并剔除孤儿 tool 消息。"""
+    return _ensure_valid_tool_turns(messages)
 
 
 def _slice_turn_safe(messages: list[dict], limit: int | None = None) -> list[dict]:
     """按完整轮次安全截断历史消息，且绝不让 messages 以孤立的 role:tool 开头。"""
-    if not limit or len(messages) <= limit:
-        return _drop_orphan_tool_messages(messages)
+    cleaned = _ensure_valid_tool_turns(messages)
+    if not limit or len(cleaned) <= limit:
+        return cleaned
 
-    sliced = messages[-limit:]
+    sliced = cleaned[-limit:]
     # 找到截断区域里的第一个 user 消息，保证从完整轮次开始
     first_user_idx = None
     for idx, msg in enumerate(sliced):
@@ -513,8 +554,8 @@ def _slice_turn_safe(messages: list[dict], limit: int | None = None) -> list[dic
     if first_user_idx is not None and first_user_idx > 0:
         sliced = sliced[first_user_idx:]
 
-    # 截断后再清理孤儿 tool 消息，绝对杜绝以 tool 消息开头导致的 400 报错
-    return _drop_orphan_tool_messages(sliced)
+    # 截断后再跑一遍保证 tool 闭环
+    return _ensure_valid_tool_turns(sliced)
 
 
 def new_uuid() -> str:

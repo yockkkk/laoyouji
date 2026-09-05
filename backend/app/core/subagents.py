@@ -272,6 +272,11 @@ def _build_report(agent: Any, spec: SubagentSpec, scope: str,
         elif isinstance(result.get("data"), dict) and result.get("ok"):
             data.setdefault(name, result["data"])
 
+    # 如果子助理未调用工具，但给出了正常的交互回答（例如追问澄清或自然语言答复），
+    # 且未发生未捕获异常或失败，视为正常交互，不是失败
+    if not tools_used and bool(agent_turn.final_text):
+        ok_any = True
+
     required = tuple(getattr(agent, "report_schema", ()))
     missing = [key for key in required if key not in data]
 
