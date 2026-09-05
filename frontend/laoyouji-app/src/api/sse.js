@@ -3,7 +3,7 @@
  */
 import { BASE_URL } from './client'
 import { getAccessToken } from '../store/user'
-import { NOT_SENT_TEXT } from './messages'
+import { NET_FAILED_TEXT, NOT_SENT_TEXT } from './messages'
 
 const _DURABLE_TO_SSE = {
   'user/message': 'user_msg',
@@ -59,6 +59,13 @@ export async function chatStream(body, handlers) {
       headers,
       body: JSON.stringify(body),
     })
+    // 404 = 这段会话在服务端没了（清过库/换过环境）。接着去轮询同一个死会话是
+    // 白等两分钟，所以单独标出来，让调用方换一段新会话重发。
+    if (resp.status === 404) {
+      const gone = new Error('会话不存在')
+      gone.sessionGone = true
+      throw gone
+    }
     if (!resp.ok || !resp.body) throw new Error('SSE 连接失败（' + resp.status + '）')
 
     const reader = resp.body.getReader()
@@ -88,9 +95,21 @@ export async function chatStream(body, handlers) {
     if (!gotAny) throw new Error('SSE 无输出')
     handlers.onDone && handlers.onDone()
   } catch (err) {
+    if (err.sessionGone) {
+      // 交给调用方自愈（另开会话重发）。轮询一个已经不存在的会话没有意义。
+      if (handlers.onSessionGone) return handlers.onSessionGone(err)
+      handlers.onError && handlers.onError(err)
+      return
+    }
     console.warn('SSE 主链路失败，降级轮询：', err.message)
     try {
-      await pollEvents(sessionId, handlers)
+      const reachedFinal = await pollEvents(sessionId, handlers)
+      // 轮完 60 轮也没等到 final：以前这里就这么 return 了 —— onDone 在
+      // chat.vue 里是个空函数，于是老人盯着"处理中"转两分钟，然后一句话都没有。
+      // 没等到结果就得说没等到，不许静悄悄收场。
+      if (!reachedFinal) {
+        handlers.onError && handlers.onError(new Error(NET_FAILED_TEXT))
+      }
     } catch (e2) {
       handlers.onError && handlers.onError(e2)
     }

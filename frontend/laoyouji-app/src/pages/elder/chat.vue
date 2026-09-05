@@ -127,7 +127,7 @@ import PlanCard from '../../components/PlanCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
 import { get, post } from '../../api/client'
-import { NET_FAILED_TEXT, TURN_FAILED_TEXT } from '../../api/messages'
+import { NET_FAILED_TEXT, SESSION_GONE_TEXT, TURN_FAILED_TEXT } from '../../api/messages'
 import { chatStream, fetchEvents } from '../../api/sse'
 import { getCurrentUser } from '../../store/user'
 import { takeUtterance } from '../../store/handoff'
@@ -222,7 +222,13 @@ export default {
           }
         }
       } catch (e) {
-        console.warn('获取历史会话失败：', e)
+        // 存着的 session_id 在服务端已经没了（清过库/换过环境）。这里只 warn 一下
+        // 就往下走的话，this.sessionId 还是那个死 id，界面看着一切正常，可老人
+        // 说的第一句话就会打到一个不存在的会话上 —— 干等两分钟然后没有任何回应。
+        // 所以拉不动就地把它扔掉，下一句话自然会开一段新会话。
+        console.warn('获取历史会话失败，丢弃这个会话 id：', e)
+        this.sessionId = null
+        uni.removeStorageSync('laoyouji_elder_session_id')
       }
       this._resetDefaultGreeting()
     },
@@ -328,16 +334,35 @@ export default {
       this._run(text)
     },
 
-    async _run(text) {
+    /** 另开一段新会话（老会话在服务端没了时用）。成了返回 true。 */
+    async _recoverSession() {
+      try {
+        const res = await post('/api/chat/sessions/new', { user_id: this.user.id })
+        if (res && res.session_id) {
+          this.sessionId = res.session_id
+          uni.setStorageSync('laoyouji_elder_session_id', this.sessionId)
+          this._watchSeq = 0
+          this._todoMsg = null
+          return true
+        }
+      } catch (e) {
+        console.warn('另开会话失败：', e)
+      }
+      return false
+    },
+
+    async _run(text, _isRetry = false) {
       // 这一轮自己有一条活着的流，轮询让位：两条链路同时往屏幕上推
       // agent_msg，每句话会说两遍。轮次结束后（见本方法末尾）把基线推到
       // 本轮末尾再起表，于是这一轮 SSE 已经渲染过的行不会被轮询再应用一次。
       this._stopWatch()
-      this.messages.push({ kind: 'text', text, isUser: true })
+      // 自愈重发时这句已经在屏幕上了，别让老人看见自己说了两遍
+      if (!_isRetry) this.messages.push({ kind: 'text', text, isUser: true })
       this.thinking = true
       this._todoMsg = null
       const bubble = { kind: 'text', text: '', agent: 'main' }
       let bubbleOpen = false
+      let sessionGone = false
 
       await chatStream(
         { user_id: this.user.id, session_id: this.sessionId, text },
@@ -350,6 +375,9 @@ export default {
               }
             }),
           onDone: () => {},
+          onSessionGone: () => {
+            sessionGone = true
+          },
           onError: (e) => {
             // 话术走 api/messages.js：这里原来自己写了一句"您再说一遍试试"，
             // 后端把兜底文案改好了也传不到老人眼前。
@@ -361,6 +389,14 @@ export default {
           },
         },
       )
+      // 会话在服务端没了：自己另开一段、把老人刚才那句原样重发一次。
+      // 这是我们把会话搞丢的，不该让老人重复劳动；只重发一次，避免来回打转。
+      if (sessionGone && !_isRetry) {
+        if (await this._recoverSession()) {
+          return this._run(text, true)
+        }
+        this.messages.push({ kind: 'text', text: SESSION_GONE_TEXT, agent: 'main' })
+      }
       this.thinking = false
       this._scrollBottom()
       // 这一轮里挂起的事，家人是这一轮之后才在手机上点的。流已经关了，
