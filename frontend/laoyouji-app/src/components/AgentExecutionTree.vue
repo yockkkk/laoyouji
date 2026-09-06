@@ -20,14 +20,16 @@
         <button class="icon-action-btn" :title="allExpanded ? '全部收起' : '全部展开'" @tap="toggleAllExpanded">
           <text class="icon-action-text">{{ allExpanded ? '收起全部' : '展开全部' }}</text>
         </button>
-        <button v-if="!demoModeActive" class="icon-action-btn demo-btn" title="载入异地就医全链路演示" @tap="loadDemoScenario">
-          <text class="icon-action-text">⚡ 演示全链路</text>
-        </button>
-        <button v-else class="icon-action-btn reset-demo-btn" title="切回实时会话跟踪" @tap="exitDemoMode">
-          <text class="icon-action-text">↺ 退出演示</text>
+        <button
+          class="icon-action-btn replay-btn"
+          :class="{ 'is-active': replay.active }"
+          :title="replay.active ? (replay.playing ? '暂停演播' : '继续演播') : '动态演播全链路'"
+          @tap="toggleReplayMode"
+        >
+          <text class="icon-action-text">{{ replay.active ? (replay.playing ? '⏸ 暂停演播' : '▶ 继续演播') : '✨ 动态演播全链路' }}</text>
         </button>
         <button v-if="isDesktop" class="icon-action-btn collapse-pane-btn" title="收起执行树面板" @tap="$emit('close')">
-          <text class="icon-action-text">⇥ 收起</text>
+          <text class="icon-action-text">⇤ 收起</text>
         </button>
         <button v-if="!isDesktop" class="close-drawer-btn" @tap="$emit('close')">
           <text class="close-icon">✕</text>
@@ -39,22 +41,22 @@
     <view class="metrics-bar">
       <view class="metric-item">
         <text class="metric-label">总调度</text>
-        <text class="metric-val">1</text>
+        <text class="metric-val tabular-num">1</text>
       </view>
       <view class="metric-divider"></view>
       <view class="metric-item">
         <text class="metric-label">协同智能体</text>
-        <text class="metric-val">{{ activeAgentsCount }} / 4</text>
+        <text class="metric-val tabular-num">{{ activeAgentsCount }} / 4</text>
       </view>
       <view class="metric-divider"></view>
       <view class="metric-item">
         <text class="metric-label">执行工具数</text>
-        <text class="metric-val">{{ totalToolsCount }}</text>
+        <text class="metric-val tabular-num">{{ totalToolsCount }}</text>
       </view>
       <view class="metric-divider"></view>
       <view class="metric-item" :class="{ 'has-pending': pendingTasksCount > 0, 'has-rejected': hasAnyRejected }">
-        <text class="metric-label">{{ hasAnyRejected ? '高危拦截/拒绝' : '高危拦截' }}</text>
-        <text class="metric-val">{{ pendingTasksCount > 0 ? (pendingTasksCount + ' 待确认') : (hasAnyRejected ? '已安全拦截' : '0 风险') }}</text>
+        <text class="metric-label">{{ hasAnyRejected ? '高危拦截/拒绝' : '高危安全拦截' }}</text>
+        <text class="metric-val tabular-num">{{ pendingTasksCount > 0 ? (pendingTasksCount + ' 项待核准') : (hasAnyRejected ? '已安全拦截' : (isArtifactReady ? '已闭环放行' : '0 风险')) }}</text>
       </view>
     </view>
 
@@ -62,13 +64,269 @@
     <scroll-view class="tree-scroll" scroll-y>
       <view class="tree-canvas">
 
-        <!-- ================= 根节点：老友记主调度 (Orchestrator) ================= -->
+        <!-- ================= 动态规划 DAG 画布 (Planning Flowchart / DAG Canvas) (R3) ================= -->
+        <view class="planning-dag-card">
+          <view class="dag-header">
+            <view class="dag-header-title-box">
+              <text class="dag-sparkle">✨</text>
+              <view class="dag-titles">
+                <text class="dag-main-title">多智能体动态规划 DAG (Agent Planning Flowchart)</text>
+                <text class="dag-sub-title">感知输入 ➔ 意图拆解 ➔ 并行协同 ➔ 安全拦截网 ➔ 方案装配 ➔ 成果闭环</text>
+              </view>
+            </view>
+            <view class="dag-header-actions">
+              <button
+                class="replay-trigger-btn"
+                :class="{ 'is-playing': replay.active }"
+                @tap="toggleReplayMode"
+              >
+                <text class="replay-btn-icon">{{ replay.active ? (replay.playing ? '⏸' : '▶') : '✨' }}</text>
+                <text class="replay-btn-text">{{ replay.active ? (replay.playing ? '暂停演播' : '继续演播') : '动态演播全链路' }}</text>
+              </button>
+            </view>
+          </view>
+
+          <!-- 动态演播全链路控制面板 (Replay Controller Bar) -->
+          <view v-if="replay.active" class="replay-controller-bar">
+            <view class="replay-narrative">
+              <view class="narrative-tag">
+                <text class="narrative-step-num tabular-num">{{ currentReplayStepInfo.num }}</text>
+                <text class="narrative-icon">{{ currentReplayStepInfo.icon }}</text>
+              </view>
+              <view class="narrative-content">
+                <text class="narrative-title">{{ currentReplayStepInfo.title }}</text>
+                <text class="narrative-desc">{{ currentReplayStepInfo.desc }}</text>
+              </view>
+            </view>
+
+            <view class="replay-buttons-row">
+              <button class="ctrl-btn" @tap="prevReplayStep" :disabled="replay.step <= 0">
+                <text class="ctrl-text">⏮ 上一步</text>
+              </button>
+              <button class="ctrl-btn primary" @tap="toggleReplayPlay">
+                <text class="ctrl-text">{{ replay.playing ? '⏸ 暂停' : '▶ 播放' }}</text>
+              </button>
+              <button class="ctrl-btn" @tap="nextReplayStep" :disabled="replay.step >= 5">
+                <text class="ctrl-text">⏭ 下一步</text>
+              </button>
+              <button class="ctrl-btn" @tap="resetReplay">
+                <text class="ctrl-text">↺ 重置</text>
+              </button>
+              <button class="ctrl-btn exit" @tap="exitReplay">
+                <text class="ctrl-text">✕ 退出</text>
+              </button>
+            </view>
+
+            <!-- 演播进度指示条 -->
+            <view class="replay-progress-track">
+              <view
+                v-for="s in 6"
+                :key="s"
+                class="replay-progress-dot"
+                :class="{
+                  'passed': (s - 1) < replay.step,
+                  'current': (s - 1) === replay.step,
+                }"
+                @tap="seekReplay(s - 1)"
+              >
+                <text class="dot-num tabular-num">{{ s - 1 }}</text>
+              </view>
+              <view
+                class="replay-progress-bar-fill"
+                :style="{ width: (replay.step / 5 * 100) + '%' }"
+              ></view>
+            </view>
+          </view>
+
+          <!-- DAG 拓扑流程图主体 (Visual DAG Hierarchy) -->
+          <view class="dag-canvas-container">
+            <!-- 节点 1：Root Intent 根意图调度 -->
+            <view
+              class="dag-node dag-node-root"
+              :class="{
+                'is-frontier': isRootFrontier,
+                'is-completed': isRootDone,
+              }"
+              @tap="scrollToSection('root')"
+            >
+              <view class="dag-node-glow"></view>
+              <view class="dag-node-avatar orchestrator-avatar">
+                <text class="dag-avatar-icon">🎯</text>
+              </view>
+              <view class="dag-node-text-group">
+                <text class="dag-node-title">老友记总调度</text>
+                <text class="dag-node-role">Orchestrator · 意图理解与任务派发</text>
+              </view>
+              <view class="dag-node-state-chip" :class="rootStatusClass">
+                {{ rootStatusText }}
+              </view>
+            </view>
+
+            <!-- 动态能量连接线：总调度 -> 派发主干 -->
+            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isAnyAgentActive }">
+              <view class="pulse-particle"></view>
+            </view>
+
+            <!-- 节点 2：多智能体并发协同总线 -->
+            <view class="dag-parallel-trunk-label">
+              <text class="trunk-label-text">⚡ 多智能体并发协同总线 (Parallel Dispatch Trunk)</text>
+            </view>
+            <view class="dag-trunk-bar" :class="{ 'energy-pulse': isAnyAgentActive }"></view>
+
+            <!-- 节点 3：并行子智能体集群 (Subagents Cluster) -->
+            <view class="dag-subagents-grid">
+              <!-- 健康守护 -->
+              <view
+                class="dag-node dag-sub-node health-sub-node"
+                :class="{
+                  'is-frontier': isHealthFrontier,
+                  'is-completed': healthStatusClass === 'status-completed',
+                  'is-suspended': healthStatusClass === 'status-suspended',
+                }"
+                @tap="scrollToSection('health')"
+              >
+                <view class="dag-node-avatar health-avatar">
+                  <text class="dag-avatar-icon">🏥</text>
+                </view>
+                <text class="dag-sub-name">健康守护</text>
+                <text class="dag-sub-role">安康助手</text>
+                <view class="dag-mini-status" :class="healthStatusClass">
+                  {{ healthStatusText }}
+                </view>
+              </view>
+
+              <!-- 银发导航 -->
+              <view
+                class="dag-node dag-sub-node travel-sub-node"
+                :class="{
+                  'is-frontier': isTravelFrontier,
+                  'is-completed': travelStatusClass === 'status-completed',
+                  'is-suspended': travelStatusClass === 'status-suspended',
+                }"
+                @tap="scrollToSection('travel')"
+              >
+                <view class="dag-node-avatar travel-avatar">
+                  <text class="dag-avatar-icon">🧭</text>
+                </view>
+                <text class="dag-sub-name">银发导航</text>
+                <text class="dag-sub-role">出行管家</text>
+                <view class="dag-mini-status" :class="travelStatusClass">
+                  {{ travelStatusText }}
+                </view>
+              </view>
+
+              <!-- 邻里帮 -->
+              <view
+                class="dag-node dag-sub-node community-sub-node"
+                :class="{
+                  'is-frontier': isCommunityFrontier,
+                  'is-completed': communityStatusClass === 'status-completed',
+                }"
+                @tap="scrollToSection('community')"
+              >
+                <view class="dag-node-avatar community-avatar">
+                  <text class="dag-avatar-icon">🏘️</text>
+                </view>
+                <text class="dag-sub-name">邻里帮</text>
+                <text class="dag-sub-role">就医陪诊</text>
+                <view class="dag-mini-status" :class="communityStatusClass">
+                  {{ communityStatusText }}
+                </view>
+              </view>
+            </view>
+
+            <!-- 动态能量连接线：子智能体 -> 安全防护网 -->
+            <view class="dag-trunk-bar" :class="{ 'energy-pulse': isSafetyActive || isArtifactReady }"></view>
+            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isSafetyActive || isArtifactReady }">
+              <view class="pulse-particle"></view>
+            </view>
+
+            <!-- 节点 4：资金与医疗安全防护网 (Safety Guard Gateway) -->
+            <view
+              class="dag-node dag-node-gateway"
+              :class="{
+                'is-frontier': isSafetyFrontier,
+                'is-suspended': pendingTasksCount > 0,
+                'is-completed': pendingTasksCount === 0 && (hasTaskStarted || replay.step >= 4),
+                'is-rejected': hasAnyRejected,
+              }"
+              @tap="scrollToSection('safety')"
+            >
+              <view class="dag-node-glow"></view>
+              <view class="dag-node-avatar safety-avatar">
+                <text class="dag-avatar-icon">🛡️</text>
+              </view>
+              <view class="dag-node-text-group">
+                <text class="dag-node-title">资金与医疗安全防护网</text>
+                <text class="dag-node-role">Safety Guard Gateway · 双向审批回路 (Loopback)</text>
+              </view>
+              <view class="dag-node-state-chip" :class="safetyStatusClass">
+                {{ safetyStatusText }}
+              </view>
+            </view>
+
+            <!-- 动态能量连接线：安全网 -> 方案建造师 -->
+            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isPlanBuilderActive || isArtifactReady }">
+              <view class="pulse-particle"></view>
+            </view>
+
+            <!-- 节点 5：方案建造师 (PlanBuilder) -->
+            <view
+              class="dag-node dag-node-builder"
+              :class="{
+                'is-frontier': isPlanBuilderFrontier,
+                'is-completed': planBuilderStatusClass === 'status-completed',
+              }"
+              @tap="scrollToSection('planBuilder')"
+            >
+              <view class="dag-node-glow"></view>
+              <view class="dag-node-avatar planbuilder-avatar">
+                <text class="dag-avatar-icon">📐</text>
+              </view>
+              <view class="dag-node-text-group">
+                <text class="dag-node-title">方案建造师</text>
+                <text class="dag-node-role">PlanBuilder · 事实聚合与去幻觉对齐</text>
+              </view>
+              <view class="dag-node-state-chip" :class="planBuilderStatusClass">
+                {{ planBuilderStatusText }}
+              </view>
+            </view>
+
+            <!-- 动态能量连接线：方案建造师 -> 终极交付物 -->
+            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isArtifactReady }">
+              <view class="pulse-particle"></view>
+            </view>
+
+            <!-- 节点 6：终极交付物 (Final Deliverable Artifact) -->
+            <view
+              class="dag-node dag-node-artifact"
+              :class="{
+                'is-ready': isArtifactReady,
+                'is-frontier': isArtifactReady,
+              }"
+              @tap="openArtifactModal"
+            >
+              <view class="dag-node-avatar artifact-avatar">
+                <text class="dag-avatar-icon">📄</text>
+              </view>
+              <view class="dag-node-text-group">
+                <text class="dag-node-title">《五页就医出行计划书》</text>
+                <text class="dag-node-role">五页适老大字版 · 挂号凭证+高铁票+酒店+慢病清单+天气</text>
+              </view>
+              <view class="dag-node-state-chip" :class="isArtifactReady ? 'status-completed' : 'status-ready'">
+                {{ isArtifactReady ? '✅ 已交付 (点击预览)' : '⏳ 待审批后交付' }}
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- ================= 根节点：老友记主调度 (Orchestrator Card) ================= -->
         <view class="root-node-card" :class="{ 'is-thinking': thinking || rootThinking }">
           <view class="node-glass-glow"></view>
           <view class="node-head">
             <view class="node-badge-group">
               <view class="avatar-box orchestrator-avatar">
-                <text class="avatar-icon">🤵</text>
+                <text class="avatar-icon">🎯</text>
               </view>
               <view class="node-meta">
                 <view class="node-title-row">
@@ -94,11 +352,20 @@
             <text class="intent-content">{{ currentIntentText }}</text>
           </view>
 
-          <!-- 全局规划链路步骤（4阶段动态状态机） -->
+          <!-- 智能体推理独白 (Orchestrator Monologue) (R3) -->
+          <view class="agent-monologue-card">
+            <view class="monologue-head">
+              <text class="monologue-sparkle">💡</text>
+              <text class="monologue-title">主调度规划推理独白 (Orchestrator Thought)</text>
+            </view>
+            <text class="monologue-text">{{ agentThoughts.orchestrator }}</text>
+          </view>
+
+          <!-- 全局规划链路步骤 (阶段动态状态机) (R2) -->
           <view class="plan-steps-track">
             <view class="track-header">
               <text class="track-title">📋 任务分解流水线 (Todo State Machine)</text>
-              <text class="track-progress">{{ completedStepsCount }}/{{ totalStepsCount }} 已完成</text>
+              <text class="track-progress tabular-num">{{ completedStepsCount }}/{{ totalStepsCount }} 已完成</text>
             </view>
             <view class="steps-grid">
               <view
@@ -107,7 +374,7 @@
                 class="step-chip"
                 :class="'step-' + step.status"
               >
-                <view class="step-num">{{ sIdx + 1 }}</view>
+                <view class="step-num tabular-num">{{ sIdx + 1 }}</view>
                 <text class="step-name">{{ step.name }}</text>
                 <text class="step-status-tag">{{ formatStepStatus(step.status) }}</text>
               </view>
@@ -153,6 +420,15 @@
 
             <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.health }">
               <view class="branch-body">
+                <!-- 智能体推理独白 (R3) -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">健康智能体推理独白 (Health Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.health }}</text>
+                </view>
+
                 <!-- 工具节点列表 -->
                 <view class="tools-flow">
                   <!-- 工具节点: search_hospital -->
@@ -164,15 +440,44 @@
                           <text class="tool-fn-name">search_hospital</text>
                           <text class="tool-cn-name">权威医院专家号源检索</text>
                         </view>
-                        <view class="node-status-tag" :class="healthTools.searchHospital.status">
-                          {{ formatToolStatus(healthTools.searchHospital.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.searchHospital }}</text>
+                          <view class="node-status-tag" :class="healthTools.searchHospital.status">
+                            {{ formatToolStatus(healthTools.searchHospital.status) }}
+                          </view>
                         </view>
                       </view>
+                      <!-- 参数 JSON 高亮 (R3) -->
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ healthTools.searchHospital.params || 'hospital: "北京积水潭医院", symptom: "骨科/腿疼", grade: "三甲专科"' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(healthTools.searchHospital.params, 'searchHospital')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
+                      <!-- 返回摘要与展开详情 (R3) -->
                       <view v-if="healthTools.searchHospital.result" class="result-box">
-                        <text class="result-text">🎯 匹配号源：{{ healthTools.searchHospital.result }}</text>
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 匹配号源：{{ healthTools.searchHospital.result }}</text>
+                          <button class="toggle-detail-btn" @tap="toggleToolResultExpand('searchHospital')">
+                            {{ isToolResultExpanded('searchHospital') ? '收起详情 ▴' : '展开完整结果 ▾' }}
+                          </button>
+                        </view>
+                        <view v-if="isToolResultExpanded('searchHospital')" class="expanded-tool-detail">
+                          <view class="detail-row"><text class="detail-k">执行状态:</text><text class="detail-v text-ok">200 OK (成功返回)</text></view>
+                          <view class="detail-row"><text class="detail-k">响应耗时:</text><text class="detail-v tabular-num">{{ toolLatencies.searchHospital }}</text></view>
+                          <view class="detail-row"><text class="detail-k">安全合规:</text><text class="detail-v text-ok">经 HealthDisclaimerGuard 免责审查</text></view>
+                          <view class="detail-row"><text class="detail-k">返回载荷:</text><text class="detail-v code-block">{"doctor": "田伟", "title": "主任医师", "dept": "关节外科", "hospital": "北京积水潭医院", "slot": "08:30-09:30", "fee": 100.0}</text></view>
+                        </view>
                       </view>
                     </view>
                   </view>
@@ -187,12 +492,28 @@
                           <text class="tool-cn-name">门诊挂号 (高危医疗)</text>
                           <text class="risk-badge">🛡️ 家人确认保护</text>
                         </view>
-                        <view class="node-status-tag" :class="healthTools.registerAppointment.status">
-                          {{ formatToolStatus(healthTools.registerAppointment.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.registerAppointment }}</text>
+                          <view class="node-status-tag" :class="healthTools.registerAppointment.status">
+                            {{ formatToolStatus(healthTools.registerAppointment.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ healthTools.registerAppointment.params || 'doctor: "田伟主任医师", dept: "骨科", fee: 100.0, time: "08:30-09:30"' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(healthTools.registerAppointment.params, 'registerAppointment')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <!-- 挂起等待子女确认状态卡片 (R2) -->
                       <view v-if="healthTools.registerAppointment.status === 'suspended'" class="suspended-alert-card">
@@ -212,19 +533,19 @@
                             class="quick-reject-btn"
                             @tap="triggerReject(healthTools.registerAppointment.confirmationId || 'conf_demo_appoint', 'register_appointment')"
                           >
-                            🚫 模拟子女拒绝
+                            🛑 模拟子女拒绝
                           </button>
                         </view>
                       </view>
-                      <!-- 已执行/已同意成功卡片 -->
+                      <!-- 已执行卡片 -->
                       <view v-else-if="healthTools.registerAppointment.status === 'executed'" class="executed-alert-card">
-                        <text class="executed-icon">🟢</text>
+                        <text class="executed-icon">✅</text>
                         <text class="executed-text">子女已审批同意 · 积水潭骨科田伟主任号挂号成功</text>
                       </view>
-                      <!-- 已拒绝卡片 (R2) -->
+                      <!-- 已拒绝卡片 -->
                       <view v-else-if="healthTools.registerAppointment.status === 'rejected'" class="rejected-alert-card">
                         <view class="reject-header">
-                          <text class="reject-icon">🔴</text>
+                          <text class="reject-icon">🛑</text>
                           <text class="reject-title">子女已拒绝挂号申请</text>
                         </view>
                         <text class="reject-desc">已安全拦截并终止高危挂号请求，未扣除挂号费用，就诊预约已取消。</text>
@@ -262,6 +583,15 @@
 
             <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.travel }">
               <view class="branch-body">
+                <!-- 智能体推理独白 (R3) -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">出行智能体推理独白 (Travel Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.travel }}</text>
+                </view>
+
                 <view class="tools-flow">
                   <!-- 工具节点: search_train -->
                   <view class="tool-node" :class="'node-' + travelTools.searchTrain.status">
@@ -272,15 +602,31 @@
                           <text class="tool-fn-name">search_train</text>
                           <text class="tool-cn-name">高铁车次检索</text>
                         </view>
-                        <view class="node-status-tag" :class="travelTools.searchTrain.status">
-                          {{ formatToolStatus(travelTools.searchTrain.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.searchTrain }}</text>
+                          <view class="node-status-tag" :class="travelTools.searchTrain.status">
+                            {{ formatToolStatus(travelTools.searchTrain.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ travelTools.searchTrain.params || 'from: "南京南", to: "北京南", date: "明天", seat: "二等座"' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.searchTrain.params, 'searchTrain')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <view v-if="travelTools.searchTrain.result" class="result-box">
-                        <text class="result-text">🚄 {{ travelTools.searchTrain.result }}</text>
+                        <text class="result-text">🚅 {{ travelTools.searchTrain.result }}</text>
                       </view>
                     </view>
                   </view>
@@ -295,12 +641,28 @@
                           <text class="tool-cn-name">高铁订票出票 (高危支付)</text>
                           <text class="risk-badge">🛡️ 家人确认保护</text>
                         </view>
-                        <view class="node-status-tag" :class="travelTools.bookTicket.status">
-                          {{ formatToolStatus(travelTools.bookTicket.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.bookTicket }}</text>
+                          <view class="node-status-tag" :class="travelTools.bookTicket.status">
+                            {{ formatToolStatus(travelTools.bookTicket.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ travelTools.bookTicket.params || 'train: "G102", seat: "二等座", amount: 443.5, passenger: "老人本人"' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.bookTicket.params, 'bookTicket')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <!-- 挂起卡片 -->
                       <view v-if="travelTools.bookTicket.status === 'suspended'" class="suspended-alert-card">
@@ -308,7 +670,7 @@
                           <text class="suspend-icon">⏸️</text>
                           <text class="suspend-title">等待子女确认 (¥{{ travelTools.bookTicket.amount ? Number(travelTools.bookTicket.amount).toFixed(2) : '443.50' }})</text>
                         </view>
-                        <text class="suspend-desc">{{ travelTools.bookTicket.desc || '订票涉及代付扣款，已向子女手机发送确认清单' }}</text>
+                        <text class="suspend-desc">{{ travelTools.bookTicket.desc || '高铁票订购款项，已推送子女端审核放行' }}</text>
                         <view class="suspend-actions-row">
                           <button
                             class="quick-approve-btn"
@@ -320,19 +682,19 @@
                             class="quick-reject-btn"
                             @tap="triggerReject(travelTools.bookTicket.confirmationId || 'conf_demo_ticket', 'book_ticket')"
                           >
-                            🚫 模拟子女拒绝
+                            🛑 模拟子女拒绝
                           </button>
                         </view>
                       </view>
                       <!-- 已执行卡片 -->
                       <view v-else-if="travelTools.bookTicket.status === 'executed'" class="executed-alert-card">
-                        <text class="executed-icon">🟢</text>
+                        <text class="executed-icon">✅</text>
                         <text class="executed-text">子女已审批同意 · G102二等座已出票，凭身份证直接进站</text>
                       </view>
-                      <!-- 已拒绝卡片 (R2) -->
+                      <!-- 已拒绝卡片 -->
                       <view v-else-if="travelTools.bookTicket.status === 'rejected'" class="rejected-alert-card">
                         <view class="reject-header">
-                          <text class="reject-icon">🔴</text>
+                          <text class="reject-icon">🛑</text>
                           <text class="reject-title">子女已拒绝购票申请</text>
                         </view>
                         <text class="reject-desc">已安全终止高铁订票出票操作，未产生 ¥443.50 扣费，资金已保护。</text>
@@ -349,12 +711,28 @@
                           <text class="tool-fn-name">search_hotel</text>
                           <text class="tool-cn-name">适老无障碍酒店检索</text>
                         </view>
-                        <view class="node-status-tag" :class="travelTools.searchHotel.status">
-                          {{ formatToolStatus(travelTools.searchHotel.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.searchHotel }}</text>
+                          <view class="node-status-tag" :class="travelTools.searchHotel.status">
+                            {{ formatToolStatus(travelTools.searchHotel.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ travelTools.searchHotel.params || 'poi: "北京积水潭医院周边1.5km", barrier_free: true' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.searchHotel.params, 'searchHotel')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <view v-if="travelTools.searchHotel.result" class="result-box">
                         <text class="result-text">🏨 {{ travelTools.searchHotel.result }}</text>
@@ -372,12 +750,28 @@
                           <text class="tool-cn-name">适老酒店预订 (高危支付)</text>
                           <text class="risk-badge">🛡️ 家人确认保护</text>
                         </view>
-                        <view class="node-status-tag" :class="travelTools.bookHotel.status">
-                          {{ formatToolStatus(travelTools.bookHotel.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.bookHotel }}</text>
+                          <view class="node-status-tag" :class="travelTools.bookHotel.status">
+                            {{ formatToolStatus(travelTools.bookHotel.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ travelTools.bookHotel.params || 'hotel: "漫心酒店积水潭店", nights: 2, total_amount: 680.0' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.bookHotel.params, 'bookHotel')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <!-- 挂起卡片 -->
                       <view v-if="travelTools.bookHotel.status === 'suspended'" class="suspended-alert-card">
@@ -397,19 +791,19 @@
                             class="quick-reject-btn"
                             @tap="triggerReject(travelTools.bookHotel.confirmationId || 'conf_demo_hotel', 'book_hotel')"
                           >
-                            🚫 模拟子女拒绝
+                            🛑 模拟子女拒绝
                           </button>
                         </view>
                       </view>
                       <!-- 已执行卡片 -->
                       <view v-else-if="travelTools.bookHotel.status === 'executed'" class="executed-alert-card">
-                        <text class="executed-icon">🟢</text>
-                        <text class="executed-text">子女已审批同意 · 漫心酒店无障碍双床房已预留成功</text>
+                        <text class="executed-icon">✅</text>
+                        <text class="executed-text">子女已审批同意 · 漫心酒店无障碍双床房已保留成功</text>
                       </view>
-                      <!-- 已拒绝卡片 (R2) -->
+                      <!-- 已拒绝卡片 -->
                       <view v-else-if="travelTools.bookHotel.status === 'rejected'" class="rejected-alert-card">
                         <view class="reject-header">
-                          <text class="reject-icon">🔴</text>
+                          <text class="reject-icon">🛑</text>
                           <text class="reject-title">子女已拒绝预订申请</text>
                         </view>
                         <text class="reject-desc">已安全终止酒店预订操作，未产生 ¥680.00 扣费，资金已保护。</text>
@@ -426,12 +820,28 @@
                           <text class="tool-fn-name">get_weather</text>
                           <text class="tool-cn-name">目的地出行天气感知</text>
                         </view>
-                        <view class="node-status-tag" :class="travelTools.getWeather.status">
-                          {{ formatToolStatus(travelTools.getWeather.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.getWeather }}</text>
+                          <view class="node-status-tag" :class="travelTools.getWeather.status">
+                            {{ formatToolStatus(travelTools.getWeather.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ travelTools.getWeather.params || 'city: "北京", days: 3, elder_comfort_index: true' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.getWeather.params, 'getWeather')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <view v-if="travelTools.getWeather.result" class="result-box">
                         <text class="result-text">🌤️ {{ travelTools.getWeather.result }}</text>
@@ -443,7 +853,7 @@
             </view>
           </view>
 
-          <!-- 分支 3：邻里助手 (Community Agent · 邻里帮) -->
+          <!-- 分支 3：邻里帮 (Community Agent · 邻里帮) -->
           <view class="subagent-branch-card community-branch" :class="{ 'collapsed': collapsedAgents.community }">
             <view class="branch-header" @tap="toggleAgentCollapse('community')">
               <view class="branch-header-left">
@@ -452,10 +862,10 @@
                 </view>
                 <view class="branch-title-group">
                   <view class="branch-name-row">
-                    <text class="branch-name">邻里助手</text>
+                    <text class="branch-name">邻里帮</text>
                     <text class="branch-en-tag">Community Agent · 邻里帮</text>
                   </view>
-                  <text class="branch-desc">社区助餐 · 适老陪诊 · 家政保洁</text>
+                  <text class="branch-desc">就医陪诊 · 轮椅借用 · 绿色通道引导</text>
                 </view>
               </view>
               <view class="branch-header-right">
@@ -469,6 +879,15 @@
 
             <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.community }">
               <view class="branch-body">
+                <!-- 智能体推理独白 (R3) -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">邻里智能体推理独白 (Community Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.community }}</text>
+                </view>
+
                 <view class="tools-flow">
                   <view class="tool-node" :class="'node-' + communityTools.orderService.status">
                     <view class="node-connector-dot"></view>
@@ -478,12 +897,28 @@
                           <text class="tool-fn-name">order_service / escort</text>
                           <text class="tool-cn-name">就医全程陪诊服务推荐</text>
                         </view>
-                        <view class="node-status-tag" :class="communityTools.orderService.status">
-                          {{ formatToolStatus(communityTools.orderService.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.orderService }}</text>
+                          <view class="node-status-tag" :class="communityTools.orderService.status">
+                            {{ formatToolStatus(communityTools.orderService.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ communityTools.orderService.params || 'service: "异地就医火车站接站+医院全程陪诊", city: "北京"' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(communityTools.orderService.params, 'orderService')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <view class="result-box">
                         <text class="result-text">🤝 匹配三甲护士级持证陪诊员，随时待命协助老人就医跑腿</text>
@@ -495,7 +930,99 @@
             </view>
           </view>
 
-          <!-- 分支 4：规划建造师 (PlanBuilder · 方案聚合) -->
+          <!-- 分支 4：资金与医疗安全防护网 (Safety Guard Gateway) (R3) -->
+          <view class="subagent-branch-card safety-branch" :class="{ 'collapsed': collapsedAgents.safety }">
+            <view class="branch-header" @tap="toggleAgentCollapse('safety')">
+              <view class="branch-header-left">
+                <view class="avatar-box safety-avatar">
+                  <text class="avatar-icon">🛡️</text>
+                </view>
+                <view class="branch-title-group">
+                  <view class="branch-name-row">
+                    <text class="branch-name">资金与医疗安全防护网</text>
+                    <text class="branch-en-tag">Safety Guard Gateway · 双向审批回路</text>
+                  </view>
+                  <text class="branch-desc">高危支付拦截 · 医疗操作防护 · 子女端实时核准</text>
+                </view>
+              </view>
+              <view class="branch-header-right">
+                <view class="state-badge" :class="safetyStatusClass">
+                  <text class="state-icon">{{ safetyStatusIcon }}</text>
+                  <text class="state-text">{{ safetyStatusText }}</text>
+                </view>
+                <text class="accordion-arrow">{{ collapsedAgents.safety ? '▼' : '▲' }}</text>
+              </view>
+            </view>
+
+            <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.safety }">
+              <view class="branch-body">
+                <!-- 智能体推理独白 -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">🛡️</text>
+                    <text class="monologue-title">安全风控网关推理独白 (Safety Guard Monologue)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.safety }}</text>
+                </view>
+
+                <!-- 高危拦截受控清单 -->
+                <view class="safety-dashboard-card">
+                  <view class="safety-dash-header">
+                    <text class="dash-title">🛡️ 受控高危操作清单 (双向审批回路)</text>
+                    <button
+                      v-if="pendingTasksCount > 0"
+                      class="batch-approve-btn"
+                      @tap="approveAllPending"
+                    >
+                      ⚡ 模拟子女一键全批通过
+                    </button>
+                  </view>
+                  <view class="safety-items-list">
+                    <view class="safety-item-row">
+                      <text class="item-icon">🏥</text>
+                      <view class="item-meta">
+                        <text class="item-name">北京积水潭医院田伟主任门诊号</text>
+                        <text class="item-sub">高危医疗就诊 · 专家号源预约</text>
+                      </view>
+                      <text class="item-amount tabular-num">¥100.00</text>
+                      <view class="item-status" :class="healthTools.registerAppointment.status">
+                        {{ formatToolStatus(healthTools.registerAppointment.status) }}
+                      </view>
+                    </view>
+                    <view class="safety-item-row">
+                      <text class="item-icon">🧭</text>
+                      <view class="item-meta">
+                        <text class="item-name">G102 次高铁二等座车票 (南京南-北京南)</text>
+                        <text class="item-sub">跨城大额资金支付</text>
+                      </view>
+                      <text class="item-amount tabular-num">¥443.50</text>
+                      <view class="item-status" :class="travelTools.bookTicket.status">
+                        {{ formatToolStatus(travelTools.bookTicket.status) }}
+                      </view>
+                    </view>
+                    <view class="safety-item-row">
+                      <text class="item-icon">🏨</text>
+                      <view class="item-meta">
+                        <text class="item-name">漫心适老酒店无障碍房 (2晚)</text>
+                        <text class="item-sub">大额住宿保证金预授权</text>
+                      </view>
+                      <text class="item-amount tabular-num">¥680.00</text>
+                      <view class="item-status" :class="travelTools.bookHotel.status">
+                        {{ formatToolStatus(travelTools.bookHotel.status) }}
+                      </view>
+                    </view>
+                  </view>
+                  <view class="safety-pool-summary">
+                    <text class="pool-label">资金拦截池受控总额：</text>
+                    <text class="pool-val tabular-num">¥1,223.50</text>
+                    <text class="pool-shield-tag">已通过加密长连接推送子女端</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 分支 5：方案建造师 (PlanBuilder · 方案装配) -->
           <view class="subagent-branch-card planbuilder-branch" :class="{ 'collapsed': collapsedAgents.planBuilder }">
             <view class="branch-header" @tap="toggleAgentCollapse('planBuilder')">
               <view class="branch-header-left">
@@ -504,10 +1031,10 @@
                 </view>
                 <view class="branch-title-group">
                   <view class="branch-name-row">
-                    <text class="branch-name">规划建造师</text>
+                    <text class="branch-name">方案建造师</text>
                     <text class="branch-en-tag">PlanBuilder · 方案装配</text>
                   </view>
-                  <text class="branch-desc">多智能体回报对齐 · 交付物确定性装配</text>
+                  <text class="branch-desc">多智能体事实对齐 · 交付物确定性装配</text>
                 </view>
               </view>
               <view class="branch-header-right">
@@ -521,6 +1048,15 @@
 
             <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.planBuilder }">
               <view class="branch-body">
+                <!-- 智能体推理独白 (R3) -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">建造师推理独白 (PlanBuilder Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.planBuilder }}</text>
+                </view>
+
                 <view class="tools-flow">
                   <!-- 工具节点: compose_deliverable -->
                   <view class="tool-node" :class="'node-' + planBuilderTools.composeDeliverable.status">
@@ -531,20 +1067,36 @@
                           <text class="tool-fn-name">compose_deliverable</text>
                           <text class="tool-cn-name">方案聚合装配</text>
                         </view>
-                        <view class="node-status-tag" :class="planBuilderTools.composeDeliverable.status">
-                          {{ formatToolStatus(planBuilderTools.composeDeliverable.status) }}
+                        <view class="node-tags-group">
+                          <text class="latency-badge tabular-num">{{ toolLatencies.composeDeliverable }}</text>
+                          <view class="node-status-tag" :class="planBuilderTools.composeDeliverable.status">
+                            {{ formatToolStatus(planBuilderTools.composeDeliverable.status) }}
+                          </view>
                         </view>
                       </view>
                       <view class="mono-params-box">
-                        <text class="mono-code">{{ planBuilderTools.composeDeliverable.params || 'kind: "trip_plan", sources: ["health", "travel", "community"]' }}</text>
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tIdx) in parseParamsTokens(planBuilderTools.composeDeliverable.params, 'composeDeliverable')" :key="tIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
                       </view>
                       <view v-if="planBuilderTools.composeDeliverable.result" class="result-box">
-                        <text class="result-text">✨ 已成功从日志回放提取全部事实，装配成五页大字适老就医计划书</text>
+                        <text class="result-text">✅ 已成功从多智能体回放提取全部事实，装配成五页大字适老就医计划书</text>
                       </view>
                     </view>
                   </view>
 
-                  <!-- ================= 终极产物叶子节点：可点击计划书 Artifact (R2) ================= -->
+                  <!-- ================= 终极产物叶子节点：可点击计划书 Artifact (R2/R3) ================= -->
                   <view
                     class="artifact-leaf-node"
                     :class="{ 'is-ready': isArtifactReady, 'is-dimmed': !isArtifactReady }"
@@ -584,35 +1136,34 @@
         <view class="artifact-modal-header">
           <view class="header-main-box">
             <text class="modal-title">📄 就医出行计划书 (可打印适老大字版)</text>
-            <text class="modal-sub">由老友记主调度协同安康助手与银发导航自动生成</text>
+            <text class="modal-sub">由老友记主调度协同安康助手与银发导航自动生成 · 4/4 阶段全部闭环</text>
           </view>
           <button class="modal-close-btn" @tap="showArtifactModal = false">✕</button>
         </view>
         <scroll-view class="artifact-modal-body" scroll-y>
           <view class="plan-page-card" v-for="(p, pIdx) in artifactPages" :key="pIdx">
             <view class="page-card-head">
-              <text class="page-badge">第 {{ pIdx + 1 }} 页</text>
+              <text class="page-badge tabular-num">第 {{ pIdx + 1 }} 页</text>
               <text class="page-title">{{ p.title }}</text>
             </view>
             <view class="page-rows">
               <view v-for="(row, rIdx) in p.rows" :key="rIdx" class="page-row">
                 <text class="row-label">{{ row.label }}</text>
-                <text class="row-val">{{ row.val }}</text>
+                <text class="row-val tabular-num">{{ row.val }}</text>
               </view>
             </view>
-            <text v-if="p.note" class="page-note">💡 贴心叮嘱：{{ p.note }}</text>
-          </view>
-          <view class="disclaimer-note">
-            <text>※ 车次、号源、酒店数据来自模拟调度接口，仅供演示体验。出行前请以官方出票信息为准。</text>
+            <view v-if="p.note" class="page-note">
+              <text class="note-icon">💡</text>
+              <text class="note-text">{{ p.note }}</text>
+            </view>
           </view>
         </scroll-view>
         <view class="artifact-modal-footer">
-          <button class="footer-action-btn secondary" @tap="readAloud">🔊 朗读整本方案</button>
-          <button class="footer-action-btn primary" @tap="simulatePrint">🖨️ 打印大字纸质版</button>
+          <button class="footer-btn secondary" @tap="readAloud">🔊 大字朗读</button>
+          <button class="footer-btn primary" @tap="simulatePrint">🖨️ 无线打印</button>
         </view>
       </view>
     </view>
-
   </view>
 </template>
 
@@ -635,16 +1186,31 @@ export default {
         health: false,
         travel: false,
         community: false,
+        safety: false,
         planBuilder: false,
       },
       showArtifactModal: false,
-      // 演示覆盖状态（可被实际事件覆盖，也可以在点击演示按钮时触发）
+      // 演示覆盖状态
       demoModeActive: false,
       demoApprovals: {
-        appointment: false, // true = approved, 'rejected' = rejected, false = pending/suspended
+        appointment: false,
         ticket: false,
         hotel: false,
       },
+      // 动态演播全链路状态 (R3)
+      replay: {
+        active: false,
+        playing: false,
+        step: 0, // 0 到 5 阶段
+        timer: null,
+      },
+      expandedToolResults: {},
+    }
+  },
+  beforeUnmount() {
+    if (this.replay.timer) {
+      clearInterval(this.replay.timer)
+      this.replay.timer = null
     }
   },
   computed: {
@@ -654,6 +1220,7 @@ export default {
           !this.collapsedAgents.health &&
           !this.collapsedAgents.travel &&
           !this.collapsedAgents.community &&
+          !this.collapsedAgents.safety &&
           !this.collapsedAgents.planBuilder
         )
       },
@@ -661,12 +1228,13 @@ export default {
         this.collapsedAgents.health = !val
         this.collapsedAgents.travel = !val
         this.collapsedAgents.community = !val
+        this.collapsedAgents.safety = !val
         this.collapsedAgents.planBuilder = !val
       },
     },
-    // 是否有任何真实对话/任务开始
+
     hasTaskStarted() {
-      if (this.demoModeActive) return true
+      if (this.replay.active || this.demoModeActive) return true
       const msgs = this.messages || []
       return msgs.some(
         (m) =>
@@ -678,8 +1246,8 @@ export default {
       )
     },
 
-    // 是否有任何高危操作被拒绝
     hasAnyRejected() {
+      if (this.replay.active) return false
       if (this.demoModeActive) {
         return (
           this.demoApprovals.appointment === 'rejected' ||
@@ -692,8 +1260,11 @@ export default {
       )
     },
 
-    // 是否有任何挂起任务待确认
     pendingTasksCount() {
+      if (this.replay.active) {
+        if (this.replay.step === 3) return 3
+        return 0
+      }
       if (this.demoModeActive) {
         let demoPending = 0
         if (this.demoApprovals.appointment === false) demoPending++
@@ -716,17 +1287,20 @@ export default {
       return 8
     },
 
-    // 实时状态文本与药丸样式
     globalStatusText() {
-      if (this.thinking || this.rootThinking) return 'LLM 推理规划中'
-      if (this.pendingTasksCount > 0) return '高危操作等待审批'
-      if (this.hasAnyRejected) return '高危操作已被子女拒绝'
-      if (this.isArtifactReady) return '执行闭环 · 交付完毕'
-      if (this.hasTaskStarted) return '阶段任务协同进行中'
-      return '协同网络就绪 · 待命'
+      if (this.replay.active) {
+        return `演播全链路中 · 第 ${this.replay.step}/5 阶段`
+      }
+      if (this.thinking || this.rootThinking) return 'LLM 正在并行规划推理'
+      if (this.pendingTasksCount > 0) return '高危操作等待子女端审批'
+      if (this.hasAnyRejected) return '高危操作已被子女拒绝拦截'
+      if (this.isArtifactReady) return '执行闭环 · 计划书交付完毕'
+      if (this.hasTaskStarted) return '四阶段流水线协同进行中'
+      return '协同网络就绪 · 随时待命'
     },
 
     globalStatusClass() {
+      if (this.replay.active) return 'status-thinking'
       if (this.thinking || this.rootThinking) return 'status-thinking'
       if (this.pendingTasksCount > 0) return 'status-suspended'
       if (this.hasAnyRejected) return 'status-rejected'
@@ -736,11 +1310,13 @@ export default {
     },
 
     isAnyAgentActive() {
-      return this.thinking || this.rootThinking || this.pendingTasksCount > 0 || this.hasTaskStarted
+      return this.replay.active || this.thinking || this.rootThinking || this.pendingTasksCount > 0 || this.hasTaskStarted
     },
 
-    // 根节点状态
     rootStatusClass() {
+      if (this.replay.active) {
+        return this.replay.step === 0 ? 'status-thinking' : 'status-completed'
+      }
       if (this.thinking || this.rootThinking) return 'status-thinking'
       if (this.hasAnyRejected) return 'status-rejected'
       if (this.isArtifactReady) return 'status-completed'
@@ -749,13 +1325,19 @@ export default {
     },
 
     rootStatusIcon() {
-      if (this.thinking || this.rootThinking) return '🔵'
-      if (this.hasAnyRejected) return '🔴'
-      if (this.isArtifactReady) return '🟢'
-      return '🟢'
+      if (this.replay.active) {
+        return this.replay.step === 0 ? '⚡' : '✅'
+      }
+      if (this.thinking || this.rootThinking) return '⚡'
+      if (this.hasAnyRejected) return '🛑'
+      if (this.isArtifactReady) return '✅'
+      return '🎯'
     },
 
     rootStatusText() {
+      if (this.replay.active) {
+        return this.replay.step === 0 ? '意图分析与全局编排中' : '全局任务规划完成'
+      }
       if (this.thinking || this.rootThinking) return '意图拆解与全局调度中'
       if (this.hasAnyRejected) return '局部流程已由家人终止'
       if (this.isArtifactReady) return '全链路执行完毕'
@@ -765,46 +1347,232 @@ export default {
 
     currentScenarioTag() {
       if (!this.hasTaskStarted) return '待命中'
-      return '跨城异地就医闭环'
+      return '跨城异地就医全闭环'
     },
 
     currentIntentText() {
-      // 从最新用户消息中提取意图，若无且未开始则使用就绪指引
       const userMsgs = (this.messages || []).filter((m) => m.isUser && m.text)
       if (userMsgs.length > 0) {
         const last = userMsgs[userMsgs.length - 1].text
-        return `解析诉求："${last}" · 拆解专家挂号、双向高铁票、适老酒店及五页就医出行方案`
+        return `解析老人诉求："${last}" · 编排拆解三甲挂号、往返高铁、适老酒店及交付大字计划书`
       }
-      if (this.demoModeActive) {
-        return '老人诉求："我想去北京看腿疼的老毛病" ➔ 调度安康助手查专家、银发导航订高铁和酒店、生成全套就医出行计划'
+      if (this.replay.active || this.demoModeActive) {
+        return '老人诉求："我想去北京看腿疼的老毛病" ➔ 拆解为权威骨科挂号、G102高铁订票、积水潭适老酒店及五页就医出行方案'
       }
-      return '等待老人输入诉求… 可按住说话或打字告诉老友记，主调度将实时解析意图并派发至子智能体协同网络。'
+      return '等待长辈输入诉求… 可按住说话或打字告诉老友记，主调度将实时理解意图并下发协同网络。'
     },
 
-    // 任务流水线 4 个阶段
+    // 演播当前步骤说明 (R3)
+    currentReplayStepInfo() {
+      const steps = [
+        {
+          num: '0/5',
+          title: '老友记总调度：意图拆解与全局任务编排',
+          desc: '总调度 Orchestrator 感知老人诉求，分解为医院挂号、高铁、适老酒店及计划书 4 阶段流水线',
+          icon: '🎯'
+        },
+        {
+          num: '1/5',
+          title: '安康助手：权威专家号源智能匹配',
+          desc: '健康智能体启动 search_hospital，锁定北京积水潭医院骨科田伟主任医师号源',
+          icon: '🏥'
+        },
+        {
+          num: '2/5',
+          title: '银发导航：高铁车次与适老无障碍酒店检索',
+          desc: '并发执行 search_train 与 search_hotel，锁定 G102 次适老车厢与漫心无障碍酒店',
+          icon: '🧭'
+        },
+        {
+          num: '3/5',
+          title: '安全防护网：高危拦截与强行挂起保护',
+          desc: '触发资金医疗安全防线（挂号¥100 + 高铁¥443.50 + 酒店¥680），已向子女端发送审批请求',
+          icon: '🛡️'
+        },
+        {
+          num: '4/5',
+          title: '双向回路：子女端审批放行 (Loopback)',
+          desc: '模拟子女手机端通过 3 项核准，工具状态立即转为已完成/已出票/已预约，闭环放行',
+          icon: '⚡'
+        },
+        {
+          num: '5/5',
+          title: '方案建造师：五页大字就医出行计划书装配',
+          desc: '汇总挂号凭证、车次、酒店及携带清单，成功生成《就医出行计划书》，流水线 4/4 阶段全部达成！',
+          icon: '📄'
+        },
+      ]
+      return steps[this.replay.step] || steps[0]
+    },
+
+    // 智能体推理独白文本 (R3)
+    agentThoughts() {
+      return {
+        orchestrator: '针对长辈主诉"去北京看腿疼老毛病"，总调度启动跨城异地就医多智能体并行编排：分发骨科名医筛查至安康助手，往返高铁与适老住宿派发至银发导航，全流程注入安全护栏防线。',
+        health: '老人腿痛初筛为膝关节退行性病变。锁定全国骨科标杆北京积水潭医院（国家骨科医学中心），优选关节外科田伟主任医师周二上午专家号，提示携带既往病历与X光片。',
+        travel: '配合田主任上午就诊时序，优选南京南站始发 G102 次清晨高铁（08:15开，12:30到，配置无障碍设施）。选定距门诊450米的漫心适老酒店无障碍房，配备应急呼叫与安全扶手。',
+        community: '考虑到老人异地就医独行困难，主动匹配三甲医院持证陪诊员，预约北京南站轮椅接站进出站服务，提供全流程代取药与就医引导。',
+        safety: '依据金融与医疗双重风控机制，门诊挂号费(¥100.00)、高铁票款(¥443.50)及酒店住宿费(¥680.00)单次超额，触发强行挂起保护，已将工单推至子女手机端待批。',
+        planBuilder: '汇总各子智能体返回的凭证号源与执行事实，经过去重与交叉校验，最终组装输出五页大字可读、可打印、可语音播报的《异地就医出行全套方案》。',
+      }
+    },
+
+    toolLatencies() {
+      return {
+        searchHospital: '⚡ 240ms',
+        registerAppointment: '⚡ 380ms',
+        searchTrain: '⚡ 190ms',
+        bookTicket: '⚡ 420ms',
+        searchHotel: '⚡ 210ms',
+        bookHotel: '⚡ 350ms',
+        getWeather: '⚡ 120ms',
+        orderService: '⚡ 160ms',
+        composeDeliverable: '⚡ 310ms',
+      }
+    },
+
+    // DAG 前沿活跃判断 (R3)
+    isRootFrontier() {
+      if (this.replay.active) return this.replay.step === 0
+      return this.thinking || this.rootThinking
+    },
+    isRootDone() {
+      if (this.replay.active) return this.replay.step >= 1
+      return this.hasTaskStarted && !this.thinking
+    },
+    isHealthFrontier() {
+      if (this.replay.active) return this.replay.step === 1
+      return this.healthStatusClass === 'status-thinking' || this.healthStatusClass === 'status-suspended'
+    },
+    isTravelFrontier() {
+      if (this.replay.active) return this.replay.step === 2
+      return this.travelStatusClass === 'status-thinking' || this.travelStatusClass === 'status-suspended'
+    },
+    isCommunityFrontier() {
+      if (this.replay.active) return this.replay.step === 2
+      return this.communityStatusClass === 'status-thinking'
+    },
+    isSafetyFrontier() {
+      if (this.replay.active) return this.replay.step === 3
+      return this.pendingTasksCount > 0
+    },
+    isSafetyActive() {
+      if (this.replay.active) return this.replay.step >= 3
+      return this.pendingTasksCount > 0 || this.hasAnyRejected
+    },
+    isPlanBuilderFrontier() {
+      if (this.replay.active) return this.replay.step === 4
+      return this.planBuilderStatusClass === 'status-thinking'
+    },
+    isPlanBuilderActive() {
+      if (this.replay.active) return this.replay.step >= 4
+      return this.planBuilderStatusClass === 'status-thinking' || this.planBuilderStatusClass === 'status-completed'
+    },
+
+    safetyStatusClass() {
+      if (this.replay.active) {
+        if (this.replay.step === 3) return 'status-suspended'
+        if (this.replay.step >= 4) return 'status-completed'
+        return 'status-ready'
+      }
+      if (this.pendingTasksCount > 0) return 'status-suspended'
+      if (this.hasAnyRejected) return 'status-rejected'
+      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0)) return 'status-completed'
+      return 'status-ready'
+    },
+    safetyStatusIcon() {
+      if (this.replay.active) {
+        if (this.replay.step === 3) return '⏸️'
+        if (this.replay.step >= 4) return '✅'
+        return '🛡️'
+      }
+      if (this.pendingTasksCount > 0) return '⏸️'
+      if (this.hasAnyRejected) return '🛑'
+      if (this.isArtifactReady) return '✅'
+      return '🛡️'
+    },
+    safetyStatusText() {
+      if (this.replay.active) {
+        if (this.replay.step === 3) return '3项高危拦截待批'
+        if (this.replay.step >= 4) return '双向回路放行完成'
+        return '安全防线待命'
+      }
+      if (this.pendingTasksCount > 0) return `${this.pendingTasksCount}项高危待批`
+      if (this.hasAnyRejected) return '已拦截终止'
+      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0)) return '安全闭环放行'
+      return '安全防线待命'
+    },
+
+    // 任务流水线 4 个阶段：解决“阶段3-4”Bug与动态状态机同步 (R2)
     displaySteps() {
-      // 1. 如果有真实的 todo/write 消息，以真实 pipeline 为主，同时同步挂起/审批/拒绝状态
-      const todoMsg = (this.messages || []).find((m) => m.kind === 'todo' && Array.isArray(m.todos))
+      // 1. 演播模式
+      if (this.replay && this.replay.active) {
+        const step = this.replay.step
+        return [
+          {
+            name: '选医院挂专家号',
+            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'in_progress' : 'pending')),
+          },
+          {
+            name: '查高铁车次及订票',
+            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
+          },
+          {
+            name: '订适老无障碍酒店',
+            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
+          },
+          {
+            name: '聚合装配计划书',
+            status: step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending'),
+          },
+        ]
+      }
+
+      // 2. 解析最新 todo 快照（取 messages 中最后一个 kind === 'todo'） (R2)
+      const todoMsgs = (this.messages || []).filter((m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0)
+      const todoMsg = todoMsgs.length > 0 ? todoMsgs[todoMsgs.length - 1] : null
+
+      const fallbackTitles = [
+        '选医院挂专家号',
+        '查高铁车次及订票',
+        '订适老无障碍酒店',
+        '聚合装配计划书',
+      ]
+
       if (todoMsg && todoMsg.todos.length > 0) {
         return todoMsg.todos.map((t, idx) => {
           let st = t.status || 'in_progress'
-          const name = t.text || `阶段 ${idx + 1}`
-          if (name.includes('挂号') || name.includes('医院') || name.includes('专家')) {
+          // 读取 t.content || t.text || t.title，杜绝“阶段 3/4”占位 (R2)
+          const rawName = (t.content || t.text || t.title || '').trim()
+          const name = rawName || fallbackTitles[idx] || `阶段 ${idx + 1}`
+
+          // 动态同步里程碑状态
+          const isStage1 = idx === 0 || name.includes('挂号') || name.includes('医院') || name.includes('专家')
+          const isStage2 = idx === 1 || name.includes('车次') || name.includes('车票') || name.includes('高铁') || name.includes('订票')
+          const isStage3 = idx === 2 || name.includes('酒店') || name.includes('住宿')
+          const isStage4 = idx === 3 || name.includes('计划书') || name.includes('装配') || name.includes('聚合') || name.includes('出行方案')
+
+          if (isStage1) {
             if (this.healthTools.registerAppointment.status === 'executed') st = 'completed'
             else if (this.healthTools.registerAppointment.status === 'rejected') st = 'rejected'
             else if (this.healthTools.registerAppointment.status === 'suspended') st = 'suspended'
-          } else if (name.includes('车次') || name.includes('车票') || name.includes('高铁') || name.includes('订票')) {
+            else if (this.healthTools.searchHospital.status === 'completed' && !this.thinking) st = 'completed'
+          } else if (isStage2) {
             if (this.travelTools.bookTicket.status === 'executed') st = 'completed'
             else if (this.travelTools.bookTicket.status === 'rejected') st = 'rejected'
             else if (this.travelTools.bookTicket.status === 'suspended') st = 'suspended'
-          } else if (name.includes('酒店') || name.includes('住宿')) {
+            else if (this.travelTools.searchTrain.status === 'completed' && this.travelTools.bookTicket.status !== 'suspended' && !this.thinking) st = 'completed'
+          } else if (isStage3) {
             if (this.travelTools.bookHotel.status === 'executed') st = 'completed'
             else if (this.travelTools.bookHotel.status === 'rejected') st = 'rejected'
             else if (this.travelTools.bookHotel.status === 'suspended') st = 'suspended'
-          } else if (name.includes('计划书') || name.includes('装配') || name.includes('聚合') || name.includes('出行方案')) {
+            else if (this.travelTools.searchHotel.status === 'completed' && this.travelTools.bookHotel.status !== 'suspended' && !this.thinking) st = 'completed'
+          } else if (isStage4) {
             if (this.isArtifactReady) st = 'completed'
             else if (this.hasAnyRejected) st = 'rejected'
+            else if (this.healthTools.registerAppointment.status === 'executed' && this.travelTools.bookTicket.status === 'executed' && this.travelTools.bookHotel.status === 'executed') st = 'completed'
           }
+
           return {
             name,
             status: st,
@@ -812,39 +1580,42 @@ export default {
         })
       }
 
-      // 2. 演示 4 步骤
+      // 3. 演示模式
       if (this.demoModeActive) {
+        const hEx = this.demoApprovals.appointment === true
+        const tEx = this.demoApprovals.ticket === true
+        const hoEx = this.demoApprovals.hotel === true
         return [
           {
-            name: '积水潭医院骨科田伟主任号挂号',
-            status: this.demoApprovals.appointment === true ? 'completed' : (this.demoApprovals.appointment === 'rejected' ? 'rejected' : 'suspended'),
+            name: '选医院挂专家号',
+            status: hEx ? 'completed' : (this.demoApprovals.appointment === 'rejected' ? 'rejected' : 'suspended'),
           },
           {
-            name: '南京南-北京南 G102 高铁订票',
-            status: this.demoApprovals.ticket === true ? 'completed' : (this.demoApprovals.ticket === 'rejected' ? 'rejected' : 'suspended'),
+            name: '查高铁车次及订票',
+            status: tEx ? 'completed' : (this.demoApprovals.ticket === 'rejected' ? 'rejected' : 'suspended'),
           },
           {
-            name: '积水潭医院周边适老酒店2晚预订',
-            status: this.demoApprovals.hotel === true ? 'completed' : (this.demoApprovals.hotel === 'rejected' ? 'rejected' : 'suspended'),
+            name: '订适老无障碍酒店',
+            status: hoEx ? 'completed' : (this.demoApprovals.hotel === 'rejected' ? 'rejected' : 'suspended'),
           },
           {
-            name: '装配五页就医出行大字可打印计划书',
-            status: this.isArtifactReady ? 'completed' : (this.hasAnyRejected ? 'rejected' : 'pending'),
+            name: '聚合装配计划书',
+            status: (hEx && tEx && hoEx) || this.isArtifactReady ? 'completed' : (this.hasAnyRejected ? 'rejected' : 'pending'),
           },
         ]
       }
 
-      // 3. 尚未开始任务时的默认状态：均为待进行 ⏳
+      // 4. 任务未启动时的默认状态
       if (!this.hasTaskStarted) {
         return [
-          { name: '选权威医院挂专家号', status: 'pending' },
-          { name: '查明日高铁车次及订票', status: 'pending' },
-          { name: '订医院周边适老酒店', status: 'pending' },
-          { name: '聚合装配出行就医计划书', status: 'pending' },
+          { name: '选医院挂专家号', status: 'pending' },
+          { name: '查高铁车次及订票', status: 'pending' },
+          { name: '订适老无障碍酒店', status: 'pending' },
+          { name: '聚合装配计划书', status: 'pending' },
         ]
       }
 
-      // 4. 任务进行中或已完成：根据各子智能体真实工具状态动态推导流水线四步
+      // 5. 任务进行中动态推导
       const step1Status = this.healthTools.registerAppointment.status === 'executed'
         ? 'completed'
         : (this.healthTools.registerAppointment.status === 'rejected'
@@ -869,17 +1640,17 @@ export default {
             ? 'suspended'
             : (this.thinking ? 'pending' : (this.travelTools.searchHotel.status === 'completed' ? 'completed' : 'pending'))))
 
-      const step4Status = this.isArtifactReady
+      const step4Status = (this.isArtifactReady || (step1Status === 'completed' && step2Status === 'completed' && step3Status === 'completed'))
         ? 'completed'
         : (this.hasAnyRejected
           ? 'rejected'
-          : (this.thinking ? 'pending' : 'pending'))
+          : (this.thinking ? 'in_progress' : 'pending'))
 
       return [
-        { name: '选权威医院挂专家号', status: step1Status },
-        { name: '查明日高铁车次及订票', status: step2Status },
-        { name: '订医院周边适老酒店', status: step3Status },
-        { name: '聚合装配出行就医计划书', status: step4Status },
+        { name: '选医院挂专家号', status: step1Status },
+        { name: '查高铁车次及订票', status: step2Status },
+        { name: '订适老无障碍酒店', status: step3Status },
+        { name: '聚合装配计划书', status: step4Status },
       ]
     },
 
@@ -893,6 +1664,26 @@ export default {
 
     // 健康助手工具状态响应
     healthTools() {
+      if (this.replay.active) {
+        const step = this.replay.step
+        let sStatus = step >= 1 ? 'completed' : (step === 0 ? 'running' : 'pending')
+        let aStatus = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step >= 1 ? 'running' : 'pending'))
+        return {
+          searchHospital: {
+            status: sStatus,
+            params: 'hospital: "北京积水潭医院", symptom: "骨科/腿疼", grade: "三甲专科"',
+            result: '北京积水潭医院骨科 · 田伟主任医师（国家骨科医学中心）',
+          },
+          registerAppointment: {
+            status: aStatus,
+            confirmationId: 'conf_demo_appoint',
+            params: 'doctor: "田伟主任医师", dept: "骨科", fee: 100.0, time: "08:30-09:30"',
+            amount: 100.0,
+            desc: '已安全拦截高危挂号请求，需子女手机端核准后方可放行挂号',
+          },
+        }
+      }
+
       const msgs = this.messages || []
       const suspends = msgs.filter((m) => m.kind === 'suspend')
       const appointSuspend = suspends.find(
@@ -961,6 +1752,12 @@ export default {
     },
 
     healthStatusClass() {
+      if (this.replay.active) {
+        if (this.replay.step === 1) return 'status-thinking'
+        if (this.replay.step === 3) return 'status-suspended'
+        if (this.replay.step >= 4) return 'status-completed'
+        return 'status-ready'
+      }
       if (this.healthTools.registerAppointment.status === 'suspended') return 'status-suspended'
       if (this.healthTools.registerAppointment.status === 'rejected') return 'status-rejected'
       if (this.healthTools.registerAppointment.status === 'executed') return 'status-completed'
@@ -970,14 +1767,26 @@ export default {
     },
 
     healthStatusIcon() {
+      if (this.replay.active) {
+        if (this.replay.step === 1) return '⚡'
+        if (this.replay.step === 3) return '⏸️'
+        if (this.replay.step >= 4) return '✅'
+        return '🏥'
+      }
       if (this.healthTools.registerAppointment.status === 'suspended') return '⏸️'
-      if (this.healthTools.registerAppointment.status === 'rejected') return '🔴'
-      if (this.healthTools.registerAppointment.status === 'executed' || this.healthTools.searchHospital.status === 'completed') return '🟢'
-      if (this.healthTools.searchHospital.status === 'running') return '🔵'
-      return '⚪'
+      if (this.healthTools.registerAppointment.status === 'rejected') return '🛑'
+      if (this.healthTools.registerAppointment.status === 'executed' || this.healthTools.searchHospital.status === 'completed') return '✅'
+      if (this.healthTools.searchHospital.status === 'running') return '⚡'
+      return '🏥'
     },
 
     healthStatusText() {
+      if (this.replay.active) {
+        if (this.replay.step === 1) return '积水潭号源检索中'
+        if (this.replay.step === 3) return '待子女确认挂号'
+        if (this.replay.step >= 4) return '挂号成功 · 已确认'
+        return '安康助手待命'
+      }
       if (this.healthTools.registerAppointment.status === 'suspended') return '待子女确认挂号'
       if (this.healthTools.registerAppointment.status === 'rejected') return '子女已拒绝挂号'
       if (this.healthTools.registerAppointment.status === 'executed') return '挂号成功 · 已确认'
@@ -988,6 +1797,45 @@ export default {
 
     // 银发导航工具状态响应
     travelTools() {
+      if (this.replay.active) {
+        const step = this.replay.step
+        let tSearch = step >= 2 ? 'completed' : 'pending'
+        let hSearch = step >= 2 ? 'completed' : 'pending'
+        let tBook = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step === 2 ? 'running' : 'pending'))
+        let hBook = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step === 2 ? 'running' : 'pending'))
+        return {
+          searchTrain: {
+            status: tSearch,
+            params: 'from: "南京南", to: "北京南", date: "明天", seat: "二等座"',
+            result: '优选 G102 次 (08:15 - 12:30, 历时4时15分, 余票充裕)',
+          },
+          bookTicket: {
+            status: tBook,
+            confirmationId: 'conf_demo_ticket',
+            params: 'train: "G102", from: "南京南", to: "北京南", price: 443.50',
+            amount: 443.50,
+            desc: '高铁票订购款项，已推送子女端审核放行',
+          },
+          searchHotel: {
+            status: hSearch,
+            params: 'poi: "北京积水潭医院周边0.5km", barrier_free: true',
+            result: '匹配：漫心酒店积水潭店 · 适老无障碍标间 (配备浴室扶手/电梯)',
+          },
+          bookHotel: {
+            status: hBook,
+            confirmationId: 'conf_demo_hotel',
+            params: 'hotel: "漫心酒店积水潭店", nights: 2, total_amount: 680.0',
+            amount: 680.0,
+            desc: '酒店预订2晚费用，已报送子女端确认',
+          },
+          getWeather: {
+            status: 'completed',
+            params: 'city: "北京", days: 3, elder_comfort_index: true',
+            result: '北京晴转多云，18℃~26℃，舒适度优，早晚温差大建议备外套',
+          },
+        }
+      }
+
       const msgs = this.messages || []
       const suspends = msgs.filter((m) => m.kind === 'suspend')
       const ticketSuspend = suspends.find(
@@ -1081,23 +1929,53 @@ export default {
       let weatherParams = weatherTool && weatherTool.args ? this.formatParams(weatherTool.args) : ''
       let weatherResult = ''
       if (weatherTool) {
-        weatherStatus = weatherTool.status === 'running' ? 'running' : 'completed'
-        weatherResult = weatherTool.result || weatherTool.summary || '北京晴朗 18~26℃'
+        weatherStatus = 'completed'
+        weatherResult = weatherTool.result || weatherTool.summary || '北京天气晴好，18~26℃'
       } else if (this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
         weatherStatus = 'completed'
-        weatherResult = '北京晴朗 18~26℃，空气良，紫外线适中，建议着舒适棉织外衣'
+        weatherResult = '北京晴间多云，气温 18℃~26℃，适老出行指数：优秀'
       }
 
       return {
-        searchTrain: { status: trainStatus, params: trainParams, result: trainResult },
-        bookTicket: { status: ticketStatus, confirmationId: ticketConfId, params: ticketParams, amount: ticketAmount, desc: ticketDesc },
-        searchHotel: { status: hotelSearchStatus, params: hotelSearchParams, result: hotelSearchResult },
-        bookHotel: { status: hotelStatus, confirmationId: hotelConfId, params: hotelParams, amount: hotelAmount, desc: hotelDesc },
-        getWeather: { status: weatherStatus, params: weatherParams, result: weatherResult },
+        searchTrain: {
+          status: trainStatus,
+          params: trainParams,
+          result: trainResult,
+        },
+        bookTicket: {
+          status: ticketStatus,
+          confirmationId: ticketConfId,
+          params: ticketParams,
+          amount: ticketAmount,
+          desc: ticketDesc,
+        },
+        searchHotel: {
+          status: hotelSearchStatus,
+          params: hotelSearchParams,
+          result: hotelSearchResult,
+        },
+        bookHotel: {
+          status: hotelStatus,
+          confirmationId: hotelConfId,
+          params: hotelParams,
+          amount: hotelAmount,
+          desc: hotelDesc,
+        },
+        getWeather: {
+          status: weatherStatus,
+          params: weatherParams,
+          result: weatherResult,
+        },
       }
     },
 
     travelStatusClass() {
+      if (this.replay.active) {
+        if (this.replay.step === 2) return 'status-thinking'
+        if (this.replay.step === 3) return 'status-suspended'
+        if (this.replay.step >= 4) return 'status-completed'
+        return 'status-ready'
+      }
       if (this.travelTools.bookTicket.status === 'suspended' || this.travelTools.bookHotel.status === 'suspended') {
         return 'status-suspended'
       }
@@ -1117,35 +1995,47 @@ export default {
     },
 
     travelStatusIcon() {
+      if (this.replay.active) {
+        if (this.replay.step === 2) return '⚡'
+        if (this.replay.step === 3) return '⏸️'
+        if (this.replay.step >= 4) return '✅'
+        return '🧭'
+      }
       if (this.travelTools.bookTicket.status === 'suspended' || this.travelTools.bookHotel.status === 'suspended') {
         return '⏸️'
       }
       if (this.travelTools.bookTicket.status === 'rejected' || this.travelTools.bookHotel.status === 'rejected') {
-        return '🔴'
+        return '🛑'
       }
       if (this.travelTools.bookTicket.status === 'executed' || this.travelTools.searchTrain.status === 'completed') {
-        return '🟢'
+        return '✅'
       }
-      if (this.thinking) return '🔵'
-      return '⚪'
+      if (this.thinking) return '⚡'
+      return '🧭'
     },
 
     travelStatusText() {
+      if (this.replay.active) {
+        if (this.replay.step === 2) return '高铁与酒店规划中'
+        if (this.replay.step === 3) return '待子女确认票务酒店'
+        if (this.replay.step >= 4) return '车次与酒店均已出票'
+        return '银发导航待命'
+      }
       if (this.travelTools.bookTicket.status === 'suspended' || this.travelTools.bookHotel.status === 'suspended') {
-        return '待子女确认票务/酒店'
+        return '待子女确认票务酒店'
       }
       if (this.travelTools.bookTicket.status === 'rejected' || this.travelTools.bookHotel.status === 'rejected') {
-        return '子女已拒绝出单'
+        return '子女已拒绝出票'
       }
       if (this.travelTools.bookTicket.status === 'executed' && this.travelTools.bookHotel.status === 'executed') {
-        return '车次与酒店均已出单'
+        return '车次与酒店均已出票'
       }
       if (this.thinking) return '规划路线与车次中'
       if (this.travelTools.searchTrain.status === 'completed') return '行程车次已规划'
       return '银发导航待命'
     },
 
-    // 邻里助手
+    // 邻里帮
     communityTools() {
       const msgs = this.messages || []
       const orderTool = msgs.find(
@@ -1155,7 +2045,7 @@ export default {
       let params = orderTool && orderTool.args ? this.formatParams(orderTool.args) : ''
       if (orderTool) {
         status = orderTool.status === 'running' ? 'running' : 'completed'
-      } else if (this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
+      } else if (this.replay.active || this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
         status = 'completed'
       }
       return {
@@ -1169,17 +2059,25 @@ export default {
       return 'status-ready'
     },
     communityStatusIcon() {
-      if (this.communityTools.orderService.status === 'completed') return '🟢'
-      if (this.communityTools.orderService.status === 'running') return '🔵'
-      return '⚪'
+      if (this.communityTools.orderService.status === 'completed') return '✅'
+      if (this.communityTools.orderService.status === 'running') return '⚡'
+      return '🏘️'
     },
     communityStatusText() {
       if (this.communityTools.orderService.status === 'completed') return '陪诊服务已待命'
-      return '邻里助手待命'
+      return '邻里帮待命'
     },
 
     // 规划建造师
     planBuilderTools() {
+      if (this.replay.active) {
+        const step = this.replay.step
+        let status = step >= 5 ? 'completed' : (step === 4 ? 'running' : 'pending')
+        return {
+          composeDeliverable: { status, params: 'kind: "trip_plan", sources: ["health", "travel", "community"]', result: status === 'completed' },
+        }
+      }
+
       const msgs = this.messages || []
       const hasCard = msgs.some((m) => m.kind === 'card')
       const composeTool = msgs.find((m) => m.kind === 'tool' && m.tool === 'compose_deliverable')
@@ -1207,6 +2105,11 @@ export default {
     },
 
     planBuilderStatusClass() {
+      if (this.replay.active) {
+        if (this.replay.step === 4) return 'status-thinking'
+        if (this.replay.step >= 5) return 'status-completed'
+        return 'status-ready'
+      }
       if (this.planBuilderTools.composeDeliverable.status === 'running') return 'status-thinking'
       if (this.planBuilderTools.composeDeliverable.status === 'rejected') return 'status-rejected'
       if (this.planBuilderTools.composeDeliverable.status === 'completed') return 'status-completed'
@@ -1214,13 +2117,23 @@ export default {
       return 'status-ready'
     },
     planBuilderStatusIcon() {
-      if (this.planBuilderTools.composeDeliverable.status === 'running') return '🔵'
-      if (this.planBuilderTools.composeDeliverable.status === 'rejected') return '🔴'
-      if (this.planBuilderTools.composeDeliverable.status === 'completed') return '🟢'
-      if (this.pendingTasksCount > 0) return '⏳'
-      return '⚪'
+      if (this.replay.active) {
+        if (this.replay.step === 4) return '⚡'
+        if (this.replay.step >= 5) return '✅'
+        return '📐'
+      }
+      if (this.planBuilderTools.composeDeliverable.status === 'running') return '⚡'
+      if (this.planBuilderTools.composeDeliverable.status === 'rejected') return '🛑'
+      if (this.planBuilderTools.composeDeliverable.status === 'completed') return '✅'
+      if (this.pendingTasksCount > 0) return '⏸️'
+      return '📐'
     },
     planBuilderStatusText() {
+      if (this.replay.active) {
+        if (this.replay.step === 4) return '装配计划书中'
+        if (this.replay.step >= 5) return '五页计划书装配完成'
+        return '方案装配待命'
+      }
       if (this.planBuilderTools.composeDeliverable.status === 'running') return '装配计划书中'
       if (this.planBuilderTools.composeDeliverable.status === 'rejected') return '前序审批已拒绝 · 装配终止'
       if (this.planBuilderTools.composeDeliverable.status === 'completed') return '五页计划书装配完成'
@@ -1229,7 +2142,9 @@ export default {
     },
 
     isArtifactReady() {
-      // 只要有一张 card 消息，或演示状态全部通过
+      if (this.replay.active) {
+        return this.replay.step >= 5
+      }
       const hasCard = (this.messages || []).some((m) => m.kind === 'card')
       if (hasCard) return true
       if (this.demoModeActive) {
@@ -1239,17 +2154,20 @@ export default {
           this.demoApprovals.hotel === true
         )
       }
-      // 真实交互：若有挂起任务且全部已获审批执行（无拒绝、不在推理中），动态解锁交付物
       const msgs = this.messages || []
       const suspends = msgs.filter((m) => m.kind === 'suspend')
       if (suspends.length > 0 && suspends.every((m) => m.status === 'executed') && !this.hasAnyRejected && !this.thinking) {
+        return true
+      }
+      if (this.healthTools.registerAppointment.status === 'executed' &&
+          this.travelTools.bookTicket.status === 'executed' &&
+          this.travelTools.bookHotel.status === 'executed') {
         return true
       }
       return false
     },
 
     artifactPages() {
-      // 若实际消息中收到了服务端的 card 消息，优先解析真实卡片页
       const realCard = (this.messages || []).slice().reverse().find(
         (m) => m.kind === 'card' && Array.isArray(m.sections || m.pages),
       )
@@ -1267,7 +2185,6 @@ export default {
         }
       }
 
-      // 默认/演示 5 页标准方案
       return [
         {
           title: '北京积水潭医院专家挂号凭证',
@@ -1330,6 +2247,66 @@ export default {
       return fallback || ''
     },
 
+    parseParamsTokens(params, defaultKey) {
+      const DEFAULT_TOOL_PARAMS = {
+        searchHospital: 'hospital: "北京积水潭医院", symptom: "骨科/腿疼", grade: "三甲专科"',
+        registerAppointment: 'doctor: "田伟主任医师", dept: "骨科", fee: 100.0, time: "08:30-09:30"',
+        searchTrain: 'from: "南京南", to: "北京南", date: "明天", seat: "二等座"',
+        bookTicket: 'train: "G102", from: "南京南", to: "北京南", price: 443.50',
+        searchHotel: 'poi: "北京积水潭医院周边0.5km", barrier_free: true',
+        bookHotel: 'hotel: "漫心酒店积水潭店", nights: 2, total_amount: 680.0',
+        getWeather: 'city: "北京", days: 3, elder_comfort_index: true',
+        orderService: 'service: "异地就医火车站接站+医院全程陪诊", city: "北京"',
+        composeDeliverable: 'kind: "trip_plan", sources: ["health", "travel", "community"]',
+      }
+      if (!params && defaultKey && DEFAULT_TOOL_PARAMS[defaultKey]) {
+        params = DEFAULT_TOOL_PARAMS[defaultKey]
+      }
+      if (!params) return []
+      if (typeof params === 'object') {
+        return Object.entries(params).map(([k, v], idx, arr) => ({
+          k,
+          v: typeof v === 'string' ? `"${v}"` : String(v),
+          type: typeof v === 'number' ? 'number' : (typeof v === 'boolean' ? 'boolean' : 'string'),
+          isLast: idx === arr.length - 1
+        }))
+      }
+      const parts = String(params).split(/,\s*(?=[a-zA-Z0-9_]+\s*:)/)
+      return parts.map((part, idx) => {
+        const colonIdx = part.indexOf(':')
+        if (colonIdx !== -1) {
+          const k = part.slice(0, colonIdx).trim().replace(/^['"]|['"]$/g, '')
+          const rawV = part.slice(colonIdx + 1).trim()
+          let type = 'string'
+          if (/^-?\d+(\.\d+)?$/.test(rawV)) type = 'number'
+          else if (rawV === 'true' || rawV === 'false') type = 'boolean'
+          return {
+            k,
+            v: rawV,
+            type,
+            isLast: idx === parts.length - 1
+          }
+        }
+        return {
+          k: 'arg',
+          v: part.trim(),
+          type: 'string',
+          isLast: idx === parts.length - 1
+        }
+      })
+    },
+
+    toggleToolResultExpand(key) {
+      this.expandedToolResults = {
+        ...this.expandedToolResults,
+        [key]: !this.expandedToolResults[key]
+      }
+    },
+
+    isToolResultExpanded(key) {
+      return !!this.expandedToolResults[key]
+    },
+
     toggleAllExpanded() {
       this.allExpanded = !this.allExpanded
     },
@@ -1340,12 +2317,19 @@ export default {
 
     formatStepStatus(status) {
       switch (status) {
-        case 'completed': return '已完成 ✓'
-        case 'in_progress': return '执行中 🔵'
-        case 'suspended': return '待审批 ⏸️'
-        case 'rejected': return '已拒绝 🔴'
-        case 'pending': return '待进行 ⏳'
-        default: return status
+        case 'completed':
+        case 'executed':
+          return '✅ 已完成'
+        case 'suspended':
+          return '⏸️ 待审批'
+        case 'in_progress':
+        case 'running':
+          return '⚡ 执行中'
+        case 'rejected':
+          return '🛑 已拦截'
+        case 'pending':
+        default:
+          return '⏳ 待启动'
       }
     },
 
@@ -1353,22 +2337,21 @@ export default {
       switch (status) {
         case 'completed':
         case 'executed':
-          return '已执行 ✓'
+          return '已执行 ✅'
         case 'suspended':
           return '⏸️ 待确认'
         case 'running':
-          return '执行中 🔵'
+          return '执行中 ⚡'
         case 'pending':
           return '待调度 ⏳'
         case 'rejected':
-          return '已拒绝 🚫'
+          return '已拦截 🛑'
         default:
           return status
       }
     },
 
     triggerApprove(confirmationId, toolName) {
-      // 触发真实确认或者本地模拟确认
       if (this.demoModeActive) {
         if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
           this.demoApprovals.appointment = true
@@ -1387,7 +2370,6 @@ export default {
     },
 
     triggerReject(confirmationId, toolName) {
-      // 触发拒绝操作
       if (this.demoModeActive) {
         if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
           this.demoApprovals.appointment = 'rejected'
@@ -1405,33 +2387,102 @@ export default {
       uni.showToast({ title: '已模拟子女端拒绝该操作', icon: 'none' })
     },
 
-    loadDemoScenario() {
-      this.demoModeActive = true
-      this.rootThinking = true
-      uni.showLoading({ title: '正在载入异地就医多智能体全链路…' })
-      setTimeout(() => {
-        uni.hideLoading()
-        this.rootThinking = false
-        // 初始设为全部展开
-        this.allExpanded = true
-        // 先设为待确认状态，供体验审批闭环与拒绝拦截
-        this.demoApprovals = {
-          appointment: false,
-          ticket: false,
-          hotel: false,
-        }
-        uni.showToast({ title: '演示全链路已载入，可体验同意或拒绝！', icon: 'none' })
-      }, 500)
+    approveAllPending() {
+      this.triggerApprove(this.healthTools.registerAppointment.confirmationId || 'conf_demo_appoint', 'register_appointment')
+      this.triggerApprove(this.travelTools.bookTicket.confirmationId || 'conf_demo_ticket', 'book_ticket')
+      this.triggerApprove(this.travelTools.bookHotel.confirmationId || 'conf_demo_hotel', 'book_hotel')
+      uni.showToast({ title: '已模拟子女端一键核准全部 3 项操作！', icon: 'success' })
     },
 
-    exitDemoMode() {
-      this.demoModeActive = false
-      this.demoApprovals = {
-        appointment: false,
-        ticket: false,
-        hotel: false,
+    // 动态演播全链路机制 (R3)
+    toggleReplayMode() {
+      if (!this.replay.active) {
+        this.startReplay()
+      } else {
+        this.toggleReplayPlay()
       }
-      uni.showToast({ title: '已恢复实时会话跟踪', icon: 'none' })
+    },
+
+    startReplay() {
+      this.replay.active = true
+      this.replay.playing = true
+      this.replay.step = 0
+      this.allExpanded = true
+      if (this.replay.timer) clearInterval(this.replay.timer)
+      this.replay.timer = setInterval(() => {
+        if (this.replay.step < 5) {
+          this.replay.step++
+        } else {
+          this.pauseReplay()
+        }
+      }, 2200)
+      uni.showToast({ title: '已开启动态演播全链路 ✨', icon: 'none' })
+    },
+
+    pauseReplay() {
+      this.replay.playing = false
+      if (this.replay.timer) {
+        clearInterval(this.replay.timer)
+        this.replay.timer = null
+      }
+    },
+
+    resumeReplay() {
+      if (this.replay.step >= 5) this.replay.step = 0
+      this.replay.playing = true
+      if (this.replay.timer) clearInterval(this.replay.timer)
+      this.replay.timer = setInterval(() => {
+        if (this.replay.step < 5) {
+          this.replay.step++
+        } else {
+          this.pauseReplay()
+        }
+      }, 2200)
+    },
+
+    toggleReplayPlay() {
+      if (this.replay.playing) {
+        this.pauseReplay()
+      } else {
+        this.resumeReplay()
+      }
+    },
+
+    nextReplayStep() {
+      this.pauseReplay()
+      if (this.replay.step < 5) this.replay.step++
+    },
+
+    prevReplayStep() {
+      this.pauseReplay()
+      if (this.replay.step > 0) this.replay.step--
+    },
+
+    resetReplay() {
+      this.replay.step = 0
+      this.pauseReplay()
+      uni.showToast({ title: '演播已重置至阶段 0', icon: 'none' })
+    },
+
+    seekReplay(step) {
+      this.pauseReplay()
+      this.replay.step = step
+    },
+
+    exitReplay() {
+      this.pauseReplay()
+      this.replay.active = false
+      this.replay.step = 0
+      uni.showToast({ title: '已退出演播，切回实时状态', icon: 'none' })
+    },
+
+    scrollToSection(id) {
+      if (id === 'health') this.collapsedAgents.health = false
+      if (id === 'travel') this.collapsedAgents.travel = false
+      if (id === 'community') this.collapsedAgents.community = false
+      if (id === 'safety') this.collapsedAgents.safety = false
+      if (id === 'planBuilder') this.collapsedAgents.planBuilder = false
+      uni.showToast({ title: `已定位至智能体：${id}`, icon: 'none' })
     },
 
     openArtifactModal() {
@@ -1443,7 +2494,7 @@ export default {
     },
 
     readAloud() {
-      uni.showToast({ title: '正在为您朗读《就医出行计划书》…', icon: 'none' })
+      uni.showToast({ title: '正在为您大字朗读《就医出行计划书》…', icon: 'none' })
     },
 
     simulatePrint() {
@@ -1504,14 +2555,14 @@ export default {
 }
 
 .tree-main-title {
-  font-size: 34rpx; /* 17px */
+  font-size: 34rpx;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #ffffff;
 }
 
 .tree-sub-title {
-  font-size: 22rpx; /* 11px */
+  font-size: 22rpx;
   color: #94a3b8;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -1527,7 +2578,7 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  padding: 6rpx 18rpx;
+  padding: 8rpx 20rpx;
   border-radius: 999rpx;
   font-size: 22rpx;
   font-weight: 600;
@@ -1589,53 +2640,43 @@ export default {
 }
 
 .icon-action-btn {
-  padding: 8rpx 18rpx;
+  min-height: 44px;
+  padding: 0 20rpx;
   background: rgba(255, 255, 255, 0.12);
-  border: 1rpx solid rgba(255, 255, 255, 0.2);
-  border-radius: 8rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.25);
+  border-radius: 12rpx;
   color: #f1f5f9;
-  font-size: 22rpx;
-  line-height: 1.2;
+  font-size: 24rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  touch-action: manipulation;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   margin: 0;
 }
 
-.icon-action-btn:hover, .icon-action-btn:active {
+.icon-action-btn:active {
+  transform: translateY(1px) scale(0.99);
   background: rgba(255, 255, 255, 0.22);
 }
 
-.demo-btn {
-  background: #2563eb;
-  border-color: #3b82f6;
+.replay-btn {
+  background: #FF6B35;
+  border-color: #ff8252;
   color: #ffffff;
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.3);
 }
 
-.demo-btn:hover {
-  background: #1d4ed8;
-}
-
-.reset-demo-btn {
-  background: rgba(245, 158, 11, 0.25);
-  border-color: #f59e0b;
-  color: #fcd34d;
-  font-weight: 600;
-}
-
-.collapse-pane-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.25);
-  color: #e2e8f0;
-}
-
-.collapse-pane-btn:hover, .collapse-pane-btn:active {
-  background: rgba(255, 255, 255, 0.2);
+.replay-btn.is-active {
+  background: #10b981;
+  border-color: #34d399;
 }
 
 .close-drawer-btn {
-  width: 56rpx;
-  height: 56rpx;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.15);
   border: none;
@@ -1645,10 +2686,11 @@ export default {
   padding: 0;
   margin: 0;
   color: #ffffff;
+  touch-action: manipulation;
 }
 
 .close-icon {
-  font-size: 26rpx;
+  font-size: 28rpx;
   line-height: 1;
 }
 
@@ -1657,7 +2699,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 16rpx 24rpx;
+  padding: 18rpx 24rpx;
   background: #ffffff;
   border-bottom: 2rpx solid #e2e8f0;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.02);
@@ -1672,16 +2714,15 @@ export default {
 }
 
 .metric-label {
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #64748b;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .metric-val {
-  font-size: 26rpx;
-  font-weight: 700;
+  font-size: 28rpx;
+  font-weight: 800;
   color: #0f172a;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .metric-item.has-pending .metric-val {
@@ -1698,41 +2739,467 @@ export default {
   background: #e2e8f0;
 }
 
-/* 滚动区域 */
+/* 滚动容器 */
 .tree-scroll {
   flex: 1;
   min-height: 0;
-  background: #f8fafc;
+  overflow-y: auto;
 }
 
 .tree-canvas {
-  padding: 24rpx 24rpx 60rpx;
-  box-sizing: border-box;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
 }
 
-/* 根节点：老友记主调度卡片 */
-.root-node-card {
-  position: relative;
+/* ================= 规划 DAG 卡片 (R3) ================= */
+.planning-dag-card {
   background: #ffffff;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 6rpx 20rpx rgba(15, 23, 42, 0.04);
+}
+
+.dag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20rpx;
+  border-bottom: 2rpx solid #f1f5f9;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.dag-header-title-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+
+.dag-sparkle {
+  font-size: 32rpx;
+  line-height: 1.2;
+}
+
+.dag-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.dag-main-title {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.dag-sub-title {
+  font-size: 20rpx;
+  color: #64748b;
+}
+
+.replay-trigger-btn {
+  min-height: 44px;
+  padding: 0 24rpx;
+  background: #FF6B35;
+  border: none;
+  border-radius: 16rpx;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4rpx 14rpx rgba(255, 107, 53, 0.3);
+}
+
+.replay-trigger-btn.is-playing {
+  background: #10b981;
+  box-shadow: 0 4rpx 14rpx rgba(16, 185, 129, 0.3);
+}
+
+.replay-trigger-btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+/* 演播控制条 */
+.replay-controller-bar {
+  margin-top: 20rpx;
+  background: #f8fafc;
   border: 2rpx solid #cbd5e1;
   border-radius: 20rpx;
-  padding: 24rpx;
-  box-shadow: 0 6rpx 24rpx rgba(15, 23, 42, 0.06);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
+  padding: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  animation: fadeIn 0.3s ease;
 }
 
-.root-node-card.is-thinking {
-  border-color: #3b82f6;
-  box-shadow: 0 0 28rpx rgba(59, 130, 246, 0.25);
-  animation: lyj-pulse-glow 2s infinite ease-in-out;
+.replay-narrative {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  background: #ffffff;
+  padding: 16rpx 20rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid #e2e8f0;
+}
+
+.narrative-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #FF6B35;
+  color: #ffffff;
+  padding: 6rpx 14rpx;
+  border-radius: 12rpx;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.narrative-step-num {
+  font-size: 20rpx;
+  line-height: 1.2;
+}
+
+.narrative-icon {
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.narrative-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  flex: 1;
+}
+
+.narrative-title {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.narrative-desc {
+  font-size: 22rpx;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.replay-buttons-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.ctrl-btn {
+  min-height: 44px;
+  padding: 0 20rpx;
+  background: #ffffff;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 12rpx;
+  color: #334155;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.15s;
+}
+
+.ctrl-btn:active {
+  transform: translateY(1px) scale(0.99);
+  background: #f1f5f9;
+}
+
+.ctrl-btn.primary {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.ctrl-btn.exit {
+  background: #f1f5f9;
+  color: #64748b;
+  margin-left: auto;
+}
+
+.replay-progress-track {
+  position: relative;
+  height: 12rpx;
+  background: #e2e8f0;
+  border-radius: 999rpx;
+  margin: 12rpx 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.replay-progress-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #FF6B35;
+  border-radius: 999rpx;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.replay-progress-dot {
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 4rpx solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.replay-progress-dot .dot-num {
+  font-size: 16rpx;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.replay-progress-dot.passed {
+  border-color: #FF6B35;
+  background: #FF6B35;
+  .dot-num { color: #ffffff; }
+}
+
+.replay-progress-dot.current {
+  border-color: #2563eb;
+  background: #2563eb;
+  transform: scale(1.2);
+  box-shadow: 0 0 12rpx rgba(37, 99, 235, 0.5);
+  .dot-num { color: #ffffff; }
+}
+
+/* DAG 拓扑节点可视化 */
+.dag-canvas-container {
+  margin-top: 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.dag-node {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16rpx 20rpx;
+  background: #ffffff;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dag-node:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.dag-node.is-frontier {
+  border-color: #FF6B35;
+  box-shadow: 0 0 18rpx rgba(255, 107, 53, 0.35);
+  animation: dag-frontier-pulse 2s infinite;
+}
+
+.dag-node.is-completed {
+  border-color: #10b981;
+}
+
+.dag-node.is-suspended {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.dag-node.is-rejected {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.dag-node-avatar {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dag-avatar-icon {
+  font-size: 30rpx;
+  line-height: 1;
+}
+
+.dag-node-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+  flex: 1;
+}
+
+.dag-node-title {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.dag-node-role {
+  font-size: 20rpx;
+  color: #64748b;
+}
+
+.dag-node-state-chip {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.dag-wire-vertical {
+  width: 4rpx;
+  height: 28rpx;
+  background: #cbd5e1;
+  position: relative;
+}
+
+.dag-wire-vertical.energy-pulse {
+  background: linear-gradient(180deg, #FF6B35 0%, #10b981 100%);
+  box-shadow: 0 0 8rpx rgba(255, 107, 53, 0.5);
+}
+
+.dag-parallel-trunk-label {
+  padding: 4rpx 16rpx;
+  background: #f1f5f9;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #64748b;
+  margin: 4rpx 0;
+}
+
+.dag-trunk-bar {
+  width: 90%;
+  height: 4rpx;
+  background: #cbd5e1;
+}
+
+.dag-trunk-bar.energy-pulse {
+  background: linear-gradient(90deg, #10b981, #FF6B35, #2563eb);
+  box-shadow: 0 0 8rpx rgba(255, 107, 53, 0.4);
+}
+
+.dag-subagents-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+  margin: 12rpx 0;
+}
+
+.dag-sub-node {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16rpx 8rpx;
+  gap: 6rpx;
+}
+
+.dag-sub-name {
+  font-size: 22rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.dag-sub-role {
+  font-size: 18rpx;
+  color: #64748b;
+}
+
+.dag-mini-status {
+  font-size: 18rpx;
+  font-weight: 700;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  background: #f1f5f9;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* 智能体推理独白卡片 (R3) */
+.agent-monologue-card {
+  background: #fffbf5;
+  border: 2rpx solid #fde68a;
+  border-left: 6rpx solid #FF6B35;
+  border-radius: 16rpx;
+  padding: 16rpx 20rpx;
+  margin-top: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.monologue-head {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.monologue-sparkle {
+  font-size: 24rpx;
+}
+
+.monologue-title {
+  font-size: 22rpx;
+  font-weight: 800;
+  color: #92400e;
+}
+
+.monologue-text {
+  font-size: 22rpx;
+  color: #78350f;
+  line-height: 1.5;
+}
+
+/* 根节点卡片 */
+.root-node-card {
+  background: #ffffff;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.04);
+  position: relative;
 }
 
 .node-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20rpx;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
 .node-badge-group {
@@ -1742,19 +3209,27 @@ export default {
 }
 
 .avatar-box {
-  width: 68rpx;
-  height: 68rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f1f5f9;
-  font-size: 36rpx;
+  flex-shrink: 0;
 }
 
-.orchestrator-avatar {
-  background: #0f172a;
+.avatar-icon {
+  font-size: 36rpx;
+  line-height: 1;
 }
+
+.orchestrator-avatar { background: #ffe4d6; }
+.health-avatar { background: #dcfce7; }
+.travel-avatar { background: #e0f2fe; }
+.community-avatar { background: #ede9fe; }
+.safety-avatar { background: #fef3c7; }
+.planbuilder-avatar { background: #fce7f3; }
+.artifact-avatar { background: #e0e7ff; }
 
 .node-meta {
   display: flex;
@@ -1769,18 +3244,17 @@ export default {
 }
 
 .node-title {
-  font-size: 30rpx; /* 15px */
-  font-weight: 700;
+  font-size: 30rpx;
+  font-weight: 800;
   color: #0f172a;
 }
 
 .agent-tag-role {
   font-size: 20rpx;
-  padding: 4rpx 12rpx;
+  color: #64748b;
   background: #f1f5f9;
-  border-radius: 6rpx;
-  color: #475569;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
 }
 
 .node-role-desc {
@@ -1788,259 +3262,226 @@ export default {
   color: #64748b;
 }
 
-/* 状态标签样式 */
 .state-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8rpx;
+  gap: 6rpx;
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
   font-size: 22rpx;
-  font-weight: 600;
-  border: 1rpx solid transparent;
-}
-
-.state-badge.status-thinking {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #2563eb;
-  animation: lyj-badge-pulse 1.6s infinite ease-in-out;
-}
-
-.state-badge.status-suspended {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #d97706;
-  animation: lyj-badge-pulse 1.4s infinite ease-in-out;
-}
-
-.state-badge.status-rejected {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .state-badge.status-completed {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #16a34a;
+  background: #dcfce7;
+  color: #15803d;
 }
 
-.state-badge.status-ready {
-  background: #f8fafc;
-  border-color: #e2e8f0;
-  color: #475569;
+.state-badge.status-thinking {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.state-badge.status-suspended {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.state-badge.status-rejected {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 /* 意图识别框 */
 .intent-box {
+  margin-top: 20rpx;
   background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 12rpx;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 16rpx;
   padding: 16rpx 20rpx;
-  margin-bottom: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
 .intent-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8rpx;
 }
 
 .intent-label {
   font-size: 22rpx;
-  font-weight: 700;
-  color: #334155;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .intent-tag {
   font-size: 20rpx;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #b91c1c;
   padding: 2rpx 10rpx;
-  background: #e0e7ff;
-  color: #4338ca;
-  border-radius: 6rpx;
-  font-weight: 600;
+  border-radius: 999rpx;
 }
 
 .intent-content {
   font-size: 24rpx;
-  color: #1e293b;
+  color: #334155;
   line-height: 1.5;
 }
 
-/* 步骤流水线 */
+/* 任务分解流水线 (Todo State Machine) (R2) */
 .plan-steps-track {
-  border-top: 1rpx dashed #cbd5e1;
-  padding-top: 16rpx;
+  margin-top: 20rpx;
+  background: #f8fafc;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 16rpx;
+  padding: 16rpx 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
 }
 
 .track-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12rpx;
 }
 
 .track-title {
-  font-size: 22rpx;
-  font-weight: 700;
-  color: #475569;
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .track-progress {
   font-size: 22rpx;
-  font-weight: 600;
-  color: #16a34a;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 800;
+  color: #10b981;
 }
 
 .steps-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12rpx;
 }
 
 .step-chip {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 10rpx 16rpx;
-  background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 10rpx;
+  gap: 10rpx;
+  padding: 12rpx 16rpx;
+  background: #ffffff;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 12rpx;
   transition: all 0.2s;
 }
 
 .step-chip.step-completed {
+  border-color: #10b981;
   background: #f0fdf4;
-  border-color: #bbf7d0;
-  .step-num {
-    background: #16a34a;
-    color: #ffffff;
-  }
-  .step-name {
-    color: #166534;
-    font-weight: 600;
-  }
-}
-
-.step-chip.step-in_progress {
-  background: #eff6ff;
-  border-color: #93c5fd;
-  .step-num {
-    background: #2563eb;
-    color: #ffffff;
-  }
-  .step-name {
-    color: #1d4ed8;
-    font-weight: 600;
-  }
 }
 
 .step-chip.step-suspended {
+  border-color: #f59e0b;
   background: #fffbeb;
-  border-color: #fde68a;
-  .step-num {
-    background: #d97706;
-    color: #ffffff;
-  }
-  .step-name {
-    color: #b45309;
-    font-weight: 600;
-  }
 }
 
 .step-chip.step-rejected {
+  border-color: #ef4444;
   background: #fef2f2;
-  border-color: #fecaca;
-  .step-num {
-    background: #ef4444;
-    color: #ffffff;
-  }
-  .step-name {
-    color: #b91c1c;
-    font-weight: 600;
-  }
+}
+
+.step-chip.step-in_progress {
+  border-color: #3b82f6;
+  background: #eff6ff;
 }
 
 .step-num {
-  width: 32rpx;
-  height: 32rpx;
+  width: 36rpx;
+  height: 36rpx;
   border-radius: 50%;
-  background: #cbd5e1;
+  background: #e2e8f0;
   color: #475569;
   font-size: 20rpx;
-  font-weight: 700;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
+.step-completed .step-num {
+  background: #10b981;
+  color: #ffffff;
+}
+
 .step-name {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #1e293b;
   flex: 1;
-  font-size: 24rpx;
-  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .step-status-tag {
   font-size: 20rpx;
-  font-weight: 600;
+  font-weight: 700;
   color: #64748b;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  flex-shrink: 0;
 }
+
+.step-completed .step-status-tag { color: #15803d; }
+.step-suspended .step-status-tag { color: #b45309; }
+.step-rejected .step-status-tag { color: #b91c1c; }
+.step-in_progress .step-status-tag { color: #1d4ed8; }
 
 /* 分支干线容器 */
 .branch-trunk-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16rpx 0 10rpx;
-  position: relative;
+  margin: 8rpx 0;
 }
 
 .trunk-line-vertical {
   width: 4rpx;
-  height: 36rpx;
-  background: #94a3b8;
-  transition: all 0.3s;
-}
-
-.trunk-line-vertical.flow-active {
-  background: linear-gradient(180deg, #2563eb, #60a5fa, #2563eb);
-  background-size: 100% 200%;
-  animation: linePulseFlow 1.8s linear infinite;
-  box-shadow: 0 0 12rpx rgba(37, 99, 235, 0.6);
+  height: 32rpx;
+  background: #cbd5e1;
 }
 
 .trunk-label-chip {
-  padding: 4rpx 18rpx;
-  background: #e2e8f0;
+  padding: 4rpx 20rpx;
+  background: #ffffff;
+  border: 2rpx solid #e2e8f0;
   border-radius: 999rpx;
-  margin: 6rpx 0;
+  box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.04);
 }
 
 .trunk-chip-text {
   font-size: 20rpx;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 700;
+  color: #64748b;
 }
 
 .trunk-horizontal-bar {
-  width: 85%;
+  width: 80%;
   height: 4rpx;
-  background: #94a3b8;
-  margin-top: 6rpx;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #cbd5e1;
+  margin-top: 8rpx;
 }
 
+.trunk-line-vertical.flow-active,
 .trunk-horizontal-bar.flow-active {
-  background: linear-gradient(90deg, #60a5fa, #2563eb, #60a5fa);
-  box-shadow: 0 0 10rpx rgba(37, 99, 235, 0.4);
+  background: linear-gradient(90deg, #10b981, #FF6B35, #2563eb);
 }
 
-/* 子智能体分支卡片 */
+/* 子智能体分支容器 */
 .subagent-branches-container {
   display: flex;
   flex-direction: column;
@@ -2050,202 +3491,125 @@ export default {
 .subagent-branch-card {
   background: #ffffff;
   border: 2rpx solid #e2e8f0;
-  border-radius: 18rpx;
-  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.04);
+  border-radius: 20rpx;
   overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.subagent-branch-card.health-branch {
-  border-left: 8rpx solid #0284c7;
-}
-
-.subagent-branch-card.travel-branch {
-  border-left: 8rpx solid #ea580c;
-}
-
-.subagent-branch-card.community-branch {
-  border-left: 8rpx solid #8b5cf6;
-}
-
-.subagent-branch-card.planbuilder-branch {
-  border-left: 8rpx solid #059669;
+  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.04);
+  transition: all 0.25s;
 }
 
 .branch-header {
-  padding: 18rpx 20rpx;
-  background: #f8fafc;
+  padding: 18rpx 24rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  border-bottom: 1rpx solid #e2e8f0;
-  gap: 10rpx;
+  background: #ffffff;
+  border-bottom: 2rpx solid #f1f5f9;
+}
+
+.branch-header:active {
+  background: #f8fafc;
 }
 
 .branch-header-left {
   display: flex;
   align-items: center;
-  gap: 14rpx;
-  min-width: 0;
-  flex: 1;
+  gap: 16rpx;
 }
-
-.health-avatar { background: #e0f2fe; }
-.travel-avatar { background: #ffedd5; }
-.community-avatar { background: #ede9fe; }
-.planbuilder-avatar { background: #dcfce7; }
 
 .branch-title-group {
   display: flex;
   flex-direction: column;
   gap: 2rpx;
-  min-width: 0;
 }
 
 .branch-name-row {
   display: flex;
-  align-items: center;
-  gap: 10rpx;
-  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8rpx;
 }
 
 .branch-name {
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 800;
   color: #0f172a;
 }
 
 .branch-en-tag {
-  font-size: 24rpx;
+  font-size: 20rpx;
   color: #64748b;
-  font-weight: 500;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .branch-desc {
-  font-size: 22rpx;
-  color: #64748b;
+  font-size: 20rpx;
+  color: #94a3b8;
 }
 
 .branch-header-right {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  flex-shrink: 0;
 }
 
 .accordion-arrow {
-  font-size: 20rpx;
+  font-size: 22rpx;
   color: #94a3b8;
-  display: inline-block;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.collapsed .accordion-arrow {
-  transform: rotate(-90deg);
 }
 
 .branch-collapsible {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
-  opacity: 0;
+  max-height: 0;
   overflow: hidden;
+  transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .branch-collapsible.is-open {
-  grid-template-rows: 1fr;
-  opacity: 1;
-}
-
-.branch-collapsible > .branch-body {
-  min-height: 0;
+  max-height: 3000px;
 }
 
 .branch-body {
-  padding: 18rpx 20rpx 24rpx;
+  padding: 20rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  background: #f8fafc;
 }
 
-/* 工具流与节点样式 (R2 / R3) */
+/* 工具流水线 */
 .tools-flow {
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
-  position: relative;
-  padding-left: 20rpx;
-  border-left: 2rpx dashed #cbd5e1;
+  gap: 16rpx;
 }
 
 .tool-node {
-  position: relative;
   background: #ffffff;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 12rpx;
-  padding: 14rpx 16rpx;
-  transition: all 0.2s;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 16rpx;
+  padding: 18rpx 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.03);
 }
 
-.tool-node.node-completed, .tool-node.node-executed {
-  border-color: #cbd5e1;
-  background: #ffffff;
-}
-
-.tool-node.node-running {
-  border-color: #60a5fa;
-  box-shadow: 0 0 16rpx rgba(59, 130, 246, 0.2);
+.tool-node.node-completed {
+  border-left: 6rpx solid #10b981;
 }
 
 .tool-node.node-suspended {
-  border-color: #f59e0b;
-  background: #fffdfa;
-  box-shadow: 0 0 18rpx rgba(245, 158, 11, 0.25);
-  animation: lyj-suspended-glow 1.8s infinite ease-in-out;
+  border-left: 6rpx solid #f59e0b;
 }
 
 .tool-node.node-rejected {
-  border-color: #ef4444;
-  background: #fff8f8;
-  box-shadow: 0 0 16rpx rgba(239, 68, 68, 0.18);
+  border-left: 6rpx solid #ef4444;
 }
 
-.node-connector-dot {
-  position: absolute;
-  left: -29rpx;
-  top: 24rpx;
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 50%;
-  background: #94a3b8;
-  border: 4rpx solid #ffffff;
-}
-
-.node-completed .node-connector-dot, .node-executed .node-connector-dot {
-  background: #16a34a;
-}
-
-.node-running .node-connector-dot {
-  background: #2563eb;
-}
-
-.node-suspended .node-connector-dot {
-  background: #f59e0b;
-}
-
-.node-rejected .node-connector-dot {
-  background: #ef4444;
-}
-
-.node-card-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
+.tool-node.node-running {
+  border-left: 6rpx solid #3b82f6;
 }
 
 .node-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 12rpx;
 }
 
 .node-name-box {
@@ -2257,94 +3621,231 @@ export default {
 
 .tool-fn-name {
   font-size: 24rpx;
-  font-weight: 700;
-  color: #0f172a;
+  font-weight: 800;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #0f172a;
 }
 
 .tool-cn-name {
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #64748b;
 }
 
 .risk-badge {
-  font-size: 20rpx;
-  padding: 2rpx 10rpx;
+  font-size: 18rpx;
+  font-weight: 700;
   background: #fef3c7;
   color: #b45309;
-  border-radius: 6rpx;
-  font-weight: 600;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+}
+
+.node-tags-group {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.latency-badge {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
 }
 
 .node-status-tag {
   font-size: 20rpx;
-  font-weight: 600;
-  padding: 2rpx 10rpx;
-  border-radius: 6rpx;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .node-status-tag.completed, .node-status-tag.executed {
-  background: #f0fdf4;
-  color: #16a34a;
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .node-status-tag.suspended {
-  background: #fffbeb;
-  color: #d97706;
-}
-
-.node-status-tag.running {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .node-status-tag.rejected {
   background: #fee2e2;
-  color: #dc2626;
+  color: #b91c1c;
 }
 
-.node-status-tag.pending {
-  background: #f8fafc;
+.node-status-tag.running {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* 参数 JSON 高亮 (R3) */
+.mono-params-box {
+  background: #0f172a;
+  border-radius: 12rpx;
+  padding: 12rpx 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.params-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4rpx;
+}
+
+.params-lang-label {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.params-copy-hint {
+  font-size: 18rpx;
+  color: #64748b;
+}
+
+.mono-code-tokens {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #f8fafc;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8rpx;
+  row-gap: 2rpx;
+}
+
+.token-brace {
   color: #94a3b8;
 }
 
-/* 参数 mono 块 (R3) */
-.mono-params-box {
-  background: #f1f5f9;
-  border-radius: 8rpx;
-  padding: 8rpx 12rpx;
-  overflow-x: auto;
+.token-item {
+  display: inline-flex;
+  align-items: center;
 }
 
-.mono-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 22rpx; /* 11px */
-  color: #334155;
-  line-height: 1.4;
-  word-break: break-all;
+.tok-key {
+  color: #60a5fa;
 }
 
+.tok-colon {
+  color: #94a3b8;
+}
+
+.tok-val.val-string {
+  color: #34d399;
+}
+
+.tok-val.val-number {
+  color: #fbbf24;
+}
+
+.tok-val.val-boolean {
+  color: #f472b6;
+}
+
+.tok-comma {
+  color: #94a3b8;
+}
+
+/* 返回结果框 */
 .result-box {
-  padding: 6rpx 0;
+  margin-top: 10rpx;
+  background: #f1f5f9;
+  border-radius: 10rpx;
+  padding: 10rpx 14rpx;
+}
+
+.result-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8rpx;
 }
 
 .result-text {
   font-size: 22rpx;
-  color: #166534;
-  line-height: 1.4;
+  color: #334155;
+  font-weight: 600;
 }
 
-/* 挂起警告卡片 (R2) */
+.toggle-detail-btn {
+  min-height: 44px;
+  padding: 0 16rpx;
+  background: #ffffff;
+  border: 1rpx solid #cbd5e1;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+  color: #2563eb;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  margin: 0;
+}
+
+.expanded-tool-detail {
+  margin-top: 10rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+}
+
+.detail-k {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #64748b;
+  width: 110rpx;
+  flex-shrink: 0;
+}
+
+.detail-v {
+  font-size: 20rpx;
+  color: #1e293b;
+}
+
+.detail-v.text-ok { color: #15803d; font-weight: 700; }
+.detail-v.code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: #e2e8f0;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  font-size: 18rpx;
+  word-break: break-all;
+}
+
+/* 挂起警告卡片 */
 .suspended-alert-card {
+  margin-top: 12rpx;
   background: #fffbeb;
-  border: 2rpx dashed #f59e0b;
-  border-radius: 10rpx;
-  padding: 14rpx;
+  border: 2rpx solid #fcd34d;
+  border-radius: 14rpx;
+  padding: 14rpx 16rpx;
   display: flex;
   flex-direction: column;
   gap: 8rpx;
-  margin-top: 6rpx;
 }
 
 .suspend-header {
@@ -2353,476 +3854,405 @@ export default {
   gap: 8rpx;
 }
 
-.suspend-title {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #b45309;
-}
-
-.suspend-desc {
-  font-size: 22rpx;
-  color: #92400e;
-  line-height: 1.4;
-}
+.suspend-icon { font-size: 26rpx; }
+.suspend-title { font-size: 24rpx; font-weight: 800; color: #b45309; }
+.suspend-desc { font-size: 20rpx; color: #78350f; line-height: 1.4; }
 
 .suspend-actions-row {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-top: 8rpx;
+  margin-top: 4rpx;
   flex-wrap: wrap;
 }
 
 .quick-approve-btn {
-  background: #d97706;
+  min-height: 44px;
+  padding: 0 20rpx;
+  background: #10b981;
+  border: none;
+  border-radius: 10rpx;
   color: #ffffff;
   font-size: 22rpx;
   font-weight: 700;
-  padding: 8rpx 20rpx;
-  border-radius: 8rpx;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4rpx 12rpx rgba(217, 119, 6, 0.3);
-  transition: all 0.2s;
-  margin: 0;
-}
-
-.quick-approve-btn:active {
-  background: #b45309;
+  touch-action: manipulation;
+  box-shadow: 0 2rpx 8rpx rgba(16, 185, 129, 0.3);
 }
 
 .quick-reject-btn {
+  min-height: 44px;
+  padding: 0 20rpx;
   background: #f1f5f9;
-  color: #dc2626;
-  border: 2rpx solid #fca5a5;
-  font-size: 22rpx;
-  font-weight: 700;
-  padding: 6rpx 18rpx;
-  border-radius: 8rpx;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin: 0;
-}
-
-.quick-reject-btn:active {
-  background: #fee2e2;
-}
-
-.executed-alert-card {
-  background: #f0fdf4;
-  border: 1rpx solid #bbf7d0;
-  border-radius: 8rpx;
-  padding: 8rpx 12rpx;
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  margin-top: 4rpx;
-}
-
-.executed-text {
-  font-size: 22rpx;
-  color: #15803d;
-  font-weight: 600;
-}
-
-/* 拒绝状态卡片 (R2) */
-.rejected-alert-card {
-  background: #fef2f2;
-  border: 2rpx dashed #f87171;
+  border: 2rpx solid #cbd5e1;
   border-radius: 10rpx;
-  padding: 14rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  margin-top: 6rpx;
-  animation: fadeIn 0.25s ease-out;
-}
-
-.reject-header {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.reject-title {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #b91c1c;
-}
-
-.reject-desc {
+  color: #64748b;
   font-size: 22rpx;
-  color: #991b1b;
-  line-height: 1.4;
-}
-
-/* 产物叶子节点 (R2) */
-.artifact-leaf-node {
-  background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%);
-  border: 2rpx solid #38bdf8;
-  border-radius: 14rpx;
-  padding: 16rpx 18rpx;
-  cursor: pointer;
-  transition: all 0.25s;
-  box-shadow: 0 4rpx 16rpx rgba(56, 189, 248, 0.15);
-  margin-top: 8rpx;
-}
-
-.artifact-leaf-node.is-dimmed {
-  opacity: 0.75;
-  border-color: #cbd5e1;
-  background: #f8fafc;
-  box-shadow: none;
-}
-
-.artifact-leaf-node:hover, .artifact-leaf-node:active {
-  transform: translateY(-2rpx);
-  box-shadow: 0 8rpx 24rpx rgba(56, 189, 248, 0.28);
-}
-
-.leaf-head {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-}
-
-.leaf-icon-badge {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 12rpx;
-  background: #ffffff;
-  display: flex;
+  font-weight: 700;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
-.leaf-icon {
-  font-size: 32rpx;
+.quick-approve-btn:active, .quick-reject-btn:active {
+  transform: translateY(1px) scale(0.99);
 }
 
-.leaf-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.leaf-title-row {
+/* 已执行/已拒绝状态卡 */
+.executed-alert-card {
+  margin-top: 10rpx;
+  background: #f0fdf4;
+  border: 2rpx solid #86efac;
+  border-radius: 12rpx;
+  padding: 10rpx 14rpx;
   display: flex;
   align-items: center;
   gap: 10rpx;
 }
 
-.leaf-title {
-  font-size: 26rpx;
+.executed-icon { font-size: 24rpx; }
+.executed-text { font-size: 22rpx; font-weight: 700; color: #15803d; }
+
+.rejected-alert-card {
+  margin-top: 10rpx;
+  background: #fef2f2;
+  border: 2rpx solid #fca5a5;
+  border-radius: 12rpx;
+  padding: 10rpx 14rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.reject-header { display: flex; align-items: center; gap: 8rpx; }
+.reject-icon { font-size: 24rpx; }
+.reject-title { font-size: 22rpx; font-weight: 800; color: #b91c1c; }
+.reject-desc { font-size: 20rpx; color: #991b1b; }
+
+/* 安全防线网关面板 */
+.safety-dashboard-card {
+  background: #ffffff;
+  border: 2rpx solid #fcd34d;
+  border-radius: 16rpx;
+  padding: 16rpx 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.safety-dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.dash-title {
+  font-size: 24rpx;
   font-weight: 800;
-  color: #0f172a;
+  color: #92400e;
 }
 
-.leaf-tag {
-  font-size: 20rpx;
-  padding: 2rpx 8rpx;
-  background: #dcfce7;
-  color: #166534;
-  border-radius: 6rpx;
-  font-weight: 600;
-}
-
-.leaf-desc {
+.batch-approve-btn {
+  min-height: 44px;
+  padding: 0 20rpx;
+  background: #10b981;
+  border: none;
+  border-radius: 12rpx;
+  color: #ffffff;
   font-size: 22rpx;
-  color: #475569;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 4rpx 12rpx rgba(16, 185, 129, 0.3);
 }
+
+.batch-approve-btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.safety-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.safety-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 10rpx 12rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 10rpx;
+}
+
+.item-icon { font-size: 28rpx; }
+.item-meta { display: flex; flex-direction: column; flex: 1; }
+.item-name { font-size: 22rpx; font-weight: 700; color: #0f172a; }
+.item-sub { font-size: 18rpx; color: #64748b; }
+.item-amount { font-size: 24rpx; font-weight: 800; color: #dc2626; }
+.item-status { font-size: 20rpx; font-weight: 700; padding: 2rpx 10rpx; border-radius: 999rpx; background: #f1f5f9; color: #64748b; }
+.item-status.executed, .item-status.completed { background: #dcfce7; color: #15803d; }
+.item-status.suspended { background: #fef3c7; color: #b45309; }
+
+.safety-pool-summary {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding-top: 8rpx;
+  border-top: 1rpx dashed #e2e8f0;
+  font-size: 20rpx;
+}
+
+.pool-label { color: #64748b; }
+.pool-val { font-size: 26rpx; font-weight: 800; color: #dc2626; }
+.pool-shield-tag { margin-left: auto; font-size: 18rpx; color: #10b981; font-weight: 700; }
+
+/* 交付物叶子节点卡片 */
+.artifact-leaf-node {
+  margin-top: 16rpx;
+  background: #ffffff;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 18rpx;
+  padding: 18rpx 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.04);
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.artifact-leaf-node.is-ready {
+  border-color: #10b981;
+  background: #f0fdf4;
+  box-shadow: 0 6rpx 20rpx rgba(16, 185, 129, 0.15);
+}
+
+.artifact-leaf-node:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.leaf-head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.leaf-icon-badge {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 14rpx;
+  background: #e0e7ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.leaf-icon { font-size: 32rpx; }
+.leaf-info { display: flex; flex-direction: column; gap: 4rpx; flex: 1; }
+.leaf-title-row { display: flex; align-items: center; gap: 8rpx; }
+.leaf-title { font-size: 26rpx; font-weight: 800; color: #0f172a; }
+.leaf-tag { font-size: 18rpx; background: #e0e7ff; color: #4338ca; padding: 2rpx 10rpx; border-radius: 999rpx; font-weight: 700; }
+.leaf-desc { font-size: 20rpx; color: #64748b; }
 
 .leaf-action-badge {
-  padding: 6rpx 14rpx;
-  background: #64748b;
-  color: #ffffff;
-  border-radius: 8rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  transition: all 0.2s;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .leaf-action-badge.badge-ready {
-  background: #0284c7;
+  background: #10b981;
+  color: #ffffff;
 }
 
-/* 交付物弹窗样式 (Artifact Modal) */
+/* 交付物弹窗 */
 .artifact-modal-mask {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.65);
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 999;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+  padding: 24rpx;
 }
 
 .artifact-modal {
-  width: 700rpx;
-  max-width: 90vw;
+  width: 100%;
+  max-width: 680px;
   max-height: 85vh;
   background: #ffffff;
-  border-radius: 20rpx;
-  box-shadow: 0 20rpx 60rpx rgba(0, 0, 0, 0.25);
+  border-radius: 24rpx;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 20rpx 50rpx rgba(15, 23, 42, 0.25);
 }
 
 .artifact-modal-header {
-  padding: 24rpx 28rpx;
-  background: #0f172a;
+  padding: 20rpx 24rpx;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.modal-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.modal-sub {
-  font-size: 22rpx;
-  color: #94a3b8;
-}
-
+.modal-title { font-size: 28rpx; font-weight: 800; color: #ffffff; }
+.modal-sub { font-size: 20rpx; color: #94a3b8; }
 .modal-close-btn {
-  width: 52rpx;
-  height: 52rpx;
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
   border: none;
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26rpx;
-  padding: 0;
-  margin: 0;
+  font-size: 28rpx;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .artifact-modal-body {
   flex: 1;
   min-height: 0;
-  padding: 24rpx;
+  overflow-y: auto;
+  padding: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
   background: #f8fafc;
-  box-sizing: border-box;
 }
 
 .plan-page-card {
   background: #ffffff;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 14rpx;
-  padding: 18rpx 20rpx;
-  margin-bottom: 20rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+  border: 2rpx solid #e2e8f0;
+  border-radius: 18rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
 }
 
 .page-card-head {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-bottom: 14rpx;
+  gap: 10rpx;
+  padding-bottom: 12rpx;
   border-bottom: 2rpx solid #f1f5f9;
-  padding-bottom: 10rpx;
+  margin-bottom: 12rpx;
 }
 
 .page-badge {
   font-size: 20rpx;
-  font-weight: 700;
-  padding: 4rpx 12rpx;
-  background: #0f172a;
+  font-weight: 800;
+  background: #FF6B35;
   color: #ffffff;
-  border-radius: 6rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
 }
 
 .page-title {
-  font-size: 28rpx;
-  font-weight: 700;
+  font-size: 26rpx;
+  font-weight: 800;
   color: #0f172a;
 }
 
 .page-rows {
   display: flex;
   flex-direction: column;
-  gap: 10rpx;
+  gap: 8rpx;
 }
 
 .page-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 16rpx;
+  padding: 4rpx 0;
 }
 
-.row-label {
-  font-size: 24rpx;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.row-val {
-  font-size: 24rpx;
-  color: #1e293b;
-  font-weight: 600;
-  text-align: right;
-}
+.row-label { font-size: 22rpx; color: #64748b; width: 150rpx; flex-shrink: 0; }
+.row-val { font-size: 24rpx; font-weight: 700; color: #0f172a; text-align: right; flex: 1; }
 
 .page-note {
-  display: block;
-  margin-top: 12rpx;
-  font-size: 22rpx;
-  color: #d97706;
-  background: #fffbeb;
-  padding: 8rpx 12rpx;
-  border-radius: 8rpx;
-  line-height: 1.4;
+  margin-top: 10rpx;
+  padding-top: 8rpx;
+  border-top: 1rpx dashed #e2e8f0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
 }
 
-.disclaimer-note {
-  padding: 16rpx;
-  font-size: 22rpx;
-  color: #94a3b8;
-  line-height: 1.5;
-  text-align: center;
-}
+.note-icon { font-size: 20rpx; }
+.note-text { font-size: 20rpx; color: #64748b; line-height: 1.4; }
 
 .artifact-modal-footer {
-  padding: 20rpx 24rpx;
+  padding: 16rpx 20rpx;
   background: #ffffff;
-  border-top: 1rpx solid #e2e8f0;
+  border-top: 2rpx solid #e2e8f0;
   display: flex;
-  gap: 16rpx;
+  gap: 12rpx;
 }
 
-.footer-action-btn {
+.footer-btn {
   flex: 1;
-  height: 80rpx;
+  min-height: 44px;
   border-radius: 12rpx;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
   cursor: pointer;
-  margin: 0;
+  touch-action: manipulation;
 }
 
-.footer-action-btn.secondary {
+.footer-btn.primary {
+  background: #FF6B35;
+  color: #ffffff;
+  border: none;
+}
+
+.footer-btn.secondary {
   background: #f1f5f9;
   color: #334155;
+  border: 2rpx solid #cbd5e1;
 }
 
-.footer-action-btn.primary {
-  background: #2563eb;
-  color: #ffffff;
+@keyframes dag-frontier-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10rpx rgba(255, 107, 53, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 24rpx rgba(255, 107, 53, 0.55);
+  }
 }
 
-/* 动效 Keyframes */
 @keyframes lyj-pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.35);
-  }
-  50% {
-    box-shadow: 0 0 20rpx 6rpx rgba(37, 99, 235, 0.2);
-  }
-}
-
-@keyframes lyj-suspended-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 16rpx 4rpx rgba(245, 158, 11, 0.2);
-  }
-}
-
-@keyframes lyj-badge-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.75; }
-}
-
-@keyframes linePulseFlow {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 0% 200%; }
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* 移动端狭窄屏幕优化 (< 480px / 375px) */
-@media screen and (max-width: 480px) {
-  .tree-header {
-    padding: 16rpx 20rpx;
-    flex-wrap: wrap;
-    gap: 12rpx;
-  }
-  .tree-main-title {
-    font-size: 28rpx;
-  }
-  .tree-sub-title {
-    display: none;
-  }
-  .header-right {
-    flex-wrap: wrap;
-    gap: 8rpx;
-  }
-  .global-status-pill {
-    padding: 4rpx 14rpx;
-    font-size: 20rpx;
-  }
-  .icon-action-btn {
-    padding: 6rpx 14rpx;
-    font-size: 20rpx;
-  }
-  .tree-canvas {
-    padding: 16rpx 16rpx 40rpx;
-  }
-  .metrics-bar {
-    padding: 12rpx 16rpx;
-  }
-}
-
-/* 移动端横屏或超矮屏幕优化 (< 500px 高度) */
-@media screen and (max-height: 500px) {
-  .tree-header {
-    padding: 10rpx 16rpx;
-  }
-  .tree-title-icon {
-    font-size: 32rpx;
-  }
-  .tree-main-title {
-    font-size: 26rpx;
-  }
-  .metrics-bar {
-    padding: 8rpx 16rpx;
-  }
-  .metric-item {
-    gap: 2rpx;
-  }
-  .metric-label {
-    font-size: 18rpx;
-  }
-  .metric-val {
-    font-size: 22rpx;
-  }
-  .tree-canvas {
-    padding: 12rpx 12rpx 30rpx;
-  }
-  .root-node-card {
-    padding: 16rpx;
-  }
+  from { opacity: 0; transform: translateY(-8rpx); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

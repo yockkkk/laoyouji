@@ -18,7 +18,7 @@
       <view class="step-dot" :class="item.status">
         <text class="step-num">{{ item.status === 'completed' ? '✓' : index + 1 }}</text>
       </view>
-      <text class="step-title" :class="item.status">{{ item.content }}</text>
+      <text class="step-title" :class="item.status">{{ item.content || item.text || item.title }}</text>
       <text v-if="item.status === 'in_progress'" class="step-spinner">⏳</text>
     </view>
   </view>
@@ -61,6 +61,7 @@ export default {
 .plan-count {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+  font-variant-numeric: tabular-nums;
 }
 .step {
   display: flex;
@@ -90,6 +91,7 @@ export default {
 .step-num {
   font-size: $lyj-font-sm;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .step-title {
   flex: 1;

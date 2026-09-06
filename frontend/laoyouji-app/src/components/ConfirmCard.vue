@@ -194,6 +194,7 @@ export default {
   font-size: $lyj-font-md;
   color: $lyj-danger;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .waiting {
   font-size: $lyj-font-sm;
@@ -202,5 +203,6 @@ export default {
 .expire {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+  font-variant-numeric: tabular-nums;
 }
 </style>

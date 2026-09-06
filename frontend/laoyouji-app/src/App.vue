@@ -25,6 +25,29 @@ page {
 
 button {
   font-size: $lyj-font-md;
+  touch-action: manipulation;
+}
+
+button:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 4rpx solid $lyj-primary;
+  outline-offset: 2rpx;
+}
+
+input, textarea {
+  font-size: $lyj-font-sm; /* 18px >= 16px to prevent iOS auto-zoom */
+}
+
+.tabular-num, [tabular-nums] {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* 通用大按钮。高度按硬指标给到 80px —— 原来是 96rpx（48px），不够。 */

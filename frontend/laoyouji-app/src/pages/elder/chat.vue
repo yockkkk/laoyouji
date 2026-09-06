@@ -344,6 +344,9 @@ export default {
     }
   },
   async onShow() {
+    try {
+      uni.hideTabBar({ animation: false })
+    } catch (e) {}
     this._updateViewport()
     this.user = getCurrentUser()
     if (!this.user) {
@@ -375,9 +378,15 @@ export default {
   },
   /** 离页就停表。老人切去吃药页时后台还在每 5 秒发请求，是白耗电。 */
   onHide() {
+    try {
+      uni.showTabBar({ animation: false })
+    } catch (e) {}
     this._stopWatch()
   },
   onUnload() {
+    try {
+      uni.showTabBar({ animation: false })
+    } catch (e) {}
     this._stopWatch()
   },
   methods: {
@@ -637,6 +646,9 @@ export default {
     },
 
     goBack() {
+      try {
+        uni.showTabBar({ animation: false })
+      } catch (e) {}
       const pages = getCurrentPages()
       if (pages && pages.length > 1) {
         uni.navigateBack()
@@ -1137,7 +1149,7 @@ export default {
   top: 0;
   left: 0;
   right: 0;
-  bottom: var(--window-bottom, 50px);
+  bottom: 0;
   /* #endif */
   /* #ifndef H5 */
   height: 100vh;
