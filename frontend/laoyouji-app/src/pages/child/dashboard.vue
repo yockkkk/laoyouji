@@ -20,44 +20,88 @@
 
     <!-- 响应式铺砌布局 -->
     <view class="sections-grid">
-      <!-- 完整5页计划书（出行与就医） -->
-      <view class="section">
+      <!-- 待我审批事项 -->
+      <view v-if="pendingConfirmations.length" class="section pending-section">
         <view class="section-head">
-          <text class="section-title">📋 出行与就医计划 ({{ plans.length }})</text>
+          <text class="section-title pending-title">✋ 待我审批事项 ({{ pendingCount }})</text>
         </view>
-        <view v-if="!plans.length" class="empty-row">
-          <text>暂无计划书（长辈提出就医或出行需求后由老友记生成）</text>
-        </view>
-        <view
-          v-for="p in plans"
-          :key="p.id"
-          class="plan-item"
-          @tap="openPlan(p)"
-        >
-          <view class="plan-item-main">
-            <view class="plan-item-title-row">
-              <text class="plan-badge" :class="p.type">{{ p.type === 'medical_plan' || (p.title && p.title.includes('就医')) ? '就医计划' : '出行计划' }}</text>
-              <text class="plan-item-title">{{ p.title }}</text>
+        <view v-for="t in pendingConfirmations" :key="t.id" class="pending-card">
+          <view class="pending-card-top">
+            <view class="pending-icon">{{ taskIcon(t) }}</view>
+            <view class="pending-main">
+              <view class="pending-summary-row">
+                <text class="pending-summary">{{ taskSummary(t) }}</text>
+                <text v-if="t.amount" class="pending-cost">¥{{ t.amount }}</text>
+              </view>
+              <text class="pending-reason" v-if="taskReason(t)">原因：{{ taskReason(t) }}</text>
+              <text class="pending-time" v-if="t.created_at">申请时间：{{ fmtTime(t.created_at) }}</text>
             </view>
-            <text class="plan-item-meta">{{ p.status ? statusText(p.status) : '已规划' }} · 点击查看完整5页计划书 ›</text>
+          </view>
+          <view class="pending-action-bar">
+            <view v-if="t.status === 'executed' || t.status === 'approved'" class="inline-status success">
+              <text>✅ 已同意并办理</text>
+            </view>
+            <view v-else-if="t.status === 'rejected'" class="inline-status rejected">
+              <text>🚫 已拒绝</text>
+            </view>
+            <view v-else-if="t.status === 'failed'" class="inline-status failed">
+              <text>⚠️ 执行失败</text>
+            </view>
+            <view v-else class="pending-btns">
+              <button
+                class="approve-btn"
+                :loading="actionLoading[t.id] === 'approve'"
+                :disabled="!!actionLoading[t.id]"
+                size="mini"
+                @tap.stop="approveTask(t)"
+              >
+                同意
+              </button>
+              <button
+                class="reject-btn"
+                :loading="actionLoading[t.id] === 'reject'"
+                :disabled="!!actionLoading[t.id]"
+                size="mini"
+                @tap.stop="rejectTask(t)"
+              >
+                拒绝
+              </button>
+            </view>
           </view>
         </view>
       </view>
 
-      <!-- 行程状态 -->
+      <!-- 完整5页计划书（出行与就医） -->
       <view class="section">
         <view class="section-head">
-          <text class="section-title">🧭 出行行程</text>
+          <text class="section-title">📋 出行与就医计划 ({{ consolidatedPlans.length }})</text>
         </view>
-        <view v-if="!trips.length" class="empty-row"><text>暂无行程</text></view>
-        <view v-for="t in trips" :key="t.id" class="trip-item">
-          <view class="trip-info" @tap="t.plan ? openPlan(t) : goGuardian(t)">
-            <text class="trip-purpose">{{ t.purpose }}</text>
-            <text class="trip-status" :class="t.status">{{ statusText(t.status) }}</text>
+        <view v-if="!consolidatedPlans.length" class="empty-row">
+          <text>暂无计划书（长辈提出就医或出行需求后由老友记生成）</text>
+        </view>
+        <view
+          v-for="p in consolidatedPlans"
+          :key="p.id || p.trip_id"
+          class="plan-card-item"
+        >
+          <view class="plan-item-main" @tap="openPlan(p)">
+            <view class="plan-item-title-row">
+              <text class="plan-badge" :class="isMedical(p) ? 'medical_plan' : 'trip_plan'">
+                {{ isMedical(p) ? '就医计划' : '出行计划' }}
+              </text>
+              <text class="plan-item-title">{{ p.title }}</text>
+              <text class="plan-status-badge" :class="p.status || 'planned'">
+                {{ statusText(p.status || 'planned') }}
+              </text>
+            </view>
+            <view class="plan-item-meta-row">
+              <text v-if="getDestination(p)" class="plan-dest">📍 目的地：{{ getDestination(p) }}</text>
+              <text class="plan-meta-time" v-if="p.created_at">规划时间：{{ fmtTime(p.created_at) }}</text>
+            </view>
           </view>
-          <view class="trip-actions">
-            <button v-if="t.plan" class="trip-btn plan" size="mini" @tap="openPlan(t)">计划书</button>
-            <button class="trip-btn guardian" size="mini" @tap="goGuardian(t)">守护</button>
+          <view class="plan-actions">
+            <button class="plan-btn plan" size="mini" @tap.stop="openPlan(p)">📖 计划书</button>
+            <button class="plan-btn guardian" size="mini" @tap.stop="goGuardian(p)">🛡️ 守护</button>
           </view>
         </view>
       </view>
@@ -104,7 +148,7 @@
 <script>
 import LyjSegment from '../../components/LyjSegment.vue'
 import PlanCard from '../../components/PlanCard.vue'
-import { get } from '../../api/client'
+import { get, post } from '../../api/client'
 import { getCurrentUser, clearCurrentUser } from '../../store/user'
 import { publishPendingCount } from '../../store/pendingBadge'
 
@@ -118,6 +162,8 @@ export default {
       user: null,
       trips: [],
       plans: [],
+      pendingConfirmations: [],
+      actionLoading: {},
       selectedPlan: null,
       selectedPlanCard: null,
       medications: [],
@@ -134,13 +180,6 @@ export default {
       const who = [this.elderName, this.elderCity].filter(Boolean).join(' · ')
       return this.lastRefresh ? `${who}｜已更新 ${this.lastRefresh}` : who
     },
-    /**
-     * 隐私档位的一句话解释。
-     *
-     * 为什么要显式写出来：分级降级在后端是"数据变形"（privacy.py 的设计第 1 条），
-     * 界面上看到的就是一份**更粗**的事实。不解释一句，子女会当成功能坏了，
-     * 转头去催老人"把权限全开"—— 那正好把这套分级机制废掉。
-     */
     privacyNote() {
       const p = this.privacy
       if (!p.bound) {
@@ -158,11 +197,56 @@ export default {
       if (this.privacy.health_level === 'off') return '老人未开放健康信息给您'
       return '暂无用药计划'
     },
+    pendingCount() {
+      return this.pendingConfirmations.filter((t) => !t.status || t.status === 'pending').length
+    },
+    consolidatedPlans() {
+      const list = []
+      const seenIds = new Set()
+      const seenActive = new Set()
+      const source = [...(this.plans || []), ...(this.trips || [])]
+      for (const item of source) {
+        const id = item.id || item.trip_id
+        let planObj = item.plan
+        if (typeof planObj === 'string') {
+          try {
+            planObj = JSON.parse(planObj)
+          } catch (e) {
+            planObj = null
+          }
+        }
+        const title = item.title || (planObj && planObj.title) || item.purpose || ''
+        if (!title) continue
+        if (id && seenIds.has(id)) continue
+
+        const status = item.status || 'planned'
+        const type = item.type || ((planObj && planObj.type) || (title.includes('就医') ? 'medical_plan' : 'trip_plan'))
+        const dest = item.destination || (planObj && planObj.city) || (planObj && planObj.destination) || this.getDestination({ ...item, plan: planObj }) || ''
+
+        if (status === 'planned' || status === 'ongoing') {
+          const activeKey = dest ? `dest:${dest}:${type}` : `title:${title}`
+          if (seenActive.has(activeKey)) continue
+          seenActive.add(activeKey)
+        }
+
+        if (id) seenIds.add(id)
+        list.push({
+          id: id || `plan-${list.length}`,
+          trip_id: item.trip_id || id,
+          title,
+          type,
+          status,
+          destination: dest,
+          created_at: item.created_at,
+          plan: planObj || item.plan,
+        })
+      }
+      return list
+    },
   },
   onShow() {
     this.user = getCurrentUser()
     if (!this.user || this.user.role !== 'child') {
-      // 身份不对 —— 换身份该清栈
       uni.reLaunch({ url: '/pages/login/login' })
       return
     }
@@ -192,7 +276,15 @@ export default {
     },
     openPlan(p) {
       this.selectedPlan = p
-      this.selectedPlanCard = this._toCard(p.plan || p)
+      let planObj = p.plan
+      if (typeof planObj === 'string') {
+        try {
+          planObj = JSON.parse(planObj)
+        } catch (e) {
+          planObj = null
+        }
+      }
+      this.selectedPlanCard = this._toCard(planObj ? { ...p, ...planObj } : p)
     },
     closePlan() {
       this.selectedPlan = null
@@ -205,46 +297,241 @@ export default {
       if (d.subtitle) notes.push(d.subtitle)
       if (d.disclaimer) notes.push(d.disclaimer)
       if (d.footnote) notes.push(d.footnote)
+      let sections = pages.map((p) => ({
+        heading: p.title || '',
+        rows: p.rows || [],
+        notes: p.notes || [],
+      }))
+      if (!sections.length) {
+        if (d.body && typeof d.body === 'object') {
+          const rows = Object.entries(d.body).map(([label, value]) => ({
+            label,
+            value: String(value),
+            missing: false,
+          }))
+          sections = [{ heading: d.title || '详情', rows, notes: [] }]
+        } else {
+          const rows = []
+          if (d.destination || d.city) rows.push({ label: '目的地', value: d.destination || d.city })
+          if (d.purpose) rows.push({ label: '行程目的', value: d.purpose })
+          if (d.status) rows.push({ label: '状态', value: this.statusText(d.status) })
+          if (d.created_at) rows.push({ label: '规划时间', value: this.fmtTime(d.created_at) })
+          sections = [{ heading: '行程与计划概要', rows, notes: [] }]
+        }
+      }
       return {
         kind: 'card',
-        title: d.title || '',
-        sections: pages.map((p) => ({
-          heading: p.title || '',
-          rows: p.rows || [],
-          notes: p.notes || [],
-        })),
+        title: d.title || d.purpose || '出行与就医计划书',
+        sections,
         notes,
         complete: d.complete !== false,
         compact: false,
       }
     },
-    /**
-     * 一次请求拿全部。
-     */
     async loadAll(silent) {
       try {
         const d = await get(`/api/child/${this.user.id}/dashboard`)
-        publishPendingCount((d.pending_confirmations || []).length)
         this.privacy = d.privacy || DENIED
         this.elderName = d.elder ? d.elder.name : ''
         this.elderCity = d.elder ? d.elder.city || '' : ''
         this.trips = d.trips || []
         this.plans = d.plans || []
-        if (!this.plans.length && this.trips.length) {
-          this.plans = this.trips.filter((t) => t.plan).map((t) => ({
-            id: t.id,
-            trip_id: t.id,
-            title: (t.plan && t.plan.title) || t.purpose,
-            type: (t.plan && t.plan.type) || (t.purpose && t.purpose.includes('就医') ? 'medical_plan' : 'trip_plan'),
-            status: t.status,
-            created_at: t.created_at,
-            plan: t.plan,
-          }))
+
+        const serverPending = d.pending_confirmations || []
+        const serverIds = new Set(serverPending.map((x) => x.id))
+        const now = Date.now()
+        const kept = []
+        for (const local of this.pendingConfirmations) {
+          if (serverIds.has(local.id)) {
+            const fresh = serverPending.find((x) => x.id === local.id)
+            if (local.status && local.status !== 'pending') {
+              kept.push(local)
+            } else {
+              kept.push(fresh)
+            }
+          } else {
+            // Keep locally resolved items temporarily during background polling (10s)
+            if (silent && local.status && local.status !== 'pending' && (!local.resolvedAt || now - local.resolvedAt < 10000)) {
+              kept.push(local)
+            }
+          }
         }
+        for (const fresh of serverPending) {
+          if (!kept.some((x) => x.id === fresh.id)) {
+            kept.push(fresh)
+          }
+        }
+        this.pendingConfirmations = kept
+        publishPendingCount(this.pendingCount)
+
         this.medications = d.medications || []
         this.lastRefresh = this.fmtClock(new Date())
       } catch (e) {
         if (!silent) uni.showToast({ title: '加载失败：' + e.message, icon: 'none' })
+      }
+    },
+
+    taskIcon(t) {
+      const map = {
+        book_ticket: '🚄',
+        search_train: '🚄',
+        register_appointment: '🏥',
+        search_hospital: '🏥',
+        book_hotel: '🏨',
+        order_service: '🧹',
+        pay: '💸',
+      }
+      return map[t.tool_name] || '✋'
+    },
+    taskSummary(t) {
+      const card = t.summary_for_child || {}
+      return card.summary || t.tool_name || '需要您确认的事项'
+    },
+    taskReason(t) {
+      const card = t.summary_for_child || {}
+      return card.reason || ''
+    },
+    isMedical(p) {
+      if (p.type === 'medical_plan') return true
+      if (p.type === 'trip_plan') return false
+      return !!(
+        (p.title && p.title.includes('就医')) ||
+        (p.purpose && p.purpose.includes('就医'))
+      )
+    },
+    getDestination(p) {
+      if (p.destination) {
+        const d = String(p.destination).trim()
+        return d.endsWith('市') && d.length > 2 ? d.slice(0, -1) : d
+      }
+      const plan = (typeof p.plan === 'object' && p.plan) ? p.plan : {}
+      const cityOrDest = plan.city || plan.destination
+      if (cityOrDest) {
+        const d = String(cityOrDest).trim()
+        return d.endsWith('市') && d.length > 2 ? d.slice(0, -1) : d
+      }
+      if (plan.body && typeof plan.body === 'object') {
+        const bodyVal = plan.body['天气与穿衣/城市'] || plan.body['去程车票 + 返程建议/到达']
+        if (bodyVal) {
+          const cleanVal = String(bodyVal).replace(/南站|东站|西站|北站|虹桥|站/g, '').trim()
+          return cleanVal.endsWith('市') && cleanVal.length > 2 ? cleanVal.slice(0, -1) : cleanVal
+        }
+      }
+      const title = p.title || p.purpose || ''
+      for (const city of ['北京', '上海', '杭州', '南京', '苏州', '广州', '深圳', '成都', '重庆', '武汉', '西安', '青岛', '黄山']) {
+        if (title.includes(city)) return city
+      }
+      const scenicMap = {
+        '西湖': '杭州', '故宫': '北京', '长城': '北京', '天安门': '北京',
+        '外滩': '上海', '东方明珠': '上海', '迪士尼': '上海',
+        '夫子庙': '南京', '玄武湖': '南京', '中山陵': '南京',
+        '兵马俑': '西安', '大雁塔': '西安', '协和': '北京', '积水潭': '北京'
+      }
+      for (const [spot, cName] of Object.entries(scenicMap)) {
+        if (title.includes(spot)) return cName
+      }
+      const match = title.match(/·\s*([^·就医出行计划书]+)/)
+      if (match && match[1]) {
+        const cleaned = match[1].replace(/两日游|三日游|游玩|出游/g, '').trim()
+        return cleaned.endsWith('市') && cleaned.length > 2 ? cleaned.slice(0, -1) : cleaned
+      }
+      return ''
+    },
+    async approveTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'approve')
+      } else {
+        this.actionLoading[t.id] = 'approve'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/approve?child_id=${this.user.id}`)
+        const nextStatus = res.status || (res.ok ? 'executed' : 'failed')
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        t.resolvedAt = Date.now()
+        publishPendingCount(this.pendingCount)
+        uni.showToast({ title: '已同意并办理', icon: 'success' })
+      } catch (err) {
+        const msg = err.message || ''
+        if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('已处理') || msg.includes('不存在')) {
+          this.loadAll(true)
+        }
+        uni.showToast({ title: msg || '审批失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
+    },
+    async rejectTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      const confirmed = await new Promise((resolve) => {
+        uni.showModal({
+          title: '确认拒绝',
+          content: '确定要拒绝该事项吗？老人端将收到相应提示。',
+          success: (r) => resolve(!!r.confirm),
+          fail: () => resolve(false),
+        })
+      })
+      if (!confirmed) return
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'reject')
+      } else {
+        this.actionLoading[t.id] = 'reject'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/reject?child_id=${this.user.id}`)
+        const nextStatus = res.status || 'rejected'
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        t.resolvedAt = Date.now()
+        publishPendingCount(this.pendingCount)
+        uni.showToast({ title: '已拒绝', icon: 'none' })
+      } catch (err) {
+        const msg = err.message || ''
+        if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('已处理') || msg.includes('不存在')) {
+          this.loadAll(true)
+        }
+        uni.showToast({ title: msg || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
       }
     },
 
@@ -271,7 +558,7 @@ export default {
     },
 
     goGuardian(t) {
-      uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.id}` })
+      uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.trip_id || t.id}` })
     },
   },
 }
@@ -357,38 +644,215 @@ export default {
   color: $lyj-child-muted;
   line-height: $lyj-line-height;
 }
-.trip-item {
+.pending-section {
+  border-left: 8rpx solid #f59e0b;
+}
+.pending-card {
+  background: #fffbeb;
+  border: 2rpx solid #fde68a;
+  border-radius: $lyj-radius;
+  padding: $lyj-space-md;
+  margin-bottom: $lyj-space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: $lyj-space-sm;
+}
+.pending-card:last-child {
+  margin-bottom: 0;
+}
+.pending-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: $lyj-space-sm;
+}
+.pending-icon {
+  font-size: 40rpx;
+  line-height: 1.2;
+}
+.pending-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.pending-summary-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: $lyj-hit-min;
-  border-bottom: 2rpx solid $lyj-child-line;
 }
-.trip-purpose {
-  flex: 1;
+.pending-summary {
   font-size: $lyj-font-md;
+  font-weight: 700;
   color: $lyj-child-text;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.trip-status {
+.pending-cost {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: #dc2626;
+}
+.pending-reason {
+  font-size: $lyj-font-sm;
+  color: #4b5563;
+  margin-top: 2rpx;
+}
+.pending-time {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  margin-top: 2rpx;
+}
+.pending-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: $lyj-space-xs;
+  border-top: 1rpx dashed #fcd34d;
+}
+.pending-btns {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-sm;
+}
+.approve-btn {
+  background: #16a34a !important;
+  color: #fff !important;
   font-size: $lyj-font-sm;
   font-weight: 600;
-  padding: $lyj-space-xs $lyj-space-md;
+  border-radius: $lyj-radius;
+  padding: 0 24rpx;
+  min-height: 60rpx;
+  line-height: 60rpx;
+  margin: 0;
+}
+.reject-btn {
+  background: #e5e7eb !important;
+  color: #4b5563 !important;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 24rpx;
+  min-height: 60rpx;
+  line-height: 60rpx;
+  margin: 0;
+}
+.inline-status {
+  display: flex;
+  align-items: center;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  padding: 6rpx 16rpx;
+  border-radius: $lyj-radius-pill;
+}
+.inline-status.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+.inline-status.rejected {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.inline-status.failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.plan-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $lyj-space-md 0;
+  border-bottom: 2rpx solid $lyj-child-line;
+  gap: $lyj-space-sm;
+}
+.plan-card-item:last-child {
+  border-bottom: none;
+}
+.plan-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  cursor: pointer;
+}
+.plan-item-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $lyj-space-xs;
+}
+.plan-badge {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  padding: 2rpx 10rpx;
+  border-radius: $lyj-radius-pill;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.plan-badge.medical_plan {
+  background: #fef3c7;
+  color: #b45309;
+}
+.plan-badge.trip_plan {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.plan-item-title {
+  font-size: $lyj-font-md;
+  font-weight: 600;
+  color: $lyj-child-text;
+}
+.plan-status-badge {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  padding: 2rpx 12rpx;
   border-radius: $lyj-radius-pill;
   background: $lyj-info-bg;
   color: $lyj-info;
-  margin-left: $lyj-space-sm;
+  margin-left: auto;
 }
-.trip-status.ongoing {
+.plan-status-badge.ongoing {
   background: $lyj-primary-soft;
   color: $lyj-primary;
 }
-.trip-status.completed {
+.plan-status-badge.completed {
   background: $lyj-success-bg;
   color: $lyj-success;
 }
+.plan-item-meta-row {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-md;
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+}
+.plan-dest {
+  color: $lyj-child-text;
+  font-weight: 500;
+}
+.plan-meta-time {
+  color: $lyj-child-muted;
+}
+.plan-actions {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-xs;
+  flex-shrink: 0;
+}
+.plan-btn {
+  min-height: 56rpx;
+  line-height: 56rpx;
+  font-size: $lyj-font-xs;
+  padding: 0 16rpx;
+  border-radius: $lyj-radius;
+  margin: 0;
+}
+.plan-btn.plan {
+  background: #0284c7;
+  color: #fff;
+}
+.plan-btn.guardian {
+  background: $lyj-primary;
+  color: #fff;
+}
+
 .med-item {
   display: flex;
   align-items: center;
@@ -429,78 +893,6 @@ export default {
   font-weight: 600;
   border-radius: $lyj-radius;
   padding: 0 $lyj-space-sm;
-}
-.trip-info {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: $lyj-space-xs;
-  overflow: hidden;
-}
-.trip-actions {
-  display: flex;
-  align-items: center;
-  gap: $lyj-space-xs;
-}
-.trip-btn {
-  min-height: 56rpx;
-  line-height: 56rpx;
-  font-size: $lyj-font-xs;
-  padding: 0 16rpx;
-  border-radius: $lyj-radius;
-}
-.trip-btn.plan {
-  background: #0284c7;
-  color: #fff;
-}
-.trip-btn.guardian {
-  background: $lyj-primary;
-  color: #fff;
-}
-
-.plan-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: $lyj-space-sm 0;
-  border-bottom: 2rpx solid $lyj-child-line;
-  cursor: pointer;
-}
-.plan-item:last-child {
-  border-bottom: none;
-}
-.plan-item-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-.plan-item-title-row {
-  display: flex;
-  align-items: center;
-  gap: $lyj-space-xs;
-}
-.plan-badge {
-  font-size: $lyj-font-xs;
-  font-weight: 600;
-  padding: 2rpx 10rpx;
-  border-radius: $lyj-radius-pill;
-  background: #e0f2fe;
-  color: #0369a1;
-}
-.plan-badge.medical_plan {
-  background: #fef3c7;
-  color: #b45309;
-}
-.plan-item-title {
-  font-size: $lyj-font-md;
-  font-weight: 600;
-  color: $lyj-child-text;
-}
-.plan-item-meta {
-  font-size: $lyj-font-xs;
-  color: $lyj-primary;
-  margin-top: 2rpx;
 }
 
 .plan-modal-mask {

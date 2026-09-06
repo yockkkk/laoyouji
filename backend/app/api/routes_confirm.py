@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_ctx, get_current_principal
 from app.auth.security import Principal
+from app.core.context import AppContext
 from app.safety.confirmation import ConfirmationError
 
 router = APIRouter(prefix="/api", tags=["confirmation"])
@@ -27,11 +28,12 @@ async def _ensure_task_in_family(ctx, task_id: str, child_id: str) -> None:
 
 
 @router.get("/child/{child_id}/confirmations")
-async def list_confirmations(child_id: str, status: str | None = None,
-                             principal: Principal = Depends(get_current_principal)):
-    ctx = get_ctx()
-    # and → or：与 routes_child 同一个 BOLA，旧写法下任何子女账号都能
-    # 列出别人家的确认任务（里面有金额、行程、医院这些敏感摘要）。
+async def list_confirmations(
+    child_id: str,
+    status: str | None = None,
+    principal: Principal = Depends(get_current_principal),
+    ctx: AppContext = Depends(get_ctx),
+):
     if principal.id != child_id or principal.role != "child":
         raise HTTPException(403, "无权查看其他子女确认任务")
     rows = await ctx.confirmation.list_for_child(child_id, status)
@@ -39,9 +41,12 @@ async def list_confirmations(child_id: str, status: str | None = None,
 
 
 @router.post("/confirmations/{task_id}/approve")
-async def approve(task_id: str, child_id: str | None = None,
-                  principal: Principal = Depends(get_current_principal)):
-    ctx = get_ctx()
+async def approve(
+    task_id: str,
+    child_id: str | None = None,
+    principal: Principal = Depends(get_current_principal),
+    ctx: AppContext = Depends(get_ctx),
+):
     actor_id = principal.id
     if child_id and child_id != actor_id:
         raise HTTPException(403, "认证身份与请求参数不一致")
@@ -55,9 +60,12 @@ async def approve(task_id: str, child_id: str | None = None,
 
 
 @router.post("/confirmations/{task_id}/reject")
-async def reject(task_id: str, child_id: str | None = None,
-                 principal: Principal = Depends(get_current_principal)):
-    ctx = get_ctx()
+async def reject(
+    task_id: str,
+    child_id: str | None = None,
+    principal: Principal = Depends(get_current_principal),
+    ctx: AppContext = Depends(get_ctx),
+):
     actor_id = principal.id
     if child_id and child_id != actor_id:
         raise HTTPException(403, "认证身份与请求参数不一致")

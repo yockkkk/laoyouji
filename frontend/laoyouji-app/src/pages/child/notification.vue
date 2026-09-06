@@ -14,19 +14,81 @@
       <!-- 待我确认 -->
       <view class="section">
         <view class="section-head">
-          <text class="section-title">✋ 待我确认 ({{ pending.length }})</text>
+          <text class="section-title">✋ 待我确认 ({{ pendingCount }})</text>
         </view>
         <view v-if="!pending.length" class="empty-row">
           <text>暂无待确认事项</text>
         </view>
-        <view v-for="t in pending" :key="t.id" class="confirm-item" @tap="goDetail(t)">
-          <view class="confirm-main">
-            <text class="confirm-summary">{{ cardOf(t).summary }}</text>
-            <text class="confirm-reason">{{ cardOf(t).reason }}</text>
+        <view v-for="t in pending" :key="t.id" class="confirm-card" @tap="goDetail(t)">
+          <view class="confirm-card-top">
+            <view class="confirm-icon">{{ taskIcon(t) }}</view>
+            <view class="confirm-main">
+              <view class="confirm-title-row">
+                <text class="confirm-summary">{{ taskSummary(t) }}</text>
+                <text v-if="t.amount" class="confirm-amount">¥{{ t.amount }}</text>
+              </view>
+              <text class="confirm-reason" v-if="taskReason(t)">原因：{{ taskReason(t) }}</text>
+              <text class="confirm-time" v-if="t.created_at">申请时间：{{ fmtTime(t.created_at) }}</text>
+            </view>
           </view>
-          <view class="confirm-side">
-            <text v-if="t.amount" class="confirm-amount">¥{{ t.amount }}</text>
-            <text class="confirm-go">去处理 ›</text>
+          <view class="confirm-action-bar">
+            <text class="confirm-go" @tap.stop="goDetail(t)">查看详情 ›</text>
+            <view v-if="t.status === 'executed' || t.status === 'approved'" class="inline-status success">
+              <text>✅ 已同意并办理</text>
+            </view>
+            <view v-else-if="t.status === 'rejected'" class="inline-status rejected">
+              <text>🚫 已拒绝</text>
+            </view>
+            <view v-else-if="t.status === 'failed'" class="inline-status failed">
+              <text>⚠️ 执行失败</text>
+            </view>
+            <view v-else class="pending-btns">
+              <button
+                class="approve-btn"
+                :loading="actionLoading[t.id] === 'approve'"
+                :disabled="!!actionLoading[t.id]"
+                size="mini"
+                @tap.stop="approveTask(t)"
+              >
+                同意
+              </button>
+              <button
+                class="reject-btn"
+                :loading="actionLoading[t.id] === 'reject'"
+                :disabled="!!actionLoading[t.id]"
+                size="mini"
+                @tap.stop="rejectTask(t)"
+              >
+                拒绝
+              </button>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 长辈动态通知 -->
+      <view class="section">
+        <view class="section-head">
+          <text class="section-title">📢 长辈动态通知 ({{ elderNotifications.length }})</text>
+        </view>
+        <view v-if="!elderNotifications.length" class="empty-row">
+          <text>暂无动态通知</text>
+        </view>
+        <view
+          v-for="n in elderNotifications"
+          :key="n.id"
+          class="notif-item"
+          :class="{ unread: !n.is_read }"
+          @tap="markRead(n)"
+        >
+          <view class="notif-icon">📋</view>
+          <view class="notif-content">
+            <view class="notif-title-row">
+              <text class="notif-title">{{ n.title }}</text>
+              <text v-if="!n.is_read" class="unread-badge">未读</text>
+            </view>
+            <text class="notif-body">{{ n.summary || n.content }}</text>
+            <text class="notif-time" v-if="n.created_at">{{ fmtTime(n.created_at) }}</text>
           </view>
         </view>
       </view>
@@ -83,7 +145,15 @@ export default {
       pending: [],
       alerts: [],
       pendingMembers: [],
+      elderNotifications: [],
+      actionLoading: {},
+      timer: null,
     }
+  },
+  computed: {
+    pendingCount() {
+      return this.pending.filter((t) => !t.status || t.status === 'pending').length
+    },
   },
   onShow() {
     this.user = getCurrentUser()
@@ -92,28 +162,93 @@ export default {
       return
     }
     this.loadAll()
+    this.startPolling()
+  },
+  onHide() {
+    this.stopPolling()
+  },
+  onUnload() {
+    this.stopPolling()
   },
   methods: {
-    async loadAll() {
-      try {
-        const [dashRes, famRes] = await Promise.all([
-          get(`/api/child/${this.user.id}/dashboard`),
-          get('/api/family/members')
-        ])
-        
-        this.pending = dashRes.pending_confirmations || []
-        this.alerts = dashRes.alerts || []
-        // 通知页也是发现者之一（手动刷新时）。数量变多的震动在 publish 内部。
-        publishPendingCount(this.pending.length)
-        
-        const allMembers = famRes.items || []
-        this.pendingMembers = allMembers.filter(m => m.status === 'pending' && m.invited_by !== this.user.id)
-      } catch (e) {
-        uni.showToast({ title: '加载失败：' + e.message, icon: 'none' })
+    startPolling() {
+      this.stopPolling()
+      this.timer = setInterval(() => this.loadAll(true), 5000)
+    },
+    stopPolling() {
+      if (this.timer) {
+        clearInterval(this.timer)
+        this.timer = null
       }
+    },
+    async loadAll(silent) {
+      try {
+        const [dashRes, famRes, notifRes] = await Promise.all([
+          get(`/api/child/${this.user.id}/dashboard`),
+          get('/api/family/members'),
+          get(`/api/child/${this.user.id}/notifications`).catch(() => null),
+        ])
+
+        const rawPending = dashRes.pending_confirmations || []
+        const serverIds = new Set(rawPending.map((x) => x.id))
+        const now = Date.now()
+        const kept = []
+        for (const local of this.pending) {
+          if (serverIds.has(local.id)) {
+            const fresh = rawPending.find((x) => x.id === local.id)
+            if (local.status && local.status !== 'pending') {
+              kept.push(local)
+            } else {
+              kept.push(fresh)
+            }
+          } else {
+            // If local was already resolved and this is silent refresh, keep it temporarily (10s)
+            if (silent && local.status && local.status !== 'pending' && (!local.resolvedAt || now - local.resolvedAt < 10000)) {
+              kept.push(local)
+            }
+          }
+        }
+        for (const fresh of rawPending) {
+          if (!kept.some((x) => x.id === fresh.id)) {
+            kept.push(fresh)
+          }
+        }
+        this.pending = kept
+        this.alerts = dashRes.alerts || []
+        this.elderNotifications = (notifRes && notifRes.items) || dashRes.notifications || []
+
+        publishPendingCount(this.pendingCount)
+
+        const allMembers = famRes.items || []
+        this.pendingMembers = allMembers.filter(
+          (m) => m.status === 'pending' && m.invited_by !== this.user.id
+        )
+      } catch (e) {
+        if (!silent) uni.showToast({ title: '加载失败：' + e.message, icon: 'none' })
+      }
+    },
+    taskIcon(t) {
+      const map = {
+        book_ticket: '🚄',
+        search_train: '🚄',
+        register_appointment: '🏥',
+        search_hospital: '🏥',
+        book_hotel: '🏨',
+        order_service: '🧹',
+        pay: '💸',
+      }
+      return map[t.tool_name] || '✋'
     },
     cardOf(task) {
       return task.summary_for_child || {}
+    },
+    taskSummary(t) {
+      const card = t.summary_for_child || {}
+      return card.summary || t.tool_name || '需要您确认的事项'
+    },
+    taskReason(t) {
+      const card = t.summary_for_child || {}
+      return card.reason || ''
     },
     fmtTime(iso) {
       if (!iso) return ''
@@ -126,6 +261,131 @@ export default {
       uni.navigateTo({
         url: `/pages/child/confirm-detail?id=${t.id}&child_id=${this.user.id}`,
       })
+    },
+    async approveTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'approve')
+      } else {
+        this.actionLoading[t.id] = 'approve'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/approve?child_id=${this.user.id}`)
+        const nextStatus = res.status || (res.ok ? 'executed' : 'failed')
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        t.resolvedAt = Date.now()
+        publishPendingCount(this.pendingCount)
+        uni.showToast({ title: '已同意并办理', icon: 'success' })
+      } catch (err) {
+        const msg = err.message || ''
+        if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('已处理') || msg.includes('不存在')) {
+          this.loadAll(true)
+        }
+        uni.showToast({ title: msg || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
+    },
+    async rejectTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      const confirmed = await new Promise((resolve) => {
+        uni.showModal({
+          title: '确认拒绝',
+          content: '确定要拒绝长辈的这项请求吗？',
+          confirmText: '拒绝',
+          confirmColor: '#ef4444',
+          cancelText: '再想想',
+          success: (r) => resolve(!!r.confirm),
+          fail: () => resolve(false),
+        })
+      })
+      if (!confirmed) return
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'reject')
+      } else {
+        this.actionLoading[t.id] = 'reject'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/reject?child_id=${this.user.id}`)
+        const nextStatus = res.status || 'rejected'
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        t.resolvedAt = Date.now()
+        publishPendingCount(this.pendingCount)
+        uni.showToast({ title: '已拒绝', icon: 'none' })
+      } catch (err) {
+        const msg = err.message || ''
+        if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('已处理') || msg.includes('不存在')) {
+          this.loadAll(true)
+        }
+        uni.showToast({ title: msg || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
+    },
+    async markRead(n) {
+      if (!n.is_read) {
+        n.is_read = true
+        try {
+          await post(`/api/child/notifications/${n.id}/read`)
+        } catch (e) {
+          // silent
+        }
+      }
+      if (n.type === 'plan_created') {
+        let tripId = n.trip_id || null
+        if (!tripId && n.data) {
+          if (typeof n.data === 'object' && n.data !== null) {
+            tripId = n.data.trip_id
+          } else if (typeof n.data === 'string') {
+            try {
+              tripId = JSON.parse(n.data).trip_id
+            } catch (e) {}
+          }
+        }
+        if (tripId) {
+          uni.navigateTo({ url: `/pages/child/guardian?trip_id=${tripId}` })
+        }
+      }
     },
     async accept(m) {
       try {
@@ -218,51 +478,172 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-child-muted;
 }
-/* 待确认条 */
-.confirm-item {
-  display: flex;
-  align-items: center;
-  gap: $lyj-space-md;
-  min-height: $lyj-hit-min;
-  padding: $lyj-space-md;
-  background: $lyj-warn-bg;
-  border: 2rpx solid $lyj-warn;
+/* 待确认卡片 */
+.confirm-card {
+  background: #fffbeb;
+  border: 2rpx solid #fde68a;
   border-radius: $lyj-radius;
+  padding: $lyj-space-md;
   margin-bottom: $lyj-space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: $lyj-space-sm;
   transition: all 0.2s ease;
 }
-.confirm-item:active {
-  transform: scale(0.98);
+.confirm-card:last-child {
+  margin-bottom: 0;
+}
+.confirm-card-top {
+  display: flex;
+  align-items: flex-start;
+}
+.confirm-icon {
+  font-size: 40rpx;
+  line-height: 1;
+  margin-right: $lyj-space-sm;
+  padding-top: 4rpx;
 }
 .confirm-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: $lyj-space-xs;
+  gap: 4rpx;
+}
+.confirm-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .confirm-summary {
   font-size: $lyj-font-md;
   font-weight: 700;
-  color: $lyj-text;
-}
-.confirm-reason {
-  font-size: $lyj-font-sm;
-  color: $lyj-warn-text;
-}
-.confirm-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: $lyj-space-xs;
+  color: $lyj-child-text;
 }
 .confirm-amount {
   font-size: $lyj-font-md;
   font-weight: 800;
-  color: $lyj-danger;
+  color: #dc2626;
+}
+.confirm-reason {
+  font-size: $lyj-font-sm;
+  color: #4b5563;
+  margin-top: 2rpx;
+}
+.confirm-time {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  margin-top: 2rpx;
+}
+.confirm-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: $lyj-space-xs;
+  border-top: 1rpx dashed #fcd34d;
 }
 .confirm-go {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
+  cursor: pointer;
+}
+.pending-btns {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-sm;
+}
+.approve-btn {
+  background: #16a34a !important;
+  color: #fff !important;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 24rpx;
+  min-height: 60rpx;
+  line-height: 60rpx;
+  margin: 0;
+}
+.reject-btn {
+  background: #e5e7eb !important;
+  color: #4b5563 !important;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 24rpx;
+  min-height: 60rpx;
+  line-height: 60rpx;
+  margin: 0;
+}
+.inline-status {
+  display: flex;
+  align-items: center;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  padding: 6rpx 16rpx;
+  border-radius: $lyj-radius-pill;
+}
+.inline-status.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+.inline-status.rejected {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.inline-status.failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* 长辈动态通知 */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: $lyj-space-sm;
+  padding: $lyj-space-sm 0;
+  border-bottom: 2rpx solid $lyj-child-line;
+}
+.notif-item:last-child {
+  border-bottom: none;
+}
+.notif-item.unread {
+  background: #fafafa;
+}
+.notif-icon {
+  font-size: 36rpx;
+  line-height: 1.2;
+}
+.notif-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.notif-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.notif-title {
+  font-size: $lyj-font-md;
+  font-weight: 600;
+  color: $lyj-child-text;
+}
+.unread-badge {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  padding: 2rpx 12rpx;
+  border-radius: $lyj-radius-pill;
+  background: #fee2e2;
+  color: #dc2626;
+}
+.notif-body {
+  font-size: $lyj-font-sm;
+  color: #4b5563;
+  line-height: 1.4;
+}
+.notif-time {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
 }
 /* 告警条 */
 .alert-item {

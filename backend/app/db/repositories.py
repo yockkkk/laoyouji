@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 # 演示系统的全部业务表（reset 时按序清空）
 TABLES = [
+    "notifications",
     "audit_log",
     "privacy_permissions",
     "orders",

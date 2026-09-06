@@ -25,6 +25,7 @@ from app.agents.base import BaseAgent
 from app.core import todo
 from app.core.events import AGENT_REPORT
 from app.core.subagents import AgentReport, SubagentSpec
+from app.shared.plan_helpers import dispatch_plan_created_notification, upsert_trip_plan
 from app.tools.common import fail, make_tool, ok
 
 SYSTEM_PROMPT = """你是"老友记"，老年人的数字生活管家，是整个智能体家族的总入口。
@@ -204,13 +205,12 @@ async def compose_deliverable(turn, args: dict) -> dict:
     # card 由驱动器统一 emit（``_run_tools`` 看到结果里的 card 就推 + 落
     # artifact/card），这里不自己再 emit 一次 —— 否则老人端会看到两张一样的卡
     if kind in ("trip_plan", "medical_plan"):
-        # 计划书落库为 trip：既是可验收交付物，也是行程守护的起点
-        await turn.ctx.repos.insert("trips", {
-            "elder_id": turn.user.get("id"),
-            "purpose": card["title"],
-            "plan": card,
-            "status": "planned",
-        })
+        # 计划书落库为 trip（幂等去重 upsert，避免重复生成）：既是可验收交付物，也是行程守护的起点
+        trip_row, _ = await upsert_trip_plan(turn.ctx.repos, turn.user.get("id"), card)
+        # 向绑定的家属生成未读通知
+        await dispatch_plan_created_notification(
+            turn.ctx.repos, turn.user, card, trip_row.get("id", ""), kind
+        )
 
     pages = card.get("pages") or []
     missing = card.get("missing") or []

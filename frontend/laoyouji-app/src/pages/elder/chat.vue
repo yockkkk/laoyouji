@@ -1,5 +1,5 @@
 <template>
-  <view class="chat-page">
+  <view class="chat-page" :class="{ 'split-mode': isDesktop && treeExpanded }">
     <!-- 顶栏：回退、标题与状态（返回用顶栏内联 back-btn，不再叠加 LyjBack） -->
     <view class="topbar">
       <view class="back-btn" @tap="goBack">
@@ -11,6 +11,25 @@
         <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
       </view>
       <view class="topbar-right">
+        <!-- 智能体链路展开/收起切换按钮 (R1) -->
+        <view
+          class="tree-toggle-btn"
+          :class="{
+            active: isDesktop ? treeExpanded : treeDrawerVisible,
+            hasPending: pendingConfirmationCount > 0,
+            hasRejected: hasAnyRejected,
+          }"
+          @tap="toggleTreePane"
+          title="智能体执行链路"
+        >
+          <text class="tree-toggle-icon">🧠</text>
+          <text class="tree-toggle-text">{{ treeToggleText }}</text>
+          <view v-if="thinking" class="pulse-dot-mini"></view>
+          <text v-if="pendingConfirmationCount > 0" class="tree-badge">
+            {{ pendingConfirmationCount }}
+          </text>
+        </view>
+
         <view class="history-btn" @tap="openHistory" title="历史记录">
           <text class="history-icon">📜</text>
           <text class="history-text">历史</text>
@@ -23,79 +42,132 @@
       </view>
     </view>
 
-    <!-- 会话流 -->
-    <scroll-view class="stream" scroll-y :scroll-top="scrollTop" :scroll-into-view="anchor">
-      <view class="stream-inner">
-        <view v-for="(m, i) in messages" :key="i">
-          <ChatBubble
-            v-if="m.kind === 'text'"
-            :text="m.text"
-            :is-user="m.isUser"
-            :agent="m.agent"
-          />
-          <StepTimeline
-            v-else-if="m.kind === 'todo'"
-            :todos="m.todos"
-            :progress="m.progress"
-          />
-          <PlanCard
-            v-else-if="m.kind === 'card'"
-            :title="m.title"
-            :sections="m.sections"
-            :notes="m.notes"
-            :complete="m.complete"
-            :compact="m.compact"
-          />
-          <ConfirmCard
-            v-else-if="m.kind === 'suspend'"
-            :message="m.message"
-            :summary="m.summary"
-            :amount="m.amount"
-            :expires-at="m.expiresAt"
-            :status="m.status"
-          />
-          <view v-else-if="m.kind === 'tool'" class="tool-bubble" :class="{ blocked: m.blocked }">
-            <text class="tool-icon">{{ m.blocked ? '⚠️' : '🔧' }}</text>
-            <text class="tool-text">{{ m.summary }}</text>
+    <!-- 工作台分屏主体容器 (R1) -->
+    <view class="workbench-body" :class="{ 'workbench-split': isDesktop && treeExpanded }">
+      <!-- 左侧：适老会话流与输入区 (Left Pane) -->
+      <view class="workbench-chat-pane">
+        <!-- 会话流 -->
+        <scroll-view class="stream" scroll-y :scroll-top="scrollTop" :scroll-into-view="anchor">
+          <view class="stream-inner">
+            <view v-for="(m, i) in messages" :key="i">
+              <ChatBubble
+                v-if="m.kind === 'text'"
+                :text="m.text"
+                :is-user="m.isUser"
+                :agent="m.agent"
+              />
+              <StepTimeline
+                v-else-if="m.kind === 'todo'"
+                :todos="m.todos"
+                :progress="m.progress"
+              />
+              <PlanCard
+                v-else-if="m.kind === 'card'"
+                :title="m.title"
+                :sections="m.sections"
+                :notes="m.notes"
+                :complete="m.complete"
+                :compact="m.compact"
+              />
+              <ConfirmCard
+                v-else-if="m.kind === 'suspend'"
+                :message="m.message"
+                :summary="m.summary"
+                :amount="m.amount"
+                :expires-at="m.expiresAt"
+                :status="m.status"
+              />
+              <view v-else-if="m.kind === 'tool'" class="tool-bubble" :class="{ blocked: m.blocked }">
+                <text class="tool-icon">{{ m.blocked ? '⚠️' : '🔧' }}</text>
+                <text class="tool-text">{{ m.summary }}</text>
+              </view>
+              <view v-else-if="m.kind === 'status'" class="status-bubble">
+                <text class="status-text">{{ m.text }}</text>
+              </view>
+            </view>
+            <view :id="'bottom-anchor'" class="bottom-anchor"></view>
           </view>
-          <view v-else-if="m.kind === 'status'" class="status-bubble">
-            <text class="status-text">{{ m.text }}</text>
-          </view>
-        </view>
-        <view :id="'bottom-anchor'" class="bottom-anchor"></view>
-      </view>
-    </scroll-view>
+        </scroll-view>
 
-    <!-- 输入区：语音/打字一键切换条（紧凑设计，释放更多可视区域给消息列表） -->
-    <view class="input-area">
-      <view class="input-bar">
-        <button
-          class="mode-btn"
-          :disabled="thinking"
-          :title="inputMode === 'voice' ? '切换打字' : '切换说话'"
-          @tap="toggleInputMode"
-        >
-          <text>{{ inputMode === 'voice' ? '⌨️' : '🎤' }}</text>
-        </button>
-        <view class="input-control">
-          <LyjMic
-            v-if="inputMode === 'voice'"
-            mode="bar"
-            :disabled="thinking"
-            :dialect="user ? user.dialect : ''"
-            @text="onSpoken"
-          />
-          <view v-else class="text-input-wrap">
-            <input
-              class="text-input"
-              v-model="draft"
-              placeholder="打字告诉老友记…"
-              confirm-type="send"
-              @confirm="sendText"
-            />
-            <button class="send-btn" :disabled="thinking || !draft.trim()" @tap="sendText">发送</button>
+        <!-- 输入区：语音/打字一键切换条（紧凑设计，释放更多可视区域给消息列表） -->
+        <view class="input-area">
+          <view class="input-bar">
+            <button
+              class="mode-btn"
+              :disabled="thinking"
+              :title="inputMode === 'voice' ? '切换打字' : '切换说话'"
+              @tap="toggleInputMode"
+            >
+              <text>{{ inputMode === 'voice' ? '⌨️' : '🎤' }}</text>
+            </button>
+            <view class="input-control">
+              <LyjMic
+                v-if="inputMode === 'voice'"
+                mode="bar"
+                :disabled="thinking"
+                :dialect="user ? user.dialect : ''"
+                @text="onSpoken"
+              />
+              <view v-else class="text-input-wrap">
+                <input
+                  class="text-input"
+                  v-model="draft"
+                  placeholder="打字告诉老友记…"
+                  confirm-type="send"
+                  @confirm="sendText"
+                />
+                <button class="send-btn" :disabled="thinking || !draft.trim()" @tap="sendText">发送</button>
+              </view>
+            </view>
           </view>
         </view>
+      </view>
+
+      <!-- 右侧：桌面端内联展开的智能体规划与执行树 (Right Pane) -->
+      <view
+        v-show="isDesktop && treeExpanded"
+        class="workbench-tree-pane"
+      >
+        <AgentExecutionTree
+          :messages="messages"
+          :thinking="thinking"
+          :current-agent="currentAgent"
+          :session-id="sessionId"
+          :user="user"
+          :is-desktop="true"
+          @close="treeExpanded = false"
+          @resolve-confirmation="onTreeResolveConfirmation"
+        />
+      </view>
+    </view>
+
+    <!-- 移动端抽屉式浮层 (Mobile Drawer / Bottom Sheet) (R1) -->
+    <view
+      v-if="!isDesktop && treeDrawerVisible"
+      class="mobile-drawer-mask"
+      @tap="closeDrawer"
+    >
+      <view class="mobile-drawer-panel" :style="drawerPanelStyle" @tap.stop>
+        <view
+          class="drawer-drag-bar"
+          @touchstart="onDrawerTouchStart"
+          @touchmove="onDrawerTouchMove"
+          @touchend="onDrawerTouchEnd"
+          @tap="onDrawerBarTap"
+        >
+          <view class="drawer-drag-handle"></view>
+          <text class="drawer-drag-tip">轻触或下拉收起</text>
+        </view>
+        <AgentExecutionTree
+          :messages="messages"
+          :thinking="thinking"
+          :current-agent="currentAgent"
+          :session-id="sessionId"
+          :user="user"
+          :is-desktop="false"
+          @close="closeDrawer"
+          @resolve-confirmation="onTreeResolveConfirmation"
+        />
       </view>
     </view>
     <!-- 历史记录弹窗 -->
@@ -135,6 +207,7 @@ import StepTimeline from '../../components/StepTimeline.vue'
 import PlanCard from '../../components/PlanCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
+import AgentExecutionTree from '../../components/AgentExecutionTree.vue'
 import { get, post } from '../../api/client'
 import { NET_FAILED_TEXT, SESSION_GONE_TEXT, TURN_FAILED_TEXT } from '../../api/messages'
 import { chatStream, fetchEvents } from '../../api/sse'
@@ -175,7 +248,7 @@ function dayLabel(iso) {
 }
 
 export default {
-  components: { ChatBubble, StepTimeline, PlanCard, ConfirmCard, LyjMic },
+  components: { ChatBubble, StepTimeline, PlanCard, ConfirmCard, LyjMic, AgentExecutionTree },
   data() {
     return {
       user: null,
@@ -186,6 +259,16 @@ export default {
       scrollTop: 0,
       anchor: '',
       inputMode: 'voice', // voice (按住说话) | text (打字输入)
+      isDesktop: true, // 响应式分屏判断 (R1)
+      treeExpanded: true, // 桌面端右侧执行树展开状态
+      treeDrawerVisible: false, // 移动端执行树抽屉显示状态
+      _handleResize: null,
+      _lastToggleAt: 0,
+      drawerDragY: 0,
+      drawerDragging: false,
+      _hasDragged: false,
+      _touchStartY: 0,
+      _touchStartTime: 0,
       _todoMsg: null, // 本轮的步骤条（整表覆盖，不新增第二张）
       _watchTimer: null, // 盯"家人点了没"的轮询句柄
       _watchStarting: false, // 启动中的同步占位（三条 suspended 并发时防重复装表）
@@ -197,6 +280,31 @@ export default {
     }
   },
   computed: {
+    drawerPanelStyle() {
+      if (this.drawerDragY > 0) {
+        return {
+          transform: `translateY(${this.drawerDragY}px)`,
+          transition: this.drawerDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        }
+      }
+      return {}
+    },
+    pendingConfirmationCount() {
+      return (this.messages || []).filter(
+        (m) => m.kind === 'suspend' && m.status === 'pending',
+      ).length
+    },
+    hasAnyRejected() {
+      return (this.messages || []).some(
+        (m) => m.kind === 'suspend' && m.status === 'rejected',
+      )
+    },
+    treeToggleText() {
+      if (this.isDesktop) {
+        return this.treeExpanded ? '智能体链路 [收起]' : '智能体链路 [展开]'
+      }
+      return '智能体链路'
+    },
     currentAgent() {
       for (let i = this.messages.length - 1; i >= 0; i--) {
         const m = this.messages[i]
@@ -223,7 +331,20 @@ export default {
       return groups
     },
   },
+  mounted() {
+    this._updateViewport()
+    if (typeof window !== 'undefined') {
+      this._handleResize = () => this._updateViewport()
+      window.addEventListener('resize', this._handleResize)
+    }
+  },
+  beforeUnmount() {
+    if (typeof window !== 'undefined' && this._handleResize) {
+      window.removeEventListener('resize', this._handleResize)
+    }
+  },
   async onShow() {
+    this._updateViewport()
     this.user = getCurrentUser()
     if (!this.user) {
       uni.reLaunch({ url: '/pages/login/login' })
@@ -244,6 +365,102 @@ export default {
     this._stopWatch()
   },
   methods: {
+    _updateViewport() {
+      const wasDesktop = this.isDesktop
+      if (typeof window !== 'undefined') {
+        this.isDesktop = window.innerWidth >= 768
+      } else {
+        try {
+          const info = uni.getSystemInfoSync()
+          this.isDesktop = (info.windowWidth || 0) >= 768
+        } catch (e) {}
+      }
+      if (!wasDesktop && this.isDesktop) {
+        this.closeDrawer()
+      }
+    },
+
+    toggleTreePane() {
+      const now = Date.now()
+      if (this._lastToggleAt && now - this._lastToggleAt < 120) return
+      this._lastToggleAt = now
+      if (this.isDesktop) {
+        this.treeExpanded = !this.treeExpanded
+      } else {
+        this.treeDrawerVisible = !this.treeDrawerVisible
+        if (this.treeDrawerVisible) {
+          this.drawerDragY = 0
+          this.drawerDragging = false
+          this._hasDragged = false
+        }
+      }
+    },
+
+    closeDrawer() {
+      this.drawerDragY = 0
+      this.drawerDragging = false
+      this._hasDragged = false
+      this.treeDrawerVisible = false
+    },
+
+    onDrawerTouchStart(e) {
+      if (!e.touches || e.touches.length === 0) return
+      this._touchStartY = e.touches[0].clientY
+      this._touchStartTime = Date.now()
+      this.drawerDragging = true
+      this.drawerDragY = 0
+      this._hasDragged = false
+    },
+
+    onDrawerTouchMove(e) {
+      if (!this.drawerDragging || !e.touches || e.touches.length === 0) return
+      const currentY = e.touches[0].clientY
+      const delta = currentY - this._touchStartY
+      if (Math.abs(delta) > 8) {
+        this._hasDragged = true
+      }
+      if (delta > 0) {
+        this.drawerDragY = delta
+      } else {
+        this.drawerDragY = 0
+      }
+    },
+
+    onDrawerTouchEnd(e) {
+      if (!this.drawerDragging) return
+      this.drawerDragging = false
+      const dt = Math.max(1, Date.now() - this._touchStartTime)
+      const velocity = this.drawerDragY / dt
+      if (this.drawerDragY > 70 || (this.drawerDragY >= 35 && velocity > 0.4)) {
+        this.closeDrawer()
+      } else {
+        this.drawerDragY = 0
+      }
+    },
+
+    onDrawerBarTap() {
+      if (this._hasDragged) {
+        this._hasDragged = false
+        return
+      }
+      this.closeDrawer()
+    },
+
+    async onTreeResolveConfirmation({ confirmationId, status, tool }) {
+      const nextStatus = status || 'executed'
+      const isApproved = nextStatus === 'executed'
+      this._resolveCard(confirmationId, nextStatus, isApproved, tool)
+      if (confirmationId && !confirmationId.startsWith('conf_demo_')) {
+        try {
+          const endpoint = isApproved
+            ? `/api/confirmations/${confirmationId}/approve`
+            : `/api/confirmations/${confirmationId}/reject`
+          await post(endpoint, {})
+        } catch (e) {
+          // Fallback for role or test network
+        }
+      }
+    },
     async initSessionHistory() {
       try {
         let sid = uni.getStorageSync('laoyouji_elder_session_id')
@@ -553,6 +770,10 @@ export default {
           this.messages.push({
             kind: 'tool',
             callId: d.call_id,
+            tool: d.tool || '',
+            agent: d.agent || '',
+            args: d.args || {},
+            status: 'running',
             summary: d.summary || d.tool,
           })
           this._scrollBottom()
@@ -568,14 +789,19 @@ export default {
           const bubbleMsg = this.messages.find(
             (m) => m.kind === 'tool' && m.callId === d.call_id,
           )
-          if (bubbleMsg && d.summary) {
-            let cleanSummary = d.summary
-              .replace(/；本次没产出：[^\n]+/g, '')
-              .replace(/本次没产出：[^\n]+/g, '')
-              .replace(/已获得字段：[^\n]+/g, '')
-              .trim()
-            bubbleMsg.summary = cleanSummary || d.summary
-            bubbleMsg.blocked = !!d.denied
+          if (bubbleMsg) {
+            bubbleMsg.status = d.suspended ? 'suspended' : (d.ok !== false ? 'completed' : 'failed')
+            bubbleMsg.result = d.data || d.summary
+            bubbleMsg.ok = d.ok !== false
+            if (d.summary) {
+              let cleanSummary = d.summary
+                .replace(/；本次没产出：[^\n]+/g, '')
+                .replace(/本次没产出：[^\n]+/g, '')
+                .replace(/已获得字段：[^\n]+/g, '')
+                .trim()
+              bubbleMsg.summary = cleanSummary || d.summary
+              bubbleMsg.blocked = !!d.denied
+            }
           }
           break
         }
@@ -588,6 +814,7 @@ export default {
         case 'suspended':
           this.messages.push({
             kind: 'suspend',
+            tool: d.tool || '',
             // confirmationId 是这张卡后来能被改写的唯一钥匙（见下面
             // confirmation_resolved）。少了它，家人点完同意，这张黄卡就永远
             // 停在"等他点同意"上。
@@ -682,13 +909,21 @@ export default {
      * "没成功" —— rejected 是家人不同意，failed 是家人同意了但执行出错。
      * 把后者说成前者，等于替家人表了个他没表过的态。老字段 ok 只作兜底。
      */
-    _resolveCard(id, status, ok) {
-      if (!id) return false
-      const card = this.messages.find(
-        (m) => m.kind === 'suspend' && m.confirmationId === id,
-      )
+    _resolveCard(id, status, ok, tool = '') {
+      let card = id
+        ? this.messages.find((m) => m.kind === 'suspend' && m.confirmationId === id)
+        : null
+      if (!card && tool) {
+        card = this.messages.find(
+          (m) => m.kind === 'suspend' && m.tool === tool && m.status === 'pending',
+        )
+      }
+      if (!card && !id) {
+        card = this.messages.find((m) => m.kind === 'suspend' && m.status === 'pending')
+      }
+      if (!card) return false
       const next = status || (ok ? 'executed' : 'rejected')
-      if (!card || card.status === next) return false
+      if (card.status === next) return false
       card.status = next
       return true
     },
@@ -804,14 +1039,23 @@ export default {
        * 放在最后一条：它是脚注里的脚注。
        */
       if (d.footnote) notes.push(d.footnote)
+      let sections = pages.map((p) => ({
+        heading: p.title || '',
+        rows: p.rows || [],
+        notes: p.notes || [],
+      }))
+      if (!sections.length && d.body && typeof d.body === 'object') {
+        const rows = Object.entries(d.body).map(([label, value]) => ({
+          label,
+          value: String(value),
+          missing: false,
+        }))
+        sections = [{ heading: '', rows, notes: [] }]
+      }
       return {
         kind: 'card',
         title: d.title || '',
-        sections: pages.map((p) => ({
-          heading: p.title || '',
-          rows: p.rows || [],
-          notes: p.notes || [],
-        })),
+        sections,
         notes,
         complete: d.complete !== false,
         // 只有五页计划书铺开；两张轻量卡片走紧凑模式
@@ -924,6 +1168,61 @@ export default {
   align-items: center;
   gap: $lyj-space-sm;
   flex-shrink: 0;
+}
+.tree-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 18rpx;
+  background: #fdfaf6;
+  border: 2rpx solid #e7dcce;
+  border-radius: $lyj-radius-pill;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+.tree-toggle-btn:active, .tree-toggle-btn.active {
+  background: #0f172a;
+  border-color: #1e293b;
+  .tree-toggle-text {
+    color: #ffffff;
+  }
+}
+.tree-toggle-btn.hasPending {
+  border-color: #f59e0b;
+}
+.tree-toggle-btn.hasRejected {
+  border-color: #ef4444;
+}
+.tree-toggle-icon {
+  font-size: 26rpx;
+  line-height: 1;
+}
+.tree-toggle-text {
+  font-size: $lyj-font-nav;
+  color: $lyj-primary;
+  font-weight: 700;
+  line-height: 1;
+}
+.pulse-dot-mini {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #2563eb;
+  animation: tree-pulse-mini 1.5s infinite;
+}
+.tree-badge {
+  font-size: 20rpx;
+  font-weight: 800;
+  background: #d97706;
+  color: #ffffff;
+  border-radius: 999rpx;
+  padding: 2rpx 10rpx;
+  line-height: 1;
+}
+@keyframes tree-pulse-mini {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+  50% { box-shadow: 0 0 8rpx 3rpx rgba(37, 99, 235, 0.3); }
 }
 .new-chat-btn {
   display: inline-flex;
@@ -1166,7 +1465,89 @@ export default {
   background: $lyj-disabled;
 }
 
-/* 电脑端宽屏自适应：固定在 960px 舒适阅读区，消灭底部大面积空洞留白与悬浮孤岛 */
+.workbench-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.workbench-chat-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 移动端执行树抽屉 (Drawer / Bottom Sheet) */
+.mobile-drawer-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-drawer-panel {
+  width: 100%;
+  height: 86vh;
+  background: #f8fafc;
+  border-top-left-radius: 28rpx;
+  border-top-right-radius: 28rpx;
+  box-shadow: 0 -16rpx 48rpx rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-drag-bar {
+  padding: 16rpx 0 10rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+  background: #0f172a;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.drawer-drag-handle {
+  width: 80rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: #475569;
+}
+
+.drawer-drag-tip {
+  font-size: 20rpx;
+  color: #94a3b8;
+  line-height: 1;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 电脑端宽屏自适应：双栏工作台架构 (R1) */
 @media screen and (min-width: 768px) {
   .chat-page {
     max-width: 960px;
@@ -1176,7 +1557,50 @@ export default {
     border-left: 2rpx solid $lyj-line;
     border-right: 2rpx solid $lyj-line;
     box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
+    transition: max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
+
+  .chat-page.split-mode {
+    max-width: 1600px !important;
+    width: 98vw;
+  }
+
+  .workbench-body.workbench-split {
+    display: flex;
+    flex-direction: row;
+  }
+
+  .workbench-body.workbench-split .workbench-chat-pane {
+    flex: 1.15;
+    border-right: 2rpx solid $lyj-line;
+    max-width: 58%;
+    min-width: 340px;
+  }
+
+  .workbench-tree-pane {
+    flex: 1;
+    min-width: 380px;
+    max-width: 50%;
+    height: 100%;
+    overflow: hidden;
+    background: #ffffff;
+    box-shadow: -4rpx 0 20rpx rgba(0, 0, 0, 0.03);
+    animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media screen and (max-width: 1024px) {
+    .workbench-body.workbench-split .workbench-chat-pane {
+      flex: 1;
+      min-width: 300px;
+      max-width: 54%;
+    }
+    .workbench-tree-pane {
+      flex: 1;
+      min-width: 320px;
+      max-width: 50%;
+    }
+  }
+
   .topbar {
     padding: 24rpx 32rpx;
   }
@@ -1188,6 +1612,52 @@ export default {
   .input-bar {
     max-width: 860px;
     margin: 0 auto;
+  }
+}
+
+/* 超宽 4K 屏幕优化：适度延展双栏宽度 */
+@media screen and (min-width: 2560px) {
+  .chat-page.split-mode {
+    max-width: 1800px !important;
+  }
+}
+
+/* 移动端狭窄屏自适应 (< 480px / 375px / 360px)：防止顶栏按钮折行和截断 */
+@media screen and (max-width: 480px) {
+  .topbar {
+    padding: 14rpx 16rpx;
+    gap: 8rpx;
+  }
+  .topbar-main .status {
+    display: none;
+  }
+  .agent-tag {
+    display: none;
+  }
+  .tree-toggle-btn {
+    padding: 6rpx 14rpx;
+  }
+}
+
+@media screen and (max-width: 375px) {
+  .history-btn .history-text {
+    display: none;
+  }
+  .new-chat-btn .new-chat-text {
+    display: none;
+  }
+  .tree-toggle-text {
+    font-size: 22rpx;
+  }
+}
+
+/* 移动端横屏或超矮屏幕优化 (< 500px 高度) */
+@media screen and (max-height: 500px) {
+  .mobile-drawer-panel {
+    height: 94vh;
+  }
+  .drawer-drag-bar {
+    padding: 10rpx 0 6rpx;
   }
 }
 </style>

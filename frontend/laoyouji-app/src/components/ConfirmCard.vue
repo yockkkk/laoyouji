@@ -17,6 +17,7 @@
     <view class="head">
       <text class="icon">{{ head.icon }}</text>
       <text class="title">{{ head.title }}</text>
+      <text class="status-tag" :class="status">{{ statusBadgeText }}</text>
     </view>
 
     <text class="desc">{{ message }}</text>
@@ -76,6 +77,15 @@ export default {
     /** 认不出的状态按"还在等"处理：宁可让老人多等，不可替家人宣布结果。 */
     head() {
       return HEADS[this.status] || HEADS.pending
+    },
+    statusBadgeText() {
+      const map = {
+        pending: '待确认',
+        executed: '已执行',
+        rejected: '已拒绝',
+        failed: '执行失败',
+      }
+      return map[this.status] || '待确认'
     },
     /** 还剩多少分钟。算不出来就不显示 —— 不编一个数字给老人。 */
     validMinutes() {
@@ -140,6 +150,29 @@ export default {
   font-size: $lyj-font-md;
   font-weight: 700;
   color: $lyj-warn-text;
+}
+.status-tag {
+  margin-left: auto;
+  font-size: $lyj-font-xs;
+  padding: 4rpx 16rpx;
+  border-radius: $lyj-radius-pill;
+  font-weight: 600;
+}
+.status-tag.pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+.status-tag.executed {
+  background: #dcfce7;
+  color: #15803d;
+}
+.status-tag.rejected {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.status-tag.failed {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 .desc {
   display: block;

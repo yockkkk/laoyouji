@@ -90,6 +90,103 @@
            {"seat_type": "二等座", "price": 95.5, "remaining": 22}
          ]}
       ]
+    },
+    {
+      "from_city": "南京",
+      "to_city": "杭州",
+      "from_station": "南京南站",
+      "to_station": "杭州东站",
+      "trains": [
+        {"train_no": "G7615", "depart": "08:30", "arrive": "09:58", "duration": "1小时28分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 28},
+           {"seat_type": "一等座", "price": 197.5, "remaining": 10}
+         ]},
+        {"train_no": "G7371", "depart": "10:15", "arrive": "11:42", "duration": "1小时27分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 45},
+           {"seat_type": "一等座", "price": 197.5, "remaining": 8}
+         ]},
+        {"train_no": "G7587", "depart": "14:20", "arrive": "15:52", "duration": "1小时32分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 19},
+           {"seat_type": "商务座", "price": 372.5, "remaining": 3}
+         ]},
+        {"train_no": "G7609", "depart": "17:05", "arrive": "18:35", "duration": "1小时30分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 36},
+           {"seat_type": "一等座", "price": 197.5, "remaining": 12}
+         ]}
+      ]
+    },
+    {
+      "from_city": "杭州",
+      "to_city": "南京",
+      "from_station": "杭州东站",
+      "to_station": "南京南站",
+      "trains": [
+        {"train_no": "G7616", "depart": "09:12", "arrive": "10:40", "duration": "1小时28分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 31},
+           {"seat_type": "一等座", "price": 197.5, "remaining": 6}
+         ]},
+        {"train_no": "G7372", "depart": "13:25", "arrive": "14:55", "duration": "1小时30分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 52},
+           {"seat_type": "一等座", "price": 197.5, "remaining": 14}
+         ]},
+        {"train_no": "G7588", "depart": "16:40", "arrive": "18:11", "duration": "1小时31分",
+         "seats": [
+           {"seat_type": "二等座", "price": 117.5, "remaining": 20},
+           {"seat_type": "商务座", "price": 372.5, "remaining": 2}
+         ]}
+      ]
+    },
+    {
+      "from_city": "杭州",
+      "to_city": "上海",
+      "from_station": "杭州东站",
+      "to_station": "上海虹桥站",
+      "trains": [
+        {"train_no": "G7302", "depart": "07:45", "arrive": "08:32", "duration": "47分",
+         "seats": [
+           {"seat_type": "二等座", "price": 73.0, "remaining": 65},
+           {"seat_type": "一等座", "price": 117.0, "remaining": 22}
+         ]},
+        {"train_no": "G7532", "depart": "11:10", "arrive": "12:05", "duration": "55分",
+         "seats": [
+           {"seat_type": "二等座", "price": 73.0, "remaining": 40},
+           {"seat_type": "一等座", "price": 117.0, "remaining": 15}
+         ]},
+        {"train_no": "G7360", "depart": "15:30", "arrive": "16:18", "duration": "48分",
+         "seats": [
+           {"seat_type": "二等座", "price": 73.0, "remaining": 18},
+           {"seat_type": "商务座", "price": 219.5, "remaining": 4}
+         ]}
+      ]
+    },
+    {
+      "from_city": "上海",
+      "to_city": "杭州",
+      "from_station": "上海虹桥站",
+      "to_station": "杭州东站",
+      "trains": [
+        {"train_no": "G7301", "depart": "08:10", "arrive": "08:58", "duration": "48分",
+         "seats": [
+           {"seat_type": "二等座", "price": 73.0, "remaining": 50},
+           {"seat_type": "一等座", "price": 117.0, "remaining": 18}
+         ]},
+        {"train_no": "G7531", "depart": "13:00", "arrive": "13:52", "duration": "52分",
+         "seats": [
+           {"seat_type": "二等座", "price": 73.0, "remaining": 35},
+           {"seat_type": "一等座", "price": 117.0, "remaining": 11}
+         ]},
+        {"train_no": "G7359", "depart": "17:25", "arrive": "18:15", "duration": "50分",
+         "seats": [
+           {"seat_type": "二等座", "price": 73.0, "remaining": 24},
+           {"seat_type": "商务座", "price": 219.5, "remaining": 3}
+         ]}
+      ]
     }
   ]
 }

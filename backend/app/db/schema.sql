@@ -130,6 +130,21 @@ create table if not exists public.trip_checkpoints (
 );
 alter table public.trip_checkpoints enable row level security;
 
+-- ===== 通知域 =====
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.users(id) on delete cascade,
+  elder_id uuid references public.users(id) on delete cascade,
+  title text not null,
+  summary text,
+  type text default 'plan_created',
+  is_read boolean default false,
+  data jsonb default '{}',
+  created_at timestamptz default now()
+);
+alter table public.notifications enable row level security;
+create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
+
 -- ===== 健康域 =====
 create table if not exists public.medication_plans (
   id uuid primary key default gen_random_uuid(),
