@@ -16,10 +16,12 @@
 
     <view v-for="(item, index) in todos" :key="index" class="step">
       <view class="step-dot" :class="item.status">
-        <text class="step-num">{{ item.status === 'completed' ? '✓' : index + 1 }}</text>
+        <text class="step-num">{{ item.status === 'completed' ? '✓' : (item.status === 'rejected' ? '✕' : index + 1) }}</text>
       </view>
-      <text class="step-title" :class="item.status">{{ item.content || item.text || item.title }}</text>
-      <text v-if="item.status === 'in_progress'" class="step-spinner">⏳</text>
+      <text class="step-title" :class="item.status">{{ item.content || item.text || item.title || ('阶段 ' + (index + 1)) }}</text>
+      <text v-if="item.status === 'in_progress'" class="step-spinner">⚡</text>
+      <text v-else-if="item.status === 'suspended'" class="step-spinner">⏸️</text>
+      <text v-else-if="item.status === 'rejected'" class="step-spinner">🛑</text>
     </view>
   </view>
 </template>
@@ -88,6 +90,16 @@ export default {
   background: $lyj-success;
   color: $lyj-text-on;
 }
+.step-dot.suspended {
+  background: $lyj-warn-bg;
+  color: $lyj-warn-text;
+  border: 2rpx solid $lyj-warn;
+}
+.step-dot.rejected {
+  background: #fef2f2;
+  color: $lyj-danger;
+  border: 2rpx solid #fca5a5;
+}
 .step-num {
   font-size: $lyj-font-sm;
   font-weight: 700;
@@ -98,6 +110,14 @@ export default {
   font-size: $lyj-font-md;
   color: $lyj-text;
   line-height: $lyj-line-height;
+}
+.step-title.suspended {
+  color: $lyj-warn-text;
+  font-weight: 600;
+}
+.step-title.rejected {
+  color: $lyj-danger;
+  text-decoration: line-through;
 }
 .step-title.completed {
   color: $lyj-text-light;

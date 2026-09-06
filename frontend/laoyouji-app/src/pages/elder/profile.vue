@@ -157,6 +157,9 @@ export default {
     },
   },
   onShow() {
+    try {
+      uni.showTabBar({ animation: false })
+    } catch (e) {}
     this.user = getCurrentUser()
     if (!this.user) {
       uni.reLaunch({ url: '/pages/login/login' })

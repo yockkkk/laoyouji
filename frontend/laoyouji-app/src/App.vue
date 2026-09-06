@@ -26,6 +26,13 @@ page {
 button {
   font-size: $lyj-font-md;
   touch-action: manipulation;
+  min-height: 44px;
+  min-width: 44px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+button:active {
+  transform: translateY(1px) scale(0.99);
 }
 
 button:focus-visible, input:focus-visible, textarea:focus-visible {

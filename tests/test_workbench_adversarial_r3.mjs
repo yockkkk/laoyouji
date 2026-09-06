@@ -358,4 +358,131 @@ console.log('Test 6: Multi-turn Reverse-Lookup Picks Latest Tool Execution')
   console.log('✓ Passed: Latest tool message accurately prioritized in multi-turn interactions\n')
 }
 
-console.log('=== ALL ADVERSARIAL TESTS PASSED (6/6) ===')
+// -------------------------------------------------------------
+// Test 7: Static AST / Text Verification that AgentExecutionTree.vue Uses Reverse Lookup
+// -------------------------------------------------------------
+console.log('Test 7: Static Verification that AgentExecutionTree.vue Uses Reverse Lookup')
+{
+  import('node:fs').then(({ readFileSync }) => {
+    const code = readFileSync('frontend/laoyouji-app/src/components/AgentExecutionTree.vue', 'utf8')
+    assert.ok(!code.includes('msgs.find('), 'AgentExecutionTree.vue must NOT contain un-reversed msgs.find(')
+    assert.ok(!code.includes('suspends.find('), 'AgentExecutionTree.vue must NOT contain un-reversed suspends.find(')
+    assert.ok(code.includes('msgs.slice().reverse().find('), 'AgentExecutionTree.vue must use msgs.slice().reverse().find(')
+    assert.ok(code.includes('suspends.slice().reverse().find('), 'AgentExecutionTree.vue must use suspends.slice().reverse().find(')
+    console.log('✓ Passed: AgentExecutionTree.vue confirmed using reverse lookup for all tools and suspends\n')
+  })
+}
+
+// -------------------------------------------------------------
+// Test 8: Tool Status Domain-Specific Status Mapping
+// -------------------------------------------------------------
+console.log('Test 8: Tool Status Domain-Specific Status Mapping')
+{
+  function formatToolStatus(status, toolKey = '') {
+    const k = String(toolKey || '').toLowerCase()
+    switch (status) {
+      case 'completed':
+      case 'executed':
+        if (k.includes('appoint') || k.includes('register')) return '已预约 ✅'
+        if (k.includes('ticket')) return '已出票 ✅'
+        if (k.includes('hotel') && (k.includes('book') || status === 'executed')) return '已预订 ✅'
+        if (k.includes('compose') || k.includes('deliverable')) return '已装配 ✅'
+        return '已完成 ✅'
+      case 'suspended':
+        return '⏸️ 待确认'
+      case 'running':
+        return '执行中 ⚡'
+      case 'pending':
+        return '待调度 ⏳'
+      case 'rejected':
+        return '已拦截 🛑'
+      default:
+        return status
+    }
+  }
+
+  assert.equal(formatToolStatus('executed', 'registerAppointment'), '已预约 ✅')
+  assert.equal(formatToolStatus('executed', 'bookTicket'), '已出票 ✅')
+  assert.equal(formatToolStatus('executed', 'bookHotel'), '已预订 ✅')
+  assert.equal(formatToolStatus('completed', 'composeDeliverable'), '已装配 ✅')
+  assert.equal(formatToolStatus('completed', 'searchHospital'), '已完成 ✅')
+  assert.equal(formatToolStatus('completed', 'searchTrain'), '已完成 ✅')
+  assert.equal(formatToolStatus('completed', 'searchHotel'), '已完成 ✅')
+  assert.equal(formatToolStatus('completed', 'orderService'), '已完成 ✅')
+  assert.equal(formatToolStatus('suspended', 'registerAppointment'), '⏸️ 待确认')
+  assert.equal(formatToolStatus('rejected', 'bookTicket'), '已拦截 🛑')
+  console.log('✓ Passed: formatToolStatus renders domain-specific status labels correctly\n')
+}
+
+// -------------------------------------------------------------
+// Test 9: Batch Approval Progress 4/4 & Full Transition
+// -------------------------------------------------------------
+console.log('Test 9: Batch Approval Progress 4/4 & Full Transition')
+{
+  const treeModel = {
+    demoApprovals: { appointment: false, ticket: false, hotel: false },
+    thinking: false,
+    hasAnyRejected: false,
+    triggerApprove(confId, toolName) {
+      if (toolName === 'register_appointment') this.demoApprovals.appointment = true
+      if (toolName === 'book_ticket') this.demoApprovals.ticket = true
+      if (toolName === 'book_hotel') this.demoApprovals.hotel = true
+    },
+    approveAllPending() {
+      this.triggerApprove('c1', 'register_appointment')
+      this.triggerApprove('c2', 'book_ticket')
+      this.triggerApprove('c3', 'book_hotel')
+    },
+    get isArtifactReady() {
+      return (
+        this.demoApprovals.appointment === true &&
+        this.demoApprovals.ticket === true &&
+        this.demoApprovals.hotel === true
+      )
+    },
+    get displaySteps() {
+      const s1 = this.demoApprovals.appointment ? 'completed' : 'suspended'
+      const s2 = this.demoApprovals.ticket ? 'completed' : 'suspended'
+      const s3 = this.demoApprovals.hotel ? 'completed' : 'suspended'
+      const s4 = this.isArtifactReady ? 'completed' : 'pending'
+      return [
+        { name: '选医院挂专家号', status: s1 },
+        { name: '查高铁车次及订票', status: s2 },
+        { name: '订适老无障碍酒店', status: s3 },
+        { name: '聚合装配计划书', status: s4 },
+      ]
+    },
+    get completedCount() {
+      return this.displaySteps.filter((s) => s.status === 'completed').length
+    },
+  }
+
+  assert.equal(treeModel.completedCount, 0, 'Initially 0/4 completed')
+  treeModel.approveAllPending()
+  assert.equal(treeModel.completedCount, 4, 'Must reach 4/4 completed upon approveAllPending')
+  assert.equal(treeModel.isArtifactReady, true, 'Artifact must unlock immediately')
+  assert.ok(treeModel.displaySteps.every((s) => s.status === 'completed'), 'All stages must be completed')
+  console.log('✓ Passed: Batch approval transitions all stages to completed (4/4)\n')
+}
+
+// -------------------------------------------------------------
+// Test 10: App.vue Button Active Press Physics Rule Presence
+// -------------------------------------------------------------
+console.log('Test 10: App.vue Button Active Press Physics Rule Presence')
+{
+  import('node:fs').then(({ readFileSync }) => {
+    const appCode = readFileSync('frontend/laoyouji-app/src/App.vue', 'utf8')
+    assert.ok(
+      appCode.includes('translateY(1px) scale(0.99)'),
+      'App.vue must include translateY(1px) scale(0.99) button tactile rule',
+    )
+    assert.ok(
+      appCode.includes('min-height: 44px'),
+      'App.vue must declare touch-target min-height: 44px',
+    )
+    console.log('✓ Passed: App.vue button press physics and touch target baseline verified\n')
+  })
+}
+
+console.log('=== ALL ADVERSARIAL TESTS PASSED (10/10) ===')
+

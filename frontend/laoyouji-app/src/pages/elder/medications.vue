@@ -82,6 +82,9 @@ export default {
     }
   },
   onShow() {
+    try {
+      uni.showTabBar({ animation: false })
+    } catch (e) {}
     this.user = getCurrentUser()
     if (!this.user) {
       // 换身份 —— 清栈是这里要的语义

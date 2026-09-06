@@ -443,7 +443,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.searchHospital }}</text>
                           <view class="node-status-tag" :class="healthTools.searchHospital.status">
-                            {{ formatToolStatus(healthTools.searchHospital.status) }}
+                            {{ formatToolStatus(healthTools.searchHospital.status, 'searchHospital') }}
                           </view>
                         </view>
                       </view>
@@ -495,7 +495,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.registerAppointment }}</text>
                           <view class="node-status-tag" :class="healthTools.registerAppointment.status">
-                            {{ formatToolStatus(healthTools.registerAppointment.status) }}
+                            {{ formatToolStatus(healthTools.registerAppointment.status, 'registerAppointment') }}
                           </view>
                         </view>
                       </view>
@@ -605,7 +605,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.searchTrain }}</text>
                           <view class="node-status-tag" :class="travelTools.searchTrain.status">
-                            {{ formatToolStatus(travelTools.searchTrain.status) }}
+                            {{ formatToolStatus(travelTools.searchTrain.status, 'searchTrain') }}
                           </view>
                         </view>
                       </view>
@@ -644,7 +644,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.bookTicket }}</text>
                           <view class="node-status-tag" :class="travelTools.bookTicket.status">
-                            {{ formatToolStatus(travelTools.bookTicket.status) }}
+                            {{ formatToolStatus(travelTools.bookTicket.status, 'bookTicket') }}
                           </view>
                         </view>
                       </view>
@@ -714,7 +714,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.searchHotel }}</text>
                           <view class="node-status-tag" :class="travelTools.searchHotel.status">
-                            {{ formatToolStatus(travelTools.searchHotel.status) }}
+                            {{ formatToolStatus(travelTools.searchHotel.status, 'searchHotel') }}
                           </view>
                         </view>
                       </view>
@@ -753,7 +753,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.bookHotel }}</text>
                           <view class="node-status-tag" :class="travelTools.bookHotel.status">
-                            {{ formatToolStatus(travelTools.bookHotel.status) }}
+                            {{ formatToolStatus(travelTools.bookHotel.status, 'bookHotel') }}
                           </view>
                         </view>
                       </view>
@@ -823,7 +823,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.getWeather }}</text>
                           <view class="node-status-tag" :class="travelTools.getWeather.status">
-                            {{ formatToolStatus(travelTools.getWeather.status) }}
+                            {{ formatToolStatus(travelTools.getWeather.status, 'getWeather') }}
                           </view>
                         </view>
                       </view>
@@ -900,7 +900,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.orderService }}</text>
                           <view class="node-status-tag" :class="communityTools.orderService.status">
-                            {{ formatToolStatus(communityTools.orderService.status) }}
+                            {{ formatToolStatus(communityTools.orderService.status, 'orderService') }}
                           </view>
                         </view>
                       </view>
@@ -986,7 +986,7 @@
                       </view>
                       <text class="item-amount tabular-num">¥100.00</text>
                       <view class="item-status" :class="healthTools.registerAppointment.status">
-                        {{ formatToolStatus(healthTools.registerAppointment.status) }}
+                        {{ formatToolStatus(healthTools.registerAppointment.status, 'registerAppointment') }}
                       </view>
                     </view>
                     <view class="safety-item-row">
@@ -997,7 +997,7 @@
                       </view>
                       <text class="item-amount tabular-num">¥443.50</text>
                       <view class="item-status" :class="travelTools.bookTicket.status">
-                        {{ formatToolStatus(travelTools.bookTicket.status) }}
+                        {{ formatToolStatus(travelTools.bookTicket.status, 'bookTicket') }}
                       </view>
                     </view>
                     <view class="safety-item-row">
@@ -1008,7 +1008,7 @@
                       </view>
                       <text class="item-amount tabular-num">¥680.00</text>
                       <view class="item-status" :class="travelTools.bookHotel.status">
-                        {{ formatToolStatus(travelTools.bookHotel.status) }}
+                        {{ formatToolStatus(travelTools.bookHotel.status, 'bookHotel') }}
                       </view>
                     </view>
                   </view>
@@ -1070,7 +1070,7 @@
                         <view class="node-tags-group">
                           <text class="latency-badge tabular-num">{{ toolLatencies.composeDeliverable }}</text>
                           <view class="node-status-tag" :class="planBuilderTools.composeDeliverable.status">
-                            {{ formatToolStatus(planBuilderTools.composeDeliverable.status) }}
+                            {{ formatToolStatus(planBuilderTools.composeDeliverable.status, 'composeDeliverable') }}
                           </view>
                         </view>
                       </view>
@@ -1207,10 +1207,23 @@ export default {
       expandedToolResults: {},
     }
   },
+  mounted() {
+    if (typeof document !== 'undefined') {
+      this._onVisChange = () => {
+        if (document.hidden && this.replay && this.replay.playing) {
+          this.pauseReplay()
+        }
+      }
+      document.addEventListener('visibilitychange', this._onVisChange)
+    }
+  },
   beforeUnmount() {
     if (this.replay.timer) {
       clearInterval(this.replay.timer)
       this.replay.timer = null
+    }
+    if (typeof document !== 'undefined' && this._onVisChange) {
+      document.removeEventListener('visibilitychange', this._onVisChange)
     }
   },
   computed: {
@@ -1248,12 +1261,12 @@ export default {
 
     hasAnyRejected() {
       if (this.replay.active) return false
-      if (this.demoModeActive) {
-        return (
-          this.demoApprovals.appointment === 'rejected' ||
-          this.demoApprovals.ticket === 'rejected' ||
-          this.demoApprovals.hotel === 'rejected'
-        )
+      if (
+        this.demoApprovals.appointment === 'rejected' ||
+        this.demoApprovals.ticket === 'rejected' ||
+        this.demoApprovals.hotel === 'rejected'
+      ) {
+        return true
       }
       return (this.messages || []).some(
         (m) => m.kind === 'suspend' && m.status === 'rejected',
@@ -1265,16 +1278,11 @@ export default {
         if (this.replay.step === 3) return 3
         return 0
       }
-      if (this.demoModeActive) {
-        let demoPending = 0
-        if (this.demoApprovals.appointment === false) demoPending++
-        if (this.demoApprovals.ticket === false) demoPending++
-        if (this.demoApprovals.hotel === false) demoPending++
-        return demoPending
-      }
-      return (this.messages || []).filter(
-        (m) => m.kind === 'suspend' && m.status === 'pending',
-      ).length
+      let count = 0
+      if (this.healthTools.registerAppointment.status === 'suspended') count++
+      if (this.travelTools.bookTicket.status === 'suspended') count++
+      if (this.travelTools.bookHotel.status === 'suspended') count++
+      return count
     },
 
     activeAgentsCount() {
@@ -1686,17 +1694,17 @@ export default {
 
       const msgs = this.messages || []
       const suspends = msgs.filter((m) => m.kind === 'suspend')
-      const appointSuspend = suspends.find(
+      const appointSuspend = suspends.slice().reverse().find(
         (m) =>
           m.tool === 'register_appointment' ||
           (m.summary && (m.summary.includes('挂号') || m.summary.includes('医院'))) ||
           m.amount === 100,
       )
 
-      const searchHospTool = msgs.find(
+      const searchHospTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'search_hospital' || (m.summary && m.summary.includes('医院'))),
       )
-      const appointTool = msgs.find(
+      const appointTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'register_appointment' || (m.summary && m.summary.includes('挂号'))),
       )
 
@@ -1725,11 +1733,17 @@ export default {
 
       if (appointSuspend) {
         appointStatus = appointSuspend.status || 'pending'
-        if (appointStatus === 'pending') appointStatus = 'suspended'
+        if (appointStatus === 'pending') {
+          if (this.demoApprovals.appointment === true) appointStatus = 'executed'
+          else if (this.demoApprovals.appointment === 'rejected') appointStatus = 'rejected'
+          else appointStatus = 'suspended'
+        }
+      } else if (this.demoApprovals.appointment === true) {
+        appointStatus = 'executed'
+      } else if (this.demoApprovals.appointment === 'rejected') {
+        appointStatus = 'rejected'
       } else if (this.demoModeActive) {
-        if (this.demoApprovals.appointment === true) appointStatus = 'executed'
-        else if (this.demoApprovals.appointment === 'rejected') appointStatus = 'rejected'
-        else appointStatus = 'suspended'
+        appointStatus = 'suspended'
         confId = 'conf_demo_appoint'
       } else if (this.thinking && (this.currentAgent === '安康助手' || this.currentAgent === 'health')) {
         appointStatus = 'running'
@@ -1838,32 +1852,32 @@ export default {
 
       const msgs = this.messages || []
       const suspends = msgs.filter((m) => m.kind === 'suspend')
-      const ticketSuspend = suspends.find(
+      const ticketSuspend = suspends.slice().reverse().find(
         (m) =>
           m.tool === 'book_ticket' ||
           (m.summary && (m.summary.includes('车票') || m.summary.includes('高铁') || m.summary.includes('票'))) ||
           m.amount === 443.5,
       )
-      const hotelSuspend = suspends.find(
+      const hotelSuspend = suspends.slice().reverse().find(
         (m) =>
           m.tool === 'book_hotel' ||
           (m.summary && (m.summary.includes('酒店') || m.summary.includes('房'))) ||
           m.amount === 680,
       )
 
-      const searchTrainTool = msgs.find(
+      const searchTrainTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'search_train' || (m.summary && m.summary.includes('车次'))),
       )
-      const bookTicketTool = msgs.find(
+      const bookTicketTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'book_ticket' || (m.summary && m.summary.includes('订票'))),
       )
-      const searchHotelTool = msgs.find(
+      const searchHotelTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'search_hotel' || (m.summary && m.summary.includes('酒店'))),
       )
-      const bookHotelTool = msgs.find(
+      const bookHotelTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'book_hotel' || (m.summary && m.summary.includes('预订'))),
       )
-      const weatherTool = msgs.find(
+      const weatherTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'get_weather' || (m.summary && m.summary.includes('天气'))),
       )
 
@@ -1888,11 +1902,17 @@ export default {
 
       if (ticketSuspend) {
         ticketStatus = ticketSuspend.status || 'pending'
-        if (ticketStatus === 'pending') ticketStatus = 'suspended'
+        if (ticketStatus === 'pending') {
+          if (this.demoApprovals.ticket === true) ticketStatus = 'executed'
+          else if (this.demoApprovals.ticket === 'rejected') ticketStatus = 'rejected'
+          else ticketStatus = 'suspended'
+        }
+      } else if (this.demoApprovals.ticket === true) {
+        ticketStatus = 'executed'
+      } else if (this.demoApprovals.ticket === 'rejected') {
+        ticketStatus = 'rejected'
       } else if (this.demoModeActive) {
-        if (this.demoApprovals.ticket === true) ticketStatus = 'executed'
-        else if (this.demoApprovals.ticket === 'rejected') ticketStatus = 'rejected'
-        else ticketStatus = 'suspended'
+        ticketStatus = 'suspended'
         ticketConfId = 'conf_demo_ticket'
       } else if (this.thinking && (this.currentAgent === '银发导航' || this.currentAgent === 'travel')) {
         ticketStatus = 'running'
@@ -1917,11 +1937,17 @@ export default {
 
       if (hotelSuspend) {
         hotelStatus = hotelSuspend.status || 'pending'
-        if (hotelStatus === 'pending') hotelStatus = 'suspended'
+        if (hotelStatus === 'pending') {
+          if (this.demoApprovals.hotel === true) hotelStatus = 'executed'
+          else if (this.demoApprovals.hotel === 'rejected') hotelStatus = 'rejected'
+          else hotelStatus = 'suspended'
+        }
+      } else if (this.demoApprovals.hotel === true) {
+        hotelStatus = 'executed'
+      } else if (this.demoApprovals.hotel === 'rejected') {
+        hotelStatus = 'rejected'
       } else if (this.demoModeActive) {
-        if (this.demoApprovals.hotel === true) hotelStatus = 'executed'
-        else if (this.demoApprovals.hotel === 'rejected') hotelStatus = 'rejected'
-        else hotelStatus = 'suspended'
+        hotelStatus = 'suspended'
         hotelConfId = 'conf_demo_hotel'
       }
 
@@ -2038,7 +2064,7 @@ export default {
     // 邻里帮
     communityTools() {
       const msgs = this.messages || []
-      const orderTool = msgs.find(
+      const orderTool = msgs.slice().reverse().find(
         (m) => m.kind === 'tool' && (m.tool === 'order_service' || (m.summary && m.summary.includes('陪诊'))),
       )
       let status = 'pending'
@@ -2080,13 +2106,13 @@ export default {
 
       const msgs = this.messages || []
       const hasCard = msgs.some((m) => m.kind === 'card')
-      const composeTool = msgs.find((m) => m.kind === 'tool' && m.tool === 'compose_deliverable')
+      const composeTool = msgs.slice().reverse().find((m) => m.kind === 'tool' && m.tool === 'compose_deliverable')
       let params = composeTool && composeTool.args ? this.formatParams(composeTool.args) : ''
 
       let status = 'pending'
       if (this.hasAnyRejected) {
         status = 'rejected'
-      } else if (hasCard) {
+      } else if (hasCard || this.isArtifactReady) {
         status = 'completed'
       } else if (composeTool) {
         status = composeTool.status === 'running' ? 'running' : 'completed'
@@ -2147,12 +2173,12 @@ export default {
       }
       const hasCard = (this.messages || []).some((m) => m.kind === 'card')
       if (hasCard) return true
-      if (this.demoModeActive) {
-        return (
-          this.demoApprovals.appointment === true &&
-          this.demoApprovals.ticket === true &&
-          this.demoApprovals.hotel === true
-        )
+      if (
+        this.demoApprovals.appointment === true &&
+        this.demoApprovals.ticket === true &&
+        this.demoApprovals.hotel === true
+      ) {
+        return true
       }
       const msgs = this.messages || []
       const suspends = msgs.filter((m) => m.kind === 'suspend')
@@ -2333,11 +2359,16 @@ export default {
       }
     },
 
-    formatToolStatus(status) {
+    formatToolStatus(status, toolKey = '') {
+      const k = String(toolKey || '').toLowerCase()
       switch (status) {
         case 'completed':
         case 'executed':
-          return '已执行 ✅'
+          if (k.includes('appoint') || k.includes('register')) return '已预约 ✅'
+          if (k.includes('ticket')) return '已出票 ✅'
+          if (k.includes('hotel') && (k.includes('book') || status === 'executed')) return '已预订 ✅'
+          if (k.includes('compose') || k.includes('deliverable')) return '已装配 ✅'
+          return '已完成 ✅'
         case 'suspended':
           return '⏸️ 待确认'
         case 'running':
@@ -2352,14 +2383,12 @@ export default {
     },
 
     triggerApprove(confirmationId, toolName) {
-      if (this.demoModeActive) {
-        if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
-          this.demoApprovals.appointment = true
-        } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
-          this.demoApprovals.ticket = true
-        } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
-          this.demoApprovals.hotel = true
-        }
+      if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
+        this.demoApprovals.appointment = true
+      } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
+        this.demoApprovals.ticket = true
+      } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
+        this.demoApprovals.hotel = true
       }
       this.$emit('resolve-confirmation', {
         confirmationId,
@@ -2370,14 +2399,12 @@ export default {
     },
 
     triggerReject(confirmationId, toolName) {
-      if (this.demoModeActive) {
-        if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
-          this.demoApprovals.appointment = 'rejected'
-        } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
-          this.demoApprovals.ticket = 'rejected'
-        } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
-          this.demoApprovals.hotel = 'rejected'
-        }
+      if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
+        this.demoApprovals.appointment = 'rejected'
+      } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
+        this.demoApprovals.ticket = 'rejected'
+      } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
+        this.demoApprovals.hotel = 'rejected'
       }
       this.$emit('resolve-confirmation', {
         confirmationId,
@@ -2388,6 +2415,9 @@ export default {
     },
 
     approveAllPending() {
+      if (this.replay.active) {
+        this.seekReplay(4)
+      }
       this.triggerApprove(this.healthTools.registerAppointment.confirmationId || 'conf_demo_appoint', 'register_appointment')
       this.triggerApprove(this.travelTools.bookTicket.confirmationId || 'conf_demo_ticket', 'book_ticket')
       this.triggerApprove(this.travelTools.bookHotel.confirmationId || 'conf_demo_hotel', 'book_hotel')

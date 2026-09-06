@@ -330,6 +330,7 @@ async def get_chat_history(
             messages.append({
                 "kind": "suspend",
                 "confirmationId": cid,
+                "tool": payload.get("tool", ""),
                 "message": payload.get("message", "已经发给家人确认啦"),
                 "summary": payload.get("summary", ""),
                 "status": payload.get("status", "pending"),

@@ -339,6 +339,10 @@ export default {
     }
   },
   beforeUnmount() {
+    try {
+      uni.showTabBar({ animation: false })
+    } catch (e) {}
+    this._stopWatch()
     if (typeof window !== 'undefined' && this._handleResize) {
       window.removeEventListener('resize', this._handleResize)
     }
@@ -966,14 +970,39 @@ export default {
         card = this.messages.find(
           (m) => m.kind === 'suspend' && m.tool === tool && m.status === 'pending',
         )
+        if (!card) {
+          if (tool === 'register_appointment' || tool.includes('appoint')) {
+            card = this.messages.find(
+              (m) =>
+                m.kind === 'suspend' &&
+                m.status === 'pending' &&
+                ((m.summary && (m.summary.includes('挂号') || m.summary.includes('医院'))) || m.amount === 100),
+            )
+          } else if (tool === 'book_ticket' || tool.includes('ticket')) {
+            card = this.messages.find(
+              (m) =>
+                m.kind === 'suspend' &&
+                m.status === 'pending' &&
+                ((m.summary && (m.summary.includes('车票') || m.summary.includes('高铁'))) || m.amount === 443.5),
+            )
+          } else if (tool === 'book_hotel' || tool.includes('hotel')) {
+            card = this.messages.find(
+              (m) =>
+                m.kind === 'suspend' &&
+                m.status === 'pending' &&
+                ((m.summary && (m.summary.includes('酒店') || m.summary.includes('房'))) || m.amount === 680),
+            )
+          }
+        }
       }
-      if (!card && !id) {
+      if (!card && !id && !tool) {
         card = this.messages.find((m) => m.kind === 'suspend' && m.status === 'pending')
       }
       if (!card) return false
       const next = status || (ok ? 'executed' : 'rejected')
       if (card.status === next) return false
       card.status = next
+      this.messages = [...this.messages]
       return true
     },
 
