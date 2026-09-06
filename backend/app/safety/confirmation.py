@@ -114,32 +114,42 @@ class ConfirmationService:
     async def approve_and_execute(self, task_id: str, ctx: AppContext,
                                   child_id: str | None = None) -> dict:
         """子女批准 → 校验状态机 → 带 bypass 凭证重放冻结的工具调用。"""
-        task = await self._get_valid_pending(task_id)
-        await self._repo.update("confirmation_tasks", task_id, {
-            "status": "approved", "resolved_at": _now_iso(),
-        })
-        await self._repo.insert("audit_log", {
-            "actor_id": child_id or task.get("child_id"),
-            "action": "confirmation_approved",
-            "target": task_id,
-            "detail": {"tool": task["tool_name"]},
-        })
+        # 预查 session_id 用于进入会话闸门（避免重放执行与老人同时对话产生交错因果错乱）
+        raw_task = await self._repo.get("confirmation_tasks", task_id)
+        session_id = (raw_task or {}).get("session_id") or ""
 
-        elder = await self._repo.get("users", task["elder_id"])
-        turn = TurnContext(
-            ctx=ctx, session_id=task.get("session_id") or "", user=elder or {},
-        )
-        result = await ctx.dispatcher.execute(
-            turn, task["tool_name"], task.get("tool_args") or {},
-            bypass_confirmation_id=task_id,
-        )
+        async def _execute() -> dict:
+            task = await self._get_valid_pending(task_id)
+            await self._repo.update("confirmation_tasks", task_id, {
+                "status": "approved", "resolved_at": _now_iso(),
+            })
+            await self._repo.insert("audit_log", {
+                "actor_id": child_id or task.get("child_id"),
+                "action": "confirmation_approved",
+                "target": task_id,
+                "detail": {"tool": task["tool_name"]},
+            })
 
-        status = "executed" if result.get("ok") else "failed"
-        await self._repo.update("confirmation_tasks", task_id, {
-            "status": status, "result": _jsonable(result),
-        })
-        await self._announce(ctx, task, elder or {}, result, status=status)
-        return {"ok": bool(result.get("ok")), "status": status, "result": _jsonable(result)}
+            elder = await self._repo.get("users", task["elder_id"])
+            turn = TurnContext(
+                ctx=ctx, session_id=session_id, user=elder or {},
+            )
+            result = await ctx.dispatcher.execute(
+                turn, task["tool_name"], task.get("tool_args") or {},
+                bypass_confirmation_id=task_id,
+            )
+
+            status = "executed" if result.get("ok") else "failed"
+            await self._repo.update("confirmation_tasks", task_id, {
+                "status": status, "result": _jsonable(result),
+            })
+            await self._announce(ctx, task, elder or {}, result, status=status)
+            return {"ok": bool(result.get("ok")), "status": status, "result": _jsonable(result)}
+
+        if session_id and getattr(ctx, "turn_gate", None) is not None:
+            async with ctx.turn_gate.hold(session_id):
+                return await _execute()
+        return await _execute()
 
     async def reject(self, task_id: str, ctx: AppContext,
                      child_id: str | None = None) -> dict:
@@ -221,7 +231,14 @@ class ConfirmationService:
         # 重放走的是子女端 HTTP 请求，进程里可能还没这个会话的内存日志；
         # 不先 hydrate 就 append，seq 会从 1 重新发号，把已有行撞掉。
         await ctx.event_log.hydrate(session_id)
-        announce = result.get("announce") or result.get("summary") or "事情办好啦。"
+        if status == "executed":
+            raw_ann = result.get("announce") or result.get("summary") or ""
+            if raw_ann:
+                announce = raw_ann if raw_ann.startswith("事情办好啦") else f"事情办好啦，{raw_ann}"
+            else:
+                announce = "事情办好啦，车票/医院已成功订好。"
+        else:
+            announce = result.get("announce") or result.get("summary") or "事情办好啦。"
         for event, payload in (
             ("confirmation_resolved", {
                 "confirmation_id": task["id"],

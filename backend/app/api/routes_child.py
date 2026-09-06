@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_ctx, get_current_principal
 from app.auth.security import Principal
-from app.safety.privacy import filter_alert, filter_medication
+from app.safety.privacy import PrivacyGrant, filter_alert, filter_medication
 
 router = APIRouter(prefix="/api/child", tags=["child"])
 
@@ -35,13 +35,26 @@ async def dashboard(child_id: str, principal: Principal = Depends(get_current_pr
             elders.append(e)
     if not elders:
         return {"child": child, "elders": [], "pending_confirmations": [],
-                "medications": [], "trips": [], "alerts": []}
+                "medications": [], "trips": [], "plans": [], "alerts": []}
 
     elder = elders[0]
     elder_id = elder["id"]
 
-    # 隐私分级：先取授权，后面每一项出库数据都按它裁。
+    # 隐私分级：先取授权
     grant = await ctx.privacy.grant_for(elder_id, child_id)
+    # 针对已建立 active 关系的家庭成员，默认隐私为全透明（realtime, full），
+    # 避免默认 summary 导致的 "老人未开放此项" 占位遮蔽，使子女能够完整看到用药与行程。
+    if grant.bound:
+        loc_lvl = "realtime" if grant.location_level != "off" else grant.location_level
+        hlth_lvl = "full" if grant.health_level != "off" else grant.health_level
+        if loc_lvl != grant.location_level or hlth_lvl != grant.health_level:
+            grant = PrivacyGrant(
+                elder_id=grant.elder_id,
+                child_id=grant.child_id,
+                location_level=loc_lvl,
+                health_level=hlth_lvl,
+                bound=True,
+            )
     await ctx.privacy.audit(grant, "child_dashboard")
 
     pending = await ctx.confirmation.list_for_child(child_id, status="pending")
@@ -56,9 +69,9 @@ async def dashboard(child_id: str, principal: Principal = Depends(get_current_pr
             where={"plan_id": m["id"], "scheduled_for": date.today().isoformat()})
         today_logs.extend(rows)
 
-    # 进行中/最近的行程
+    # 进行中/最近的行程与计划
     trips = await ctx.repos.list(
-        "trips", where={"elder_id": elder_id}, order="-created_at", limit=5)
+        "trips", where={"elder_id": elder_id}, order="-created_at", limit=10)
 
     # 最近守护告警（最近的异常 checkpoint）
     raw_alerts = []
@@ -82,16 +95,67 @@ async def dashboard(child_id: str, principal: Principal = Depends(get_current_pr
         if graded:
             medications.append(graded)
 
+    plans = []
+    trips_data = []
+    for t in trips:
+        plan_obj = t.get("plan")
+        trips_data.append({
+            "id": t["id"],
+            "purpose": t.get("purpose"),
+            "status": t.get("status"),
+            "created_at": t.get("created_at"),
+            "plan": plan_obj,
+        })
+        if plan_obj:
+            p_type = plan_obj.get("type")
+            if not p_type:
+                p_type = "medical_plan" if "就医" in t.get("purpose", "") else "trip_plan"
+            plans.append({
+                "id": t["id"],
+                "trip_id": t["id"],
+                "title": plan_obj.get("title") or t.get("purpose"),
+                "type": p_type,
+                "status": t.get("status"),
+                "created_at": t.get("created_at"),
+                "plan": plan_obj,
+            })
+
     return {
         "child": {"id": child["id"], "name": child["name"]},
         "elder": {"id": elder_id, "name": elder["name"], "city": elder.get("city")},
         "privacy": grant.to_dict(),
         "pending_confirmations": pending,
         "medications": medications,
-        "trips": [
-            {"id": t["id"], "purpose": t.get("purpose"), "status": t.get("status"),
-             "created_at": t.get("created_at")}
-            for t in trips
-        ],
+        "trips": trips_data,
+        "plans": plans,
         "alerts": alerts[:10],
     }
+
+
+@router.get("/{child_id}/plans")
+async def get_plans(child_id: str, principal: Principal = Depends(get_current_principal)):
+    ctx = get_ctx()
+    if principal.id != child_id or principal.role != "child":
+        raise HTTPException(403, "无权访问其他子女看板")
+    bindings = await ctx.repos.list("family_bindings", where={"child_id": child_id, "status": "active"})
+    elder_ids = [b["elder_id"] for b in bindings]
+    plans = []
+    for eid in elder_ids:
+        trips = await ctx.repos.list("trips", where={"elder_id": eid}, order="-created_at")
+        for t in trips:
+            plan_obj = t.get("plan")
+            if plan_obj:
+                p_type = plan_obj.get("type")
+                if not p_type:
+                    p_type = "medical_plan" if "就医" in t.get("purpose", "") else "trip_plan"
+                plans.append({
+                    "id": t["id"],
+                    "trip_id": t["id"],
+                    "elder_id": eid,
+                    "title": plan_obj.get("title") or t.get("purpose"),
+                    "type": p_type,
+                    "status": t.get("status"),
+                    "created_at": t.get("created_at"),
+                    "plan": plan_obj,
+                })
+    return {"items": plans}

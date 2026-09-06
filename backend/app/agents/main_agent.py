@@ -83,7 +83,10 @@ SYSTEM_PROMPT = """你是"老友记"，老年人的数字生活管家，是整�
 # 模型偶尔会用中文或近义词报 kind，这里收口，别让旗舰演示卡在一个字上
 _KIND_ALIASES = {
     "trip_plan": "trip_plan", "plan": "trip_plan", "trip": "trip_plan",
-    "计划书": "trip_plan", "就医出行计划书": "trip_plan",
+    "计划书": "trip_plan", "出行计划": "trip_plan", "出行计划书": "trip_plan",
+    "medical_plan": "medical_plan", "medical": "medical_plan",
+    "就医计划": "medical_plan", "就医计划书": "medical_plan",
+    "就医出行计划书": "medical_plan",
     "health_card": "health_card", "health": "health_card", "用药": "health_card",
     "community_card": "community_card", "community": "community_card",
     "service": "community_card",
@@ -92,6 +95,8 @@ _KIND_ALIASES = {
 _KIND_ANNOUNCE = {
     "trip_plan": "计划书给您做好啦，一共五页：挂号、车票、酒店、要带的东西、天气。"
                  "打印出来照着走就行。",
+    "medical_plan": "就医出行计划书给您做好啦，一共五页：挂号、车票、酒店、要带的东西、天气。"
+                    "打印出来照着走就行。",
     "health_card": "用药和复查的安排给您写在一张卡上了，贴在药盒边上。",
     "community_card": "社区服务的预约单给您开好了，办完一项划一项。",
 }
@@ -192,13 +197,13 @@ async def compose_deliverable(turn, args: dict) -> dict:
         return fail("还没有子助理的回报，先用 delegate 把活派出去。")
 
     kwargs = {}
-    if kind == "trip_plan" and args.get("city"):
+    if kind in ("trip_plan", "medical_plan") and args.get("city"):
         kwargs["city"] = str(args["city"])
     card = plan_builder.build(kind, turn.user, reports, **kwargs)
 
     # card 由驱动器统一 emit（``_run_tools`` 看到结果里的 card 就推 + 落
     # artifact/card），这里不自己再 emit 一次 —— 否则老人端会看到两张一样的卡
-    if kind == "trip_plan":
+    if kind in ("trip_plan", "medical_plan"):
         # 计划书落库为 trip：既是可验收交付物，也是行程守护的起点
         await turn.ctx.repos.insert("trips", {
             "elder_id": turn.user.get("id"),
@@ -325,11 +330,11 @@ def register_main_agent_tools(registry) -> None:
         "生成确定性交付物（字段由系统从子助理结果里取，不要自己复述内容）。",
         {
             "kind": {"type": "string",
-                     "enum": ["trip_plan", "health_card", "community_card"],
-                     "description": "trip_plan=就医出行计划书（五页可打印）, "
+                     "enum": ["trip_plan", "medical_plan", "health_card", "community_card"],
+                     "description": "trip_plan=出行计划书, medical_plan=就医出行计划书（五页可打印）, "
                                     "health_card=用药与复查卡, "
                                     "community_card=社区服务预约单"},
-            "city": {"type": "string", "description": "就医目的地城市（trip_plan 用）"},
+            "city": {"type": "string", "description": "就医目的地城市（trip_plan / medical_plan 用）"},
         },
         compose_deliverable, agent="main",
     ))

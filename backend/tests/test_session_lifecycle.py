@@ -368,3 +368,276 @@ async def test_subagent_instructions_never_show_as_the_elders_words(
     said = [m["text"] for m in messages if m.get("isUser")]
     assert said == ["我要去北京看病"], "老人的气泡里混进了别的：%s" % said
     assert not any("照抄" in text for text in said)
+
+
+async def test_turn_gate_concurrency_stress_no_deadlock_or_dropped_lock():
+    """并发压力测试：验证在快速并行消息到达时无死锁、无掉锁、等待计数严格同步且退出后完全释放。"""
+    gate = SessionTurnGate(max_wait_s=5.0)
+    session_id = "stress-session-1"
+
+    execution_order = []
+    concurrency_count = 0
+    max_observed_concurrency = 0
+
+    async def worker(worker_id: int):
+        nonlocal concurrency_count, max_observed_concurrency
+
+        async def on_wait():
+            pass
+
+        async with gate.hold(session_id, on_wait=on_wait):
+            concurrency_count += 1
+            if concurrency_count > max_observed_concurrency:
+                max_observed_concurrency = concurrency_count
+            execution_order.append(f"start_{worker_id}")
+            await asyncio.sleep(0.005)
+            execution_order.append(f"end_{worker_id}")
+            concurrency_count -= 1
+
+    # 启动 20 个高频并行请求冲刷同一个 session
+    tasks = [asyncio.create_task(worker(i)) for i in range(20)]
+    await asyncio.gather(*tasks)
+
+    # 1. 严格互斥：任何时刻持锁并发度不得超过 1
+    assert max_observed_concurrency == 1
+    assert len(execution_order) == 40
+    # 2. 严格串行：必须是 start_i, end_i 成对出现，绝不能交叉重叠
+    for i in range(0, len(execution_order), 2):
+        start_tag = execution_order[i]
+        end_tag = execution_order[i + 1]
+        assert start_tag.startswith("start_")
+        assert end_tag.startswith("end_")
+        assert start_tag.split("_")[1] == end_tag.split("_")[1]
+
+    # 3. 资源清理：所有任务完成后，waiting count 清零，locks 映射完全释放
+    assert gate.waiting(session_id) == 0
+    assert gate.busy(session_id) is False
+    assert session_id not in gate._locks
+
+
+async def test_approve_and_execute_gated_with_turn_gate(ctx, elder, child):
+    """验证子女批准执行与老人实时对话受 turn_gate 互斥保护，杜绝跨轮次因果错乱。"""
+    from app.core.context import TurnContext
+    from app.core.guard import GuardResult, GuardVerdict
+
+    # 1. 老人产生一个挂起任务
+    session = await ctx.event_log.create_session(elder["id"], "门禁审批并发测试")
+    sid = session["id"]
+    turn = TurnContext(ctx=ctx, session_id=sid, user=elder)
+    tool = ctx.tools.get("book_ticket")
+    suspend_res = await ctx.confirmation.suspend(
+        turn, tool,
+        {"train_no": "G102", "date": "tomorrow", "seat_type": "二等座", "price": 553.5},
+        GuardResult(GuardVerdict.INTERCEPT, reason="车票 553.5 元", risk_level="high", amount=553.5),
+    )
+    task_id = suspend_res["confirmation_id"]
+
+    order = []
+    # 模拟老人正在占用闸门进行对话
+    async def elder_talking():
+        async with ctx.turn_gate.hold(sid):
+            order.append("elder_chat_start")
+            await asyncio.sleep(0.08)
+            order.append("elder_chat_end")
+
+    # 模拟子女同时点击批准
+    async def child_approving():
+        await asyncio.sleep(0.01)  # 确保老人先持锁
+        order.append("child_approve_request")
+        res = await ctx.confirmation.approve_and_execute(task_id, ctx, child["id"])
+        order.append("child_approve_done")
+        return res
+
+    elder_task = asyncio.create_task(elder_talking())
+    child_task = asyncio.create_task(child_approving())
+
+    await asyncio.gather(elder_task, child_task)
+
+    # 验证顺序：老人聊天完成释放闸门后，子女批准才得以执行重放
+    assert order == [
+        "elder_chat_start",
+        "child_approve_request",
+        "elder_chat_end",
+        "child_approve_done",
+    ]
+    task = await ctx.repos.get("confirmation_tasks", task_id)
+    assert task["status"] == "executed"
+
+
+async def test_turn_gate_unacquired_lock_cleaned_up_on_timeout():
+    """验证等待超时未持锁退出时，waiting 计数归零且 _locks 字典不泄漏锁对象。"""
+    gate = SessionTurnGate(max_wait_s=0.02)
+    session_id = "timeout-cleanup-session"
+
+    async def slow_holder():
+        async with gate.hold(session_id):
+            await asyncio.sleep(0.08)
+
+    async def timing_out_waiter():
+        await asyncio.sleep(0.005)  # 确保 holder 先持锁
+        with pytest.raises(TurnBusy):
+            async with gate.hold(session_id, max_wait_s=0.01):
+                pass
+
+    t1 = asyncio.create_task(slow_holder())
+    t2 = asyncio.create_task(timing_out_waiter())
+    await asyncio.gather(t1, t2)
+
+    assert gate.waiting(session_id) == 0
+    assert gate.busy(session_id) is False
+    assert session_id not in gate._locks
+
+
+async def test_turn_gate_on_wait_exception_cleans_up_and_releases():
+    """验证 on_wait 抛异常时，waiting 计数在 finally 中保证递减，且后续轮次不受阻碍。"""
+    gate = SessionTurnGate(max_wait_s=1.0)
+    session_id = "on-wait-exc-session"
+
+    async def boom_wait():
+        raise ValueError("on_wait 回调崩了")
+
+    async def holder():
+        async with gate.hold(session_id):
+            await asyncio.sleep(0.05)
+
+    async def faulty_waiter():
+        await asyncio.sleep(0.005)
+        with pytest.raises(ValueError, match="on_wait 回调崩了"):
+            async with gate.hold(session_id, on_wait=boom_wait):
+                pass
+
+    t1 = asyncio.create_task(holder())
+    t2 = asyncio.create_task(faulty_waiter())
+    await asyncio.gather(t1, t2)
+
+    assert gate.waiting(session_id) == 0
+    assert gate.busy(session_id) is False
+    assert session_id not in gate._locks
+
+    # 验证后续任务仍可正常获取该会话锁
+    acquired = False
+    async with gate.hold(session_id):
+        acquired = True
+    assert acquired is True
+    assert session_id not in gate._locks
+
+
+async def test_turn_gate_waiter_cancelled_cleans_up_and_does_not_deadlock():
+    """验证排队任务被外部协程 cancel 时，waiting 计数正确扣减且不造成死锁。"""
+    gate = SessionTurnGate(max_wait_s=2.0)
+    session_id = "cancelled-waiter-session"
+
+    async def holder():
+        async with gate.hold(session_id):
+            await asyncio.sleep(0.06)
+
+    async def doomed_waiter():
+        await asyncio.sleep(0.005)
+        async with gate.hold(session_id):
+            pass
+
+    t1 = asyncio.create_task(holder())
+    t2 = asyncio.create_task(doomed_waiter())
+
+    await asyncio.sleep(0.02)  # 等 t2 进入 waiting
+    assert gate.waiting(session_id) == 1
+    t2.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await t2
+    await t1
+
+    assert gate.waiting(session_id) == 0
+    assert gate.busy(session_id) is False
+    assert session_id not in gate._locks
+
+
+async def test_turn_gate_fifo_ordering_during_on_wait():
+    """验证当先到达的排队者在执行 on_wait 时，持有者释放锁后，后到达者绝不能插队抢锁（严格 FIFO）。"""
+    gate = SessionTurnGate()
+    session_id = "fifo-on-wait-session"
+    order = []
+
+    async def holder():
+        async with gate.hold(session_id):
+            order.append("holder_start")
+            await asyncio.sleep(0.02)
+            order.append("holder_end")
+
+    async def waiter1():
+        await asyncio.sleep(0.005)  # 确保 holder 先持锁
+        async def slow_on_wait():
+            order.append("waiter1_on_wait_start")
+            await asyncio.sleep(0.04)  # holder 会在此期间释放锁
+            order.append("waiter1_on_wait_end")
+
+        async with gate.hold(session_id, on_wait=slow_on_wait):
+            order.append("waiter1_critical")
+
+    async def waiter2():
+        # 在 holder 结束之后、但 waiter1 的 on_wait 尚未完成时到达
+        await asyncio.sleep(0.03)
+        async with gate.hold(session_id):
+            order.append("waiter2_critical")
+
+    await asyncio.gather(holder(), waiter1(), waiter2())
+
+    # 验证执行顺序：waiter1 必须严格在 waiter2 之前进入关键区，绝不允许插队
+    assert order == [
+        "holder_start",
+        "waiter1_on_wait_start",
+        "holder_end",
+        "waiter1_on_wait_end",
+        "waiter1_critical",
+        "waiter2_critical",
+    ]
+    assert gate.waiting(session_id) == 0
+    assert gate.busy(session_id) is False
+    assert session_id not in gate._locks
+
+
+async def test_turn_gate_cancelled_on_wait_wakes_next_waiter():
+    """验证当排队者在 on_wait 期间被取消时，能够安全将锁传递给后续排队者，无死锁无泄漏。"""
+    gate = SessionTurnGate()
+    session_id = "cancelled-on-wait-wakes-next-session"
+    order = []
+
+    async def holder():
+        async with gate.hold(session_id):
+            order.append("holder_start")
+            await asyncio.sleep(0.03)
+            order.append("holder_end")
+
+    async def doomed_waiter():
+        await asyncio.sleep(0.005)
+        async def slow_wait():
+            order.append("doomed_on_wait")
+            await asyncio.sleep(0.1)
+        async with gate.hold(session_id, on_wait=slow_wait):
+            order.append("doomed_critical")
+
+    async def next_waiter():
+        await asyncio.sleep(0.01)
+        async with gate.hold(session_id):
+            order.append("next_critical")
+
+    t1 = asyncio.create_task(holder())
+    t2 = asyncio.create_task(doomed_waiter())
+    t3 = asyncio.create_task(next_waiter())
+
+    await asyncio.sleep(0.02)  # 等待 t2 进入 on_wait 回调
+    t2.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await t2
+
+    await asyncio.gather(t1, t3)
+
+    assert "holder_start" in order
+    assert "holder_end" in order
+    assert "next_critical" in order
+    assert "doomed_critical" not in order
+    assert gate.waiting(session_id) == 0
+    assert gate.busy(session_id) is False
+    assert session_id not in gate._locks
+
+

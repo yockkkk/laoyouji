@@ -138,6 +138,7 @@ import LyjMic from '../../components/LyjMic.vue'
 import { get, post } from '../../api/client'
 import { NET_FAILED_TEXT, SESSION_GONE_TEXT, TURN_FAILED_TEXT } from '../../api/messages'
 import { chatStream, fetchEvents } from '../../api/sse'
+import { speak } from '../../api/asr'
 import { getCurrentUser } from '../../store/user'
 import { takeUtterance } from '../../store/handoff'
 
@@ -265,6 +266,7 @@ export default {
             })
             this._watchSeq = hist.latest_seq || 0
             this.$nextTick(() => this._scrollBottom(true))
+            this._watchConfirmations()
             return
           }
         }
@@ -310,6 +312,7 @@ export default {
       this.messages = []
       uni.showLoading({ title: '加载中…' })
       await this.initSessionHistory()
+      this._watchConfirmations()
       uni.hideLoading()
     },
 
@@ -596,6 +599,7 @@ export default {
             status: 'pending',
           })
           this._scrollBottom()
+          this._watchConfirmations()
           break
 
         /**
@@ -731,7 +735,8 @@ export default {
         this._watchStarting = false
       }
       if (this._watchTimer) return // 让出期间已被别的调用装上了
-      this._watchTimer = setInterval(() => this._pollResolutions(), 5000)
+      this._watchTimer = setInterval(() => this._pollResolutions(), 2500)
+      this._pollResolutions()
     },
 
     _stopWatch() {
@@ -769,6 +774,12 @@ export default {
           // 家人点完那句播报。老人这时可能正看着别处，所以这条要自己成一个
           // 气泡并滚到底 —— 它是新消息，不是历史回放。
           this.messages.push({ kind: 'text', text: d.text, agent: d.agent || 'main' })
+          try {
+            speak(d.text)
+          } catch (e) {}
+          this._scrollBottom()
+        } else if (ev.event === 'card') {
+          this.messages.push(this._toCard(d))
           this._scrollBottom()
         }
       }
@@ -804,7 +815,7 @@ export default {
         notes,
         complete: d.complete !== false,
         // 只有五页计划书铺开；两张轻量卡片走紧凑模式
-        compact: d.type !== 'trip_plan',
+        compact: d.type !== 'trip_plan' && d.type !== 'medical_plan',
       }
     },
 

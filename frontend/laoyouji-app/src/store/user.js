@@ -37,6 +37,9 @@ export function clearCurrentUser() {
   uni.removeStorageSync(TOKEN_KEY)
   uni.removeStorageSync(REFRESH_KEY)
   uni.removeStorageSync('lyj_family')
+  uni.removeStorageSync('laoyouji_elder_session_id')
+  uni.removeStorageSync('laoyouji_pending_count')
+  uni.removeStorageSync('lyj_pending_count')
 }
 
 export function isLoggedIn() {

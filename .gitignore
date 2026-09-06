@@ -30,11 +30,12 @@ backend/local_data/
 .idea/
 .claude/
 *.iml
-.DS_Store
-Thumbs.db
-
 # ===== 日志 =====
 *.log
 npm-debug.log*
 *.log.err
 backend/.uvicorn.log*
+
+# ===== 本地规范 / 智能体运行时 =====
+GEMINI.md
+.agents/

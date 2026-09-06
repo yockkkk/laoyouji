@@ -70,15 +70,35 @@ class SessionTurnGate:
         lock = self._lock(session_id)
         deadline = self.max_wait_s if max_wait_s is None else max_wait_s
 
-        if lock.locked():
-            if on_wait is not None:
-                await on_wait()
-            logger.info("会话 %s 已有轮次在跑，本轮排队（前面 %d 个）",
-                        session_id, self._waiting.get(session_id, 0) + 1)
-
+        acquired = False
+        # 同步递增等待计数：必须在任何 await / yielding 之前执行，
+        # 彻底杜绝 on_wait 让出期间产生的重入与漏判
         self._waiting[session_id] = self._waiting.get(session_id, 0) + 1
+        acq_task = None
         try:
-            await asyncio.wait_for(lock.acquire(), timeout=deadline)
+            need_wait = lock.locked() or (self._waiting.get(session_id, 0) > 1)
+            if need_wait:
+                # 在让出事件循环执行 on_wait 之前先挂号进入锁排队队列，
+                # 确保持有者释放后严格遵循 FIFO 调度，防止后来的协程插队抢锁
+                acq_task = asyncio.create_task(lock.acquire())
+                try:
+                    if on_wait is not None:
+                        await on_wait()
+                    logger.info("会话 %s 已有轮次在跑，本轮排队（前面 %d 个）",
+                                session_id, self._waiting.get(session_id, 0))
+                    await asyncio.wait_for(asyncio.shield(acq_task), timeout=deadline)
+                    acquired = True
+                except asyncio.TimeoutError:
+                    raise TurnBusy() from None
+                finally:
+                    if not acquired:
+                        if acq_task.done() and not acq_task.cancelled():
+                            lock.release()
+                        else:
+                            acq_task.cancel()
+            else:
+                await asyncio.wait_for(lock.acquire(), timeout=deadline)
+                acquired = True
         except asyncio.TimeoutError:
             raise TurnBusy() from None
         finally:
@@ -87,6 +107,8 @@ class SessionTurnGate:
                 self._waiting[session_id] = left
             else:
                 self._waiting.pop(session_id, None)
+            if not acquired and not lock.locked() and not self._waiting.get(session_id):
+                self._locks.pop(session_id, None)
 
         try:
             yield

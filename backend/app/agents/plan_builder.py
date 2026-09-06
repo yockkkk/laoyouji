@@ -301,7 +301,8 @@ def _label_service(row: Row) -> Row:
 # ---------------------------------------------------------------- ①就医计划书
 
 def build_medical_trip_plan(elder: dict, reports: Iterable[AgentReport], *,
-                            city: str = "", today: str | None = None) -> dict:
+                            city: str = "", today: str | None = None,
+                            kind: str = "trip_plan") -> dict:
     """《XX老人·XX就医出行计划书》—— 五页，页序写死，缺字段渲染"待补"。"""
     data = _enrich(merge_reports(reports))
     missing: list[str] = []
@@ -317,7 +318,7 @@ def build_medical_trip_plan(elder: dict, reports: Iterable[AgentReport], *,
     ]
 
     return {
-        "type": "trip_plan",
+        "type": kind,
         "title": f"{name} · {city}就医出行计划书",
         "subtitle": f"共 {len(pages)} 页，可以直接打印带着走",
         "printable": True,
@@ -550,6 +551,7 @@ def build_community_card(elder: dict, reports: Iterable[AgentReport], *,
 
 BUILDERS = {
     "trip_plan": build_medical_trip_plan,
+    "medical_plan": build_medical_trip_plan,
     "health_card": build_health_card,
     "community_card": build_community_card,
 }
@@ -562,7 +564,7 @@ def build(kind: str, elder: dict, reports: Iterable[AgentReport],
     if builder is None:
         raise KeyError(f"没有这种交付物: {kind}（可选 {list(BUILDERS)}）")
     if builder is build_medical_trip_plan:
-        return builder(elder, reports, **kwargs)
+        return builder(elder, reports, kind=kind, **kwargs)
     kwargs.pop("city", None)
     return builder(elder, reports, **kwargs)
 

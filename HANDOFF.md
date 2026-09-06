@@ -15,19 +15,28 @@
   - `main`：稳定主线分支（已推送到 `origin/main`）
   - `yyy`：此前推进功能的分支（已完全合入）
 - **本机服务启动入口**：
-  - **后端 FastAPI**：`laoyouji/backend`
+  - **后端 FastAPI（推荐 WSL2 Linux 原生运行）**：
+    ```bash
+    wsl -d Ubuntu -- bash -c "cd /mnt/c/Users/29602/Desktop/yoc/laoyouji/backend && /root/.venvs/laoyouji/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ```
+    或 Windows 本地备用：
     ```bash
     python -m uvicorn app.main:app --port 8000 --reload
     ```
     （当前默认健康地址：`http://127.0.0.1:8000/api/health`，返回 200）
+  - **全套单测执行（WSL2 原生验证，耗时 38.9s）**：
+    ```bash
+    wsl -d Ubuntu -- bash -c "cd /mnt/c/Users/29602/Desktop/yoc/laoyouji/backend && /root/.venvs/laoyouji/bin/pytest tests/ -q"
+    ```
   - **前端 Uni-app H5**：`laoyouji/frontend/laoyouji-app`
     ```bash
     npm run dev:h5
     ```
     （当前默认访问地址：`http://127.0.0.1:5174/#/pages/elder/chat`，返回 200；5173 被本机 zncp 项目占用，故用 5174）
 - **当前运行依赖**：
-  - Python 3.14（`C:\Users\29602\AppData\Local\Programs\Python\Python314\python.exe`）
-  - Node.js + npm，前端 `node_modules` 齐全，后端 `requirements.txt` 已安装（包含 `aiomysql`、`paramiko`、`httpx`、`pytest` 等）
+  - **WSL2 (Ubuntu) 环境**：Python 3.14.4，虚拟环境位于 `/root/.venvs/laoyouji`，依赖齐全，推荐作为主开发与测试引擎。
+  - Windows 本地备用：Python 3.14（`C:\Users\29602\AppData\Local\Programs\Python\Python314\python.exe`）
+  - Node.js + npm，前端 `node_modules` 齐全
   - **远程 MariaDB**：`159.75.94.149:3306`（通过 SSH 隧道端口转发，内置长连接池，`STORAGE_BACKEND=mariadb` 实测完全连通）
 
 ---

@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -57,12 +57,16 @@ async def _resolve_user(
     ctx: AppContext,
     principal: Principal | None,
     user_id: str | None,
+    *,
+    require_auth: bool = False,
 ) -> dict:
     if principal:
         user = principal.user
         if user_id and user_id != principal.id:
             raise HTTPException(403, "请求参数与当前认证身份不一致")
         return user
+    if require_auth:
+        raise HTTPException(401, "未提供认证身份")
     elif user_id:
         user = await ctx.repos.get("users", user_id)
         if not user:
@@ -102,6 +106,7 @@ class SessionNewIn(BaseModel):
 
 @router.post("/chat/stream")
 async def chat_stream(
+    request: Request,
     body: ChatIn,
     principal: Principal | None = Depends(get_optional_principal),
     ctx: AppContext = Depends(get_ctx),
@@ -114,6 +119,8 @@ async def chat_stream(
         session = await ctx.repos.get("sessions", session_id)
         if not session:
             raise HTTPException(404, "会话不存在")
+        if not session.get("user_id") or session["user_id"] != user["id"]:
+            raise HTTPException(403, "无权访问该会话")
         await ctx.event_log.hydrate(session_id)
         await _backfill_title(ctx, session, body.text)
     else:
@@ -150,6 +157,9 @@ async def chat_stream(
             yield {"event": "session", "data": json.dumps(
                 {"session_id": session_id}, ensure_ascii=False)}
             while True:
+                if await request.is_disconnected():
+                    logger.info("客户端断开连接 session=%s", session_id)
+                    break
                 if task.done() and turn.queue.empty():
                     break
                 try:
@@ -157,20 +167,21 @@ async def chat_stream(
                 except asyncio.TimeoutError:
                     continue
                 yield ev.encode()
-            exc = task.exception() if task.done() else None
-            if isinstance(exc, TurnBusy):
-                # 等不到闸门：说实话，别把它伪装成系统故障
-                yield {"event": "error", "data": json.dumps(
-                    {"message": exc.message}, ensure_ascii=False)}
-            elif exc is not None:
-                logger.exception("智能体执行失败", exc_info=exc)
-                # 话术走 session.py 的常量：之前这里硬编码了一句"您再说一遍试试"，
-                # 改兜底文案时只改了那边、漏了这边，死循环那句就一直活着。
-                yield {"event": "error", "data": json.dumps(
-                    {"message": TURN_FAILED_REPLY}, ensure_ascii=False)}
-            elif task.done():
-                while not turn.queue.empty():
-                    yield turn.queue.get_nowait().encode()
+            if not await request.is_disconnected():
+                exc = task.exception() if (task.done() and not task.cancelled()) else None
+                if isinstance(exc, TurnBusy):
+                    # 等不到闸门：说实话，别把它伪装成系统故障
+                    yield {"event": "error", "data": json.dumps(
+                        {"message": exc.message}, ensure_ascii=False)}
+                elif exc is not None:
+                    logger.exception("智能体执行失败", exc_info=exc)
+                    # 话术走 session.py 的常量：之前这里硬编码了一句"您再说一遍试试"，
+                    # 改兜底文案时只改了那边、漏了这边，死循环那句就一直活着。
+                    yield {"event": "error", "data": json.dumps(
+                        {"message": TURN_FAILED_REPLY}, ensure_ascii=False)}
+                elif task.done():
+                    while not turn.queue.empty():
+                        yield turn.queue.get_nowait().encode()
         finally:
             ctx.broadcast.unregister(session_id, turn.queue)
             if not task.done():
@@ -240,22 +251,14 @@ async def get_chat_history(
     principal: Principal | None = Depends(get_optional_principal),
     ctx: AppContext = Depends(get_ctx),
 ):
+    user = await _resolve_user(ctx, principal, user_id, require_auth=True)
     session_id = valid_session_id(session_id)
     session = await ctx.repos.get("sessions", session_id)
     if not session:
         raise HTTPException(404, "会话不存在")
 
-    caller_user_id = None
-    if principal:
-        if user_id and user_id != principal.id:
-            raise HTTPException(403, "请求参数与当前认证身份不一致")
-        caller_user_id = principal.id
-    elif user_id:
-        caller_user_id = user_id
-
-    if caller_user_id and session.get("user_id"):
-        if session["user_id"] != caller_user_id:
-            raise HTTPException(403, "无权访问该会话")
+    if not session.get("user_id") or session["user_id"] != user["id"]:
+        raise HTTPException(403, "无权访问该会话")
 
     await ctx.event_log.hydrate(session_id)
     events = ctx.event_log.events(session_id)
@@ -286,6 +289,25 @@ async def get_chat_history(
                     "isUser": False,
                     "agent": event.agent_id,
                 })
+        elif event.type == ASSISTANT_FINAL:
+            text = (payload.get("text") or "").strip()
+            if text:
+                # 去重：若当前轮次中上一条助手文本消息内容相同，则跳过
+                last_text_msg = None
+                for m in reversed(messages):
+                    if m.get("isUser"):
+                        break
+                    if m.get("kind") == "text" and not m.get("isUser"):
+                        last_text_msg = m
+                        break
+                if last_text_msg and last_text_msg.get("text") == text:
+                    continue
+                messages.append({
+                    "kind": "text",
+                    "text": text,
+                    "isUser": False,
+                    "agent": event.agent_id or MAIN_SCOPE,
+                })
         elif event.type == TODO_WRITE:
             todos = payload.get("todos", [])
             progress = payload.get("progress", {})
@@ -308,9 +330,11 @@ async def get_chat_history(
             messages.append({
                 "kind": "suspend",
                 "confirmationId": cid,
+                "message": payload.get("message", "已经发给家人确认啦"),
                 "summary": payload.get("summary", ""),
                 "status": payload.get("status", "pending"),
                 "amount": payload.get("amount", 0),
+                "expiresAt": payload.get("expires_at", ""),
             })
         elif event.type == "confirmation/resolved":
             cid = payload.get("id") or payload.get("confirmation_id")

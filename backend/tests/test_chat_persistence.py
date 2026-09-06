@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from app.core.context import TurnContext
 from app.core.events import USER_MESSAGE, ASSISTANT_MESSAGE, ARTIFACT_CARD, TODO_WRITE, CONFIRM_SUSPENDED
@@ -208,3 +209,219 @@ async def test_bad_session_id_is_404_not_500(ctx, elder):
                 assert res.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_chat_history_maps_assistant_final_and_deduplicates(ctx, elder):
+    """验证会话历史重放时正确映射 ASSISTANT_FINAL 事件，且完成去重。
+
+    1. 正常轮次中 ASSISTANT_MESSAGE 与 ASSISTANT_FINAL 文本相同时：去重，只保留一条。
+    2. 只有 ASSISTANT_FINAL 时（如挂起回复或直接定稿）：正确呈现在历史中，刷新页面不丢失。
+    3. 存在中间状态消息与最终答复不同时：两条均按序保留。
+    """
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+
+    session = await ctx.event_log.create_session(elder["id"], "定稿去重测试")
+    sid = session["id"]
+
+    turn = TurnContext(ctx=ctx, session_id=sid, user=elder)
+    # 第 1 轮：老人说话 -> 中间助手消息 -> 相同文本的 final 定稿
+    await turn.emit("user_msg", {"text": "今天天气怎么样"})
+    await turn.emit("agent_msg", {"text": "今天天气晴朗，气温适宜。"})
+    await turn.emit("final", {"text": "今天天气晴朗，气温适宜。"})
+
+    # 第 2 轮：老人说话 -> 只有 final 定稿（无 agent_msg）
+    await turn.emit("user_msg", {"text": "明天呢"})
+    await turn.emit("final", {"text": "明天有小雨，出门记得带伞。"})
+
+    # 第 3 轮：中间消息与 final 文本不同
+    await turn.emit("user_msg", {"text": "帮我看看机票"})
+    await turn.emit("agent_msg", {"text": "正在为您查询南京到北京的航班…"})
+    await turn.emit("final", {"text": "已为您查到3趟航班方案。"})
+
+    await ctx.event_log.flush(sid)
+
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        headers = {"Authorization": f"Bearer {create_access_token(elder, ctx.settings)}"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            res = await ac.get(f"/api/chat/history?session_id={sid}", headers=headers)
+            assert res.status_code == 200
+            data = res.json()
+            messages = data["messages"]
+
+            # 验证第 1 轮去重：只有 1 条 "今天天气晴朗，气温适宜。"
+            t1_assistant = [m["text"] for m in messages if not m.get("isUser") and "今天天气" in m.get("text", "")]
+            assert len(t1_assistant) == 1
+            assert t1_assistant[0] == "今天天气晴朗，气温适宜。"
+
+            # 验证第 2 轮仅 final 也成功展示（刷新不丢失）
+            t2_assistant = [m["text"] for m in messages if not m.get("isUser") and "明天有小雨" in m.get("text", "")]
+            assert len(t2_assistant) == 1
+            assert t2_assistant[0] == "明天有小雨，出门记得带伞。"
+
+            # 验证第 3 轮不同文本均保留
+            t3_assistant = [m["text"] for m in messages if not m.get("isUser") and ("航班" in m.get("text", "") or "方案" in m.get("text", ""))]
+            assert len(t3_assistant) == 2
+            assert t3_assistant[0] == "正在为您查询南京到北京的航班…"
+            assert t3_assistant[1] == "已为您查到3趟航班方案。"
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_chat_history_strict_authentication(ctx, elder, child):
+    """验证历史接口严格鉴权：未认证 401、越权 403。"""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+
+    session = await ctx.event_log.create_session(elder["id"], "鉴权测试")
+    sid = session["id"]
+
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            # 1. 未提供任何认证 Header 或参数 -> 401
+            res = await ac.get(f"/api/chat/history?session_id={sid}")
+            assert res.status_code == 401
+
+            # 1b. 未提供认证 Header，仅伪造 user_id 参数 -> 必须返回 401，严禁身份绕过
+            res = await ac.get(f"/api/chat/history?session_id={sid}&user_id={elder['id']}")
+            assert res.status_code == 401
+
+            # 2. Token 与 user_id 不一致 -> 403
+            headers_elder = {"Authorization": f"Bearer {create_access_token(elder, ctx.settings)}"}
+            res = await ac.get(f"/api/chat/history?session_id={sid}&user_id=wrong-id", headers=headers_elder)
+            assert res.status_code == 403
+
+            # 3. 非本会话拥有者访问 -> 403
+            headers_child = {"Authorization": f"Bearer {create_access_token(child, ctx.settings)}"}
+            res = await ac.get(f"/api/chat/history?session_id={sid}", headers=headers_child)
+            assert res.status_code == 403
+
+            # 4. 拥有者正常访问 -> 200
+            res = await ac.get(f"/api/chat/history?session_id={sid}", headers=headers_elder)
+            assert res.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_client_disconnect_protection(ctx, elder):
+    """测试客户端断开连接时，request.is_disconnected() 触发退出并将后台任务 detach 完整落库。"""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+
+    session = await ctx.event_log.create_session(elder["id"], "断线测试")
+    sid = session["id"]
+
+    agent_finished = asyncio.Event()
+
+    async def slow_agent(turn):
+        await asyncio.sleep(0.08)
+        agent_finished.set()
+        return "断线后仍然顺利完成定稿"
+
+    original = ctx.agents["main"].run
+    ctx.agents["main"].run = slow_agent
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        headers = {"Authorization": f"Bearer {create_access_token(elder, ctx.settings)}"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            async with ac.stream(
+                "POST", "/api/chat/stream", headers=headers,
+                json={"session_id": sid, "text": "查查降压药"},
+            ) as res:
+                assert res.status_code == 200
+                async for line in res.aiter_lines():
+                    if "session" in line:
+                        break
+                # 读取到 session 事件后立即跳出 context，模拟客户端主动断开连接
+
+        # 客户端连接已关闭，等待后台 detached 任务跑完
+        await asyncio.wait_for(agent_finished.wait(), timeout=2.0)
+        # 给 flush 让出事件循环
+        await asyncio.sleep(0.05)
+
+        # 验证断线后事件依然完整落库
+        rows = await ctx.repos.list("session_events", where={"session_id": sid}, order="seq")
+        types = [r["type"] for r in rows]
+        assert "user/message" in types
+        assert "assistant/final" in types
+
+        # 再次通过 /api/chat/history 获取，验证刷新可恢复完整会话
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            h_res = await ac.get(f"/api/chat/history?session_id={sid}", headers=headers)
+            assert h_res.status_code == 200
+            msgs = h_res.json()["messages"]
+            assert any(m.get("text") == "断线后仍然顺利完成定稿" for m in msgs)
+    finally:
+        ctx.agents["main"].run = original
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_session_cross_user_forbidden(ctx, elder, child):
+    """验证流式接口中，跨用户越权向他人 session 注入对话被严格拦截 (403 Forbidden)。"""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+
+    session = await ctx.event_log.create_session(elder["id"], "老人私密会话")
+    sid = session["id"]
+
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        # child 尝试向 elder 的 session 发送流式对话消息
+        headers_child = {"Authorization": f"Bearer {create_access_token(child, ctx.settings)}"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            res = await ac.post(
+                "/api/chat/stream",
+                headers=headers_child,
+                json={"session_id": sid, "text": "尝试越权写入"},
+            )
+            assert res.status_code == 403
+            assert "无权访问该会话" in res.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_unowned_session_forbidden(ctx, elder):
+    """验证流式接口中，访问无主或缺失 user_id 的异常会话被严格拦截 (403 Forbidden)。"""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+
+    session = await ctx.repos.insert("sessions", {"title": "无主会话", "user_id": None})
+    sid = session["id"]
+
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        headers = {"Authorization": f"Bearer {create_access_token(elder, ctx.settings)}"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            res = await ac.post(
+                "/api/chat/stream",
+                headers=headers,
+                json={"session_id": sid, "text": "尝试访问无主会话"},
+            )
+            assert res.status_code == 403
+            assert "无权访问该会话" in res.text
+    finally:
+        app.dependency_overrides.clear()
+
+

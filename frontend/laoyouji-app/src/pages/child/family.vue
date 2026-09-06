@@ -6,6 +6,9 @@
         <text class="title">家庭成员管理</text>
         <text class="sub">与长辈建立看护与审批关联</text>
       </view>
+      <view class="head-actions">
+        <button class="logout-btn" size="mini" @tap="logout">退出登录</button>
+      </view>
     </view>
 
     <LyjSegment current="family" />
@@ -50,7 +53,7 @@
 <script>
 import LyjSegment from '../../components/LyjSegment.vue'
 import { get, post, del } from '../../api/client'
-import { getCurrentUser } from '../../store/user'
+import { getCurrentUser, clearCurrentUser } from '../../store/user'
 
 export default {
   components: { LyjSegment },
@@ -65,7 +68,7 @@ export default {
   },
   onShow() {
     const user = getCurrentUser()
-    if (!user) {
+    if (!user || user.role !== 'child') {
       uni.reLaunch({ url: '/pages/login/login' })
       return
     }
@@ -73,6 +76,10 @@ export default {
     this.loadMembers()
   },
   methods: {
+    logout() {
+      clearCurrentUser()
+      uni.reLaunch({ url: '/pages/login/login' })
+    },
     async loadMembers() {
       try {
         const res = await get('/api/family/members')
@@ -139,6 +146,29 @@ export default {
 .head {
   background: $lyj-child-head;
   padding: $lyj-space-lg $lyj-space-lg $lyj-space-md;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.head-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.head-actions {
+  margin-left: $lyj-space-md;
+}
+.logout-btn {
+  min-height: $lyj-hit-min;
+  display: flex;
+  align-items: center;
+  background: rgba(239, 68, 68, 0.25);
+  color: #fff;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 $lyj-space-sm;
 }
 .title {
   font-size: $lyj-font-lg;

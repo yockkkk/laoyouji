@@ -78,8 +78,9 @@ $lyj-font-lg: 48rpx; // 24px 卡片标题、重点数字
 $lyj-font-md: 40rpx; // 20px 正文地板 —— 老人要读的字一律不低于此值
 $lyj-font-sm: 36rpx; // 18px 次要说明。仅限辅助信息，不得承载唯一信息
 
-/* 36rpx 以下不再允许出现在老人端。导航标签（tabBar 文字）例外，见 $lyj-font-nav。 */
+/* 36rpx 以下不再允许出现在老人端。导航标签（tabBar 文字）与子女端微胶囊标签例外。 */
 $lyj-font-nav: 28rpx;
+$lyj-font-xs: 24rpx; // 12px 子女端微标签/微按钮
 
 $lyj-line-height: 1.6; // 适老行高：宁松不挤
 
