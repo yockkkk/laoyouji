@@ -24,7 +24,7 @@
     ```bash
     npm run dev:h5
     ```
-    （当前默认访问地址：`http://localhost:5173/#/pages/elder/chat`，返回 200）
+    （当前默认访问地址：`http://127.0.0.1:5174/#/pages/elder/chat`，返回 200；5173 被本机 zncp 项目占用，故用 5174）
 - **当前运行依赖**：
   - Python 3.14（`C:\Users\29602\AppData\Local\Programs\Python\Python314\python.exe`）
   - Node.js + npm，前端 `node_modules` 齐全，后端 `requirements.txt` 已安装（包含 `aiomysql`、`paramiko`、`httpx`、`pytest` 等）

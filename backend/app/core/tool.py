@@ -59,6 +59,38 @@ BARRIER = "barrier"         # 独占执行：等前面全部结算，自己跑�
 # 并发上限（有界滚动池）：演示规模够用，也避免把 Mock Provider 打满
 DEFAULT_CONCURRENCY = 4
 
+# to_model_content 的实体字段白名单：多轮对话要引用的事实（车次、医院、
+# 医生、价格、时间、地点）。键名是工具结果的通用词表，不是某个工具的私有契约。
+_ENTITY_KEYS = {
+    "id", "name", "doctor", "hospital", "department", "time_slot",
+    "train_no", "flight_no", "price", "departure_time", "arrival_time",
+    "origin", "destination", "seat_type", "date", "time", "city",
+    "hotel_name", "address", "phone", "status", "confirmation_id",
+}
+_ENTITY_LIST_CAP = 5    # 列表最多给模型看前几项：够引用，不撑上下文
+_ENTITY_DEPTH_CAP = 3
+
+
+def _slim_data(value: Any, depth: int = 0) -> Any:
+    """从工具结果的 data 里挑实体字段（递归，只留标量），取不到返回 None。"""
+    if depth > _ENTITY_DEPTH_CAP:
+        return None
+    if isinstance(value, dict):
+        out: dict = {}
+        for key, val in value.items():
+            if key in _ENTITY_KEYS and isinstance(val, (str, int, float, bool)):
+                out[key] = val
+            elif isinstance(val, (dict, list)):
+                sub = _slim_data(val, depth + 1)
+                if sub:
+                    out[key] = sub
+        return out or None
+    if isinstance(value, list):
+        items = [x for x in (_slim_data(v, depth + 1)
+                             for v in value[:_ENTITY_LIST_CAP]) if x]
+        return items or None
+    return None
+
 
 @dataclass
 class Tool:
@@ -114,8 +146,16 @@ class ToolOutcome:
         return bool(self.result.get("ok"))
 
     def to_model_content(self) -> str:
-        """给模型看的 tool 消息内容：去掉体积大的 data，保留可推理的字段。"""
-        slim = {k: v for k, v in self.result.items() if k not in ("data", "card")}
+        """给模型看的 tool 消息内容：剥掉富负载，保留可推理的实体字段。
+
+        旧实现把 ``data`` 整段剔掉 —— 于是查到的车次、医院、医生、价格
+        模型自己一轮都看不见，多轮对话让它"刚才查到的是哪趟车"必然答不上。
+        现在保留白名单内的实体字段（标量值），只剥 card 与富文本/二进制。
+        """
+        slim = {k: v for k, v in self.result.items() if k != "card"}
+        entities = _slim_data(slim.pop("data", None))
+        if entities:
+            slim["data"] = entities
         return json.dumps(slim or self.result, ensure_ascii=False, default=str)
 
 

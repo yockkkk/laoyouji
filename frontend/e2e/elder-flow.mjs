@@ -4,7 +4,7 @@
  * 前置：
  *   后端  `backend/.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000`
  *         （`LLM_PROVIDER=mock` + `STORAGE_BACKEND=local` 即可整条离线跑）
- *   前端  `cd frontend/laoyouji-app && npm run dev:h5` → 127.0.0.1:5173
+ *   前端  `cd frontend/laoyouji-app && npm run dev:h5` → 127.0.0.1:5174
  *   跑法  `node frontend/e2e/elder-flow.mjs`
  *
  * 上一版这个脚本已经测不了现在的应用了：它点 `.tab`（`LyjTabBar.vue` 已删，
@@ -30,7 +30,7 @@ import puppeteer from 'puppeteer-core'
 
 const CHROME =
   process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'
-const APP = process.env.APP_URL || 'http://127.0.0.1:5173'
+const APP = process.env.APP_URL || 'http://127.0.0.1:5174'
 const API = process.env.API_URL || 'http://127.0.0.1:8000'
 const SHOTS = 'C:/Users/lenovo/Desktop/develop/laoyouji/docs/shots'
 

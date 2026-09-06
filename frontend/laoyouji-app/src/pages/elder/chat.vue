@@ -103,15 +103,24 @@
       <view class="modal" @tap.stop>
         <view class="modal-header">历史对话</view>
         <scroll-view class="history-list" scroll-y>
-          <view 
-            v-for="s in sessionList" 
-            :key="s.id" 
-            class="history-item" 
-            :class="{ active: s.id === sessionId }"
-            @tap="loadSession(s.id)"
-          >
-            <view class="history-time">{{ s.created_at.substring(5, 16).replace('T', ' ') }}</view>
-            <view class="history-preview">{{ s.title || '与老友记的聊天' }}</view>
+          <view v-for="g in groupedSessions" :key="g.label" class="history-group">
+            <view class="history-day">{{ g.label }}</view>
+            <view
+              v-for="s in g.items"
+              :key="s.id"
+              class="history-item"
+              :class="{ active: s.id === sessionId }"
+              @tap="loadSession(s.id)"
+            >
+              <view class="history-item-top">
+                <text class="history-title">{{ s.title || '与老友记的聊天' }}</text>
+                <text class="history-time">{{ _hm(s.last_active || s.created_at) }}</text>
+              </view>
+              <!-- 标题只是开头第一句话，重名会话全靠这一行最后说的话区分 -->
+              <view v-if="s.last_text && s.last_text !== s.title" class="history-preview">
+                {{ s.last_text }}
+              </view>
+            </view>
           </view>
           <view v-if="!sessionList.length" class="history-empty">暂无历史记录</view>
         </scroll-view>
@@ -141,6 +150,28 @@ const AGENT_LABEL = {
   community: '邻里帮',
 }
 const AGENT_ICON = { main: '🤵', travel: '🧭', health: '🏥', community: '🏘️' }
+
+// ---- 历史弹层的日期分组 ------------------------------------------------
+const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+function _dayKey(d) {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+/** 会话日期 → 老人看得懂的分组名：今天 / 昨天 / 9月5日 周五 / 跨年带年份。 */
+function dayLabel(iso) {
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return '更早'
+  const now = new Date()
+  if (_dayKey(d) === _dayKey(now)) return '今天'
+  const y = new Date(now)
+  y.setDate(y.getDate() - 1)
+  if (_dayKey(d) === _dayKey(y)) return '昨天'
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${d.getMonth() + 1}月${d.getDate()}日 ${WEEK[d.getDay()]}`
+  }
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+}
 
 export default {
   components: { ChatBubble, StepTimeline, PlanCard, ConfirmCard, LyjMic },
@@ -173,6 +204,22 @@ export default {
         }
       }
       return '🤵 生活管家'
+    },
+    /** 历史弹层：按天分组（今天/昨天/具体日期），组内按时间倒序沿用接口序。 */
+    groupedSessions() {
+      const groups = []
+      const byLabel = new Map()
+      for (const s of this.sessionList) {
+        const label = dayLabel(s.last_active || s.created_at)
+        let g = byLabel.get(label)
+        if (!g) {
+          g = { label, items: [] }
+          byLabel.set(label, g)
+          groups.push(g)
+        }
+        g.items.push(s)
+      }
+      return groups
     },
   },
   async onShow() {
@@ -233,6 +280,14 @@ export default {
       this._resetDefaultGreeting()
     },
 
+    /** 组内只显示时分：哪天由组标题说了，每行再重复一遍日期反而读不动。 */
+    _hm(iso) {
+      const d = new Date(iso)
+      if (!Number.isFinite(d.getTime())) return ''
+      const pad = (n) => String(n).padStart(2, '0')
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    },
+
     async openHistory() {
       try {
         const res = await get('/api/chat/sessions', { user_id: this.user.id })
@@ -271,6 +326,18 @@ export default {
 
     async startNewChat() {
       if (this.thinking) return
+      // 二次确认：老人误触一下就清空当前上下文，这个代价必须让他自己点头。
+      const ok = await new Promise((resolve) => {
+        uni.showModal({
+          title: '开启新对话',
+          content: '当前聊天内容会收进历史记录，确定要开始一段新对话吗？',
+          confirmText: '开启',
+          cancelText: '再想想',
+          success: (res) => resolve(!!res.confirm),
+          fail: () => resolve(false),
+        })
+      })
+      if (!ok) return
       uni.showLoading({ title: '正在开启…' })
       try {
         const res = await post('/api/chat/sessions/new', { user_id: this.user.id })
@@ -925,6 +992,104 @@ export default {
 }
 .bottom-anchor {
   height: 40rpx;
+}
+
+/* 历史记录弹层：模板用了很久但一条样式都没有 —— 裸元素盖在页面上既点不准
+   也看不清。全屏居中蒙层 + 白卡，触控目标全部 ≥ 44px（$lyj-hit-min）。 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba($lyj-text, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  width: 620rpx;
+  max-width: 86vw;
+  max-height: 70vh;
+  background: $lyj-card;
+  border-radius: $lyj-radius;
+  box-shadow: $lyj-shadow-raised;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-header {
+  padding: $lyj-space-md;
+  font-size: $lyj-font-lg;
+  font-weight: 800;
+  color: $lyj-text;
+  text-align: center;
+  border-bottom: 2rpx solid $lyj-line;
+  flex-shrink: 0;
+}
+.history-list {
+  flex: 1;
+  min-height: 0;
+  padding: $lyj-space-sm $lyj-space-md;
+  box-sizing: border-box;
+}
+.history-day {
+  font-size: $lyj-font-sm;
+  font-weight: 700;
+  color: $lyj-text-light;
+  padding: $lyj-space-sm $lyj-space-xs $lyj-space-xs;
+}
+.history-group:first-child .history-day {
+  padding-top: 0;
+}
+.history-item {
+  min-height: $lyj-hit-min;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4rpx;
+  padding: $lyj-space-sm $lyj-space-md;
+  border-radius: $lyj-radius;
+  margin-bottom: $lyj-space-xs;
+  background: $lyj-field;
+}
+.history-item.active {
+  background: $lyj-primary-soft;
+}
+.history-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $lyj-space-sm;
+}
+.history-title {
+  flex: 1;
+  font-size: $lyj-font-md;
+  color: $lyj-text;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-time {
+  font-size: $lyj-font-sm;
+  color: $lyj-text-light;
+  flex-shrink: 0;
+}
+/* 最后一句话的预览：重名会话靠它区分，是次要信息，用浅色小字 */
+.history-preview {
+  font-size: $lyj-font-sm;
+  color: $lyj-text-light;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-empty {
+  padding: $lyj-space-xl 0;
+  text-align: center;
+  font-size: $lyj-font-md;
+  color: $lyj-text-light;
 }
 .input-area {
   background: $lyj-card;

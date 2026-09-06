@@ -5,8 +5,11 @@ harness 的 subagent seam 有三个要素，这里都实现了：
 1. **发现**：``available()`` 列出已注册的子智能体及其职责，供总智能体的提示词
    与答辩现场自证装配。
 2. **spawn vs fork**：``spawn`` 开**全新作用域**（独立 ``agent_id``、独立派生历史）；
-   ``fork`` 从父的已完成历史播种（作用域列表 = ``[父, 己]``）。默认用 spawn ——
-   出行子智能体没有理由知道健康子智能体和老人聊了什么。
+   ``fork`` 从父的已完成历史播种（作用域列表 = ``[父, 己]``）。默认用 fork ——
+   老人一句话派下来的任务，子智能体需要看见这句原话和父刚查到的事实，
+   否则"订刚才说的那家医院"在子作用域里无解。兄弟智能体之间依然互不可见
+   （fork 只播种**父**作用域，不含兄弟），跨域串味那条约束没有松。
+   代价：子智能体单步输入 token 多 200~500，这是拿上下文换记忆。
 3. **结构化子→父回报**：``AgentReport``，不是自由文本。
 
 第 3 点是本次大改的关键。旧实现里 ``route_to_agent`` 直接
@@ -93,7 +96,7 @@ class SubagentSpec:
 
     name: str                      # travel | health | community
     instruction: str
-    mode: str = SPAWN              # spawn | fork
+    mode: str = FORK               # spawn | fork（默认 fork：子要看得见父的上下文）
     label: str = ""
 
     @classmethod
@@ -107,7 +110,7 @@ class SubagentSpec:
             return None
         return cls(name=name,
                    instruction=str(raw.get("instruction") or raw.get("task") or ""),
-                   mode=str(raw.get("mode") or SPAWN),
+                   mode=str(raw.get("mode") or FORK),
                    label=str(raw.get("label") or ""))
 
 

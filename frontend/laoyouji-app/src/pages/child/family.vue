@@ -31,25 +31,10 @@
           <text class="member-name">{{ m.user ? m.user.name : '家庭成员' }}（{{ m.relation }}）</text>
           <text class="member-sub">账号: {{ m.user ? m.user.username : '' }} · 状态: {{ statusText(m.status) }}</text>
         </view>
-        <view class="member-actions">
+        <!-- 删掉 accept/reject 后这里一度剩个空 flex 容器：非 active 成员
+             渲染一条什么都没有的占位，列表对不齐。有动作才渲染容器。 -->
+        <view v-if="m.status === 'active'" class="member-actions">
           <button
-            v-if="m.status === 'pending' && m.invited_by !== currentUserId"
-            class="mini-btn ok"
-            size="mini"
-            @tap="accept(m)"
-          >
-            同意
-          </button>
-          <button
-            v-if="m.status === 'pending' && m.invited_by !== currentUserId"
-            class="mini-btn no"
-            size="mini"
-            @tap="reject(m)"
-          >
-            拒绝
-          </button>
-          <button
-            v-if="m.status === 'active'"
             class="mini-btn danger"
             size="mini"
             @tap="unbind(m)"
@@ -120,24 +105,7 @@ export default {
         this.binding = false
       }
     },
-    async accept(m) {
-      try {
-        await post(`/api/family/requests/${m.binding_id}/accept`, {})
-        uni.showToast({ title: '已同意绑定', icon: 'success' })
-        this.loadMembers()
-      } catch (err) {
-        uni.showToast({ title: err.message || '操作失败', icon: 'none' })
-      }
-    },
-    async reject(m) {
-      try {
-        await post(`/api/family/requests/${m.binding_id}/reject`, {})
-        uni.showToast({ title: '已拒绝申请', icon: 'none' })
-        this.loadMembers()
-      } catch (err) {
-        uni.showToast({ title: err.message || '操作失败', icon: 'none' })
-      }
-    },
+
     unbind(m) {
       uni.showModal({
         title: '确认解除绑定',

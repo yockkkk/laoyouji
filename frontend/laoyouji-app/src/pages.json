@@ -36,7 +36,15 @@
       "path": "pages/child/family",
       "style": {
         "navigationBarTitleText": "家庭成员",
-        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarBackgroundColor": "#1D2D44",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/child/notification",
+      "style": {
+        "navigationBarTitleText": "通知中心",
+        "navigationBarBackgroundColor": "#1D2D44",
         "navigationBarTextStyle": "white"
       }
     },

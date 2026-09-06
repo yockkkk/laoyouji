@@ -54,7 +54,11 @@ def make_repeat_tool_reminder(window: int = 6):
 
     async def repeat_tool_reminder(pctx: Any,
                                    next_: Callable[..., Awaitable[Any]]) -> Any:
-        key = (pctx.call.agent_id, pctx.call.name,
+        # 记账键必须含 session_id：同一个工具的同样参数（查"南京明天的火车票"）
+        # 在不同会话里是两件完全正当的事。不含它，跨老人跨会话会互相误报
+        # "这个调用刚试过"，而这提醒会进模型上下文，直接带偏下一步决策。
+        session_id = getattr(getattr(pctx, "turn", None), "session_id", "")
+        key = (session_id, pctx.call.agent_id, pctx.call.name,
                json.dumps(pctx.call.args, ensure_ascii=False, sort_keys=True,
                           default=str))
         count = seen.get(key, 0) + 1

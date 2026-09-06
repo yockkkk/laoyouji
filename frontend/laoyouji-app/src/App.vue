@@ -18,7 +18,9 @@ page {
   background-color: $lyj-bg;
   font-size: $lyj-font-md; /* 20px 正文地板 */
   color: $lyj-text;
-  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'Nunito', 'Rounded Mplus 1c', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button {
@@ -32,14 +34,23 @@ button {
   background: $lyj-primary;
   color: $lyj-text-on;
   font-size: $lyj-font-md;
-  font-weight: 600;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8rpx 24rpx rgba(255, 107, 53, 0.25);
+}
+
+.btn-main:active {
+  transform: scale(0.96);
+  box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.2);
 }
 
 .btn-main.disabled {
   background: $lyj-disabled;
+  box-shadow: none;
+  transform: none;
 }
 
 .btn-ghost {
@@ -49,10 +60,16 @@ button {
   color: $lyj-primary;
   border: 3rpx solid $lyj-primary;
   font-size: $lyj-font-md;
-  font-weight: 600;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-ghost:active {
+  background: $lyj-primary-soft;
+  transform: scale(0.96);
 }
 
 page, uni-page-body {
@@ -65,6 +82,12 @@ page, uni-page-body {
   padding: $lyj-space-lg;
   margin: $lyj-space-md;
   box-shadow: $lyj-shadow-card;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:active {
+  transform: translateY(2rpx);
+  box-shadow: 0 4rpx 12rpx rgba(43, 45, 66, 0.04);
 }
 
 /* #ifdef H5 */

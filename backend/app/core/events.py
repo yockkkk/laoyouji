@@ -69,8 +69,11 @@ _SSE_TO_DURABLE = {
     "guardian_alert": GUARDIAN_ALERT,
 }
 
-# 仅这些持久事件参与 LLM 历史派生
-_MODEL_VISIBLE = {USER_MESSAGE, ASSISTANT_MESSAGE, TOOL_RESULT}
+# 仅这些持久事件参与 LLM 历史派生。
+# ASSISTANT_FINAL 必须在内：整轮定稿（routes_chat 的 final / 确认重放的那句
+# 播报）只以这个类型落日志，不收进来模型下一轮就"忘了自己刚说过什么" ——
+# 多轮对话一句话说完就失忆的直接来源之一。derive_messages 里负责去重。
+_MODEL_VISIBLE = {USER_MESSAGE, ASSISTANT_MESSAGE, ASSISTANT_FINAL, TOOL_RESULT}
 
 MAIN_SCOPE = "main"
 
@@ -407,6 +410,20 @@ class SessionEventLog:
                         for c in calls
                     ]
                 messages.append(message)
+
+            elif event.type == ASSISTANT_FINAL:
+                text = payload.get("text") or ""
+                if not text:
+                    continue
+                # 去重：正常轮次里 final 与最后一条 assistant/message 是同一份
+                # 定稿（session.py 把 response.content 同时落了两处）。紧邻的
+                # 上一条 assistant 正文相同就跳过，别让同一句话在历史里占两行
+                # —— 既浪费 token，也让模型困惑"我是不是说了两遍"。
+                last = messages[-1] if messages else None
+                if (last and last.get("role") == "assistant"
+                        and last.get("content") == text):
+                    continue
+                messages.append({"role": "assistant", "content": text})
 
             elif event.type == TOOL_RESULT:
                 call_id = payload.get("call_id")

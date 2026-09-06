@@ -147,7 +147,11 @@ def test_spec_parse_accepts_the_shapes_a_model_actually_produces():
     assert (parsed.label, parsed.mode) == ("挂号", FORK)
 
     alias = SubagentSpec.parse({"name": "travel", "task": "查车票"})
-    assert (alias.name, alias.instruction, alias.mode) == ("travel", "查车票", SPAWN)
+    # 未显式给 mode 时默认 fork：子智能体要看得见父的上下文（"订刚才说的那家"），
+    # 需要全新空白作用域的场景必须显式写 "mode": "spawn"。
+    assert (alias.name, alias.instruction, alias.mode) == ("travel", "查车票", FORK)
+    blank = SubagentSpec.parse({"name": "travel", "task": "查车票", "mode": SPAWN})
+    assert blank.mode == SPAWN
 
 
 def test_spec_parse_refuses_a_dispatch_without_a_target():

@@ -19,7 +19,9 @@ router = APIRouter(prefix="/api/child", tags=["child"])
 @router.get("/{child_id}/dashboard")
 async def dashboard(child_id: str, principal: Principal = Depends(get_current_principal)):
     ctx = get_ctx()
-    if principal.id != child_id and principal.role != "child":
+    # and → or：旧写法下只要 role=="child"，传任意 child_id 都能读别人家老人的
+    # 位置和健康数据（BOLA）。必须是"本人且是子女角色"两个条件同时成立。
+    if principal.id != child_id or principal.role != "child":
         raise HTTPException(403, "无权访问其他子女看板")
     child = principal.user
 

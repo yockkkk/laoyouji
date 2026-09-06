@@ -15,6 +15,7 @@ from app.core.bus import SESSION_FLUSH
 from app.core.context import AppContext, TurnContext
 from app.core.events import (
     ARTIFACT_CARD,
+    ASSISTANT_FINAL,
     ASSISTANT_MESSAGE,
     CONFIRM_SUSPENDED,
     MAIN_SCOPE,
@@ -192,10 +193,44 @@ async def list_chat_sessions(
         order="-created_at",
         limit=max(1, min(limit, 100)),
     )
+    # 标题只是第一句话的前 20 字，重名会话（演示期尤其多）靠它根本分不出
+    # 谁是谁。给每行补"最后说的话"和"最后活跃时间"，老人按内容和时间找回
+    # 想接着聊的那一段。并发查：串行是 N 次隧道往返，列表会卡一秒以上。
+    items = await asyncio.gather(*(_enrich_session(ctx, s) for s in sessions))
     return {
-        "items": sessions,
-        "latest_session": sessions[0] if sessions else None,
+        "items": items,
+        "latest_session": items[0] if items else None,
     }
+
+
+async def _enrich_session(ctx: AppContext, session: dict) -> dict:
+    """给会话列表的一行补 last_text / last_active。只读最近 20 条事件。"""
+    out = dict(session)
+    sid = session["id"]
+    try:
+        rows = await ctx.repos.list(
+            "session_events", where={"session_id": sid},
+            order="-seq", limit=20)
+    except Exception as exc:  # noqa: BLE001 —— 预览是锦上添花，别拖垮列表
+        logger.warning("会话预览查询失败 session=%s: %s", sid, exc)
+        rows = []
+
+    # 优先老人自己说的最后一句话（那才是这段对话的"内容书签"）；
+    # 一句都没有（比如只开了头）就退到老友记最后的定稿。
+    last_text = ""
+    for wanted in ((USER_MESSAGE,), (ASSISTANT_FINAL, ASSISTANT_MESSAGE)):
+        for row in rows:
+            if row.get("type") not in wanted or row.get("agent_id") != MAIN_SCOPE:
+                continue
+            text = ((row.get("payload") or {}).get("text") or "").strip()
+            if text:
+                last_text = text[:30]
+                break
+        if last_text:
+            break
+    out["last_text"] = last_text
+    out["last_active"] = rows[0].get("created_at") if rows else session.get("created_at")
+    return out
 
 
 @router.get("/chat/history")

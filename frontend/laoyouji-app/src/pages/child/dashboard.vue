@@ -15,28 +15,8 @@
       <text class="privacy-note-text">🔒 {{ privacyNote }}</text>
     </view>
 
-    <!-- 响应式铺砌布局：电脑端大屏网格平铺展示 -->
+    <!-- 响应式铺砌布局 -->
     <view class="sections-grid">
-      <!-- 待确认（高危操作拦截） -->
-      <view class="section">
-        <view class="section-head">
-          <text class="section-title">✋ 待我确认（{{ pending.length }}）</text>
-        </view>
-        <view v-if="!pending.length" class="empty-row">
-          <text>暂无待确认事项，老人家的操作都安全</text>
-        </view>
-        <view v-for="t in pending" :key="t.id" class="confirm-item" @tap="goDetail(t)">
-          <view class="confirm-main">
-            <text class="confirm-summary">{{ cardOf(t).summary }}</text>
-            <text class="confirm-reason">{{ cardOf(t).reason }}</text>
-          </view>
-          <view class="confirm-side">
-            <text v-if="t.amount" class="confirm-amount">¥{{ t.amount }}</text>
-            <text class="confirm-go">去处理 ›</text>
-          </view>
-        </view>
-      </view>
-
       <!-- 行程状态 -->
       <view class="section">
         <view class="section-head">
@@ -46,23 +26,6 @@
         <view v-for="t in trips" :key="t.id" class="trip-item" @tap="goGuardian(t)">
           <text class="trip-purpose">{{ t.purpose }}</text>
           <text class="trip-status" :class="t.status">{{ statusText(t.status) }}</text>
-        </view>
-      </view>
-
-      <!-- 守护告警 -->
-      <view class="section">
-        <view class="section-head">
-          <text class="section-title">🔔 最近告警</text>
-        </view>
-        <view v-if="!alerts.length" class="empty-row"><text>一切正常，没有告警</text></view>
-        <view v-for="(a, i) in alerts" :key="a.id || i" class="alert-item">
-          <text class="alert-icon">⚠️</text>
-          <view class="alert-body">
-            <text class="alert-note">{{ a.note }}</text>
-            <text class="alert-meta">
-              {{ a.location }}<text v-if="a.created_at"> · {{ fmtTime(a.created_at) }}</text>
-            </text>
-          </view>
         </view>
       </view>
 
@@ -89,6 +52,7 @@
 import LyjSegment from '../../components/LyjSegment.vue'
 import { get } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
+import { publishPendingCount } from '../../store/pendingBadge'
 
 /** 没绑定时后端会走提前返回、连 privacy 字段都不给 —— 前端的兜底必须是"全关"。 */
 const DENIED = { location_level: 'off', health_level: 'off', bound: false }
@@ -98,9 +62,7 @@ export default {
   data() {
     return {
       user: null,
-      pending: [],
       trips: [],
-      alerts: [],
       medications: [],
       privacy: DENIED,
       elderName: '',
@@ -176,27 +138,21 @@ export default {
     async loadAll(silent) {
       try {
         const d = await get(`/api/child/${this.user.id}/dashboard`)
-        const before = this.pending.length
+        // 5s 轮询天然是"有新待审批"的最早发现者：角标与震动由它驱动，
+        // 列表本身已搬去通知页（pendingBadge.js 头注有完整背景）。
+        publishPendingCount((d.pending_confirmations || []).length)
         this.privacy = d.privacy || DENIED
         this.elderName = d.elder ? d.elder.name : ''
         this.elderCity = d.elder ? d.elder.city || '' : ''
-        this.pending = d.pending_confirmations || []
         this.trips = d.trips || []
-        this.alerts = d.alerts || []
         this.medications = d.medications || []
         this.lastRefresh = this.fmtClock(new Date())
-        // 只在**新**出现待确认时震一下：每 5 秒震一次不是提醒，是骚扰
-        if (silent && this.pending.length > before && uni.vibrateShort) {
-          uni.vibrateShort()
-        }
       } catch (e) {
         if (!silent) uni.showToast({ title: '加载失败：' + e.message, icon: 'none' })
       }
     },
 
-    cardOf(task) {
-      return task.summary_for_child || {}
-    },
+
     /**
      * summary 档下后端把药名替换成了"老人未开放此项"（privacy.py 的 MASKED）。
      * 把它原样摆在药名位上会读成一条奇怪的药 —— 换成一句说得通的话。
@@ -221,12 +177,7 @@ export default {
       const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
       return withSeconds ? `${hm}:${pad(d.getSeconds())}` : hm
     },
-    goDetail(t) {
-      // 下钻：保留来路，返回键回看板
-      uni.navigateTo({
-        url: `/pages/child/confirm-detail?id=${t.id}&child_id=${this.user.id}`,
-      })
-    },
+
     goGuardian(t) {
       uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.id}` })
     },
@@ -314,49 +265,6 @@ export default {
   color: $lyj-child-muted;
   line-height: $lyj-line-height;
 }
-/* 待确认条：全项目同一个挂起色（$lyj-warn-*），不再自成一套棕黄 */
-.confirm-item {
-  display: flex;
-  align-items: center;
-  gap: $lyj-space-md;
-  min-height: $lyj-hit-min;
-  padding: $lyj-space-md;
-  background: $lyj-warn-bg;
-  border: 2rpx solid $lyj-warn;
-  border-radius: $lyj-radius;
-  margin-bottom: $lyj-space-sm;
-}
-.confirm-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: $lyj-space-xs;
-}
-.confirm-summary {
-  font-size: $lyj-font-md;
-  font-weight: 600;
-  color: $lyj-text;
-  line-height: $lyj-line-height;
-}
-.confirm-reason {
-  font-size: $lyj-font-sm;
-  color: $lyj-warn-text;
-}
-.confirm-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: $lyj-space-xs;
-}
-.confirm-amount {
-  font-size: $lyj-font-md;
-  font-weight: 800;
-  color: $lyj-danger;
-}
-.confirm-go {
-  font-size: $lyj-font-sm;
-  color: $lyj-primary;
-}
 .trip-item {
   display: flex;
   align-items: center;
@@ -389,30 +297,6 @@ export default {
   background: $lyj-success-bg;
   color: $lyj-success;
 }
-.alert-item {
-  display: flex;
-  gap: $lyj-space-sm;
-  padding: $lyj-space-sm 0;
-  border-bottom: 2rpx solid $lyj-child-line;
-}
-.alert-icon {
-  font-size: $lyj-font-md;
-}
-.alert-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: $lyj-space-xs;
-}
-.alert-note {
-  font-size: $lyj-font-md;
-  color: $lyj-danger;
-  line-height: $lyj-line-height;
-}
-.alert-meta {
-  font-size: $lyj-font-sm;
-  color: $lyj-child-muted;
-}
 .med-item {
   display: flex;
   align-items: center;
@@ -441,21 +325,13 @@ export default {
   flex-direction: column;
 }
 
-/* 电脑端宽屏铺砌自适应：大屏两列网格平铺，内容饱满舒展 */
+/* 电脑端宽屏自适应：只剩 2 个 section 后两列网格会把每张卡压成半宽长条，
+   布局失衡 —— 大屏维持单列、限宽居中即可。 */
 @media screen and (min-width: 768px) {
   .dash {
     max-width: 960px;
     margin: 0 auto;
     padding: 30rpx 32rpx 100rpx;
-  }
-  .sections-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24rpx;
-    align-items: start;
-  }
-  .section {
-    margin: 0;
   }
 }
 </style>

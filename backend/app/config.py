@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     jwt_access_minutes: int = 30
     jwt_refresh_days: int = 30
 
+    # 调试开关：/seed 等危险演示端点的门禁。开发默认开；部署时在 .env 里
+    # 显式写 DEBUG=false 关掉 —— 开着它等于把"重置全库"挂在公网上。
+    debug: bool = True
+
     # 智能体预算（三级止损：步数在 Agent 类上，token / 墙钟在这儿）
     budget_max_tokens: int = 60_000
     budget_wall_clock_s: float = 90.0

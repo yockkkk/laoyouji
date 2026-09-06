@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_ctx, valid_session_id
+from app.api.deps import get_ctx, get_optional_principal, valid_session_id
+from app.auth.security import Principal
 from app.core.context import AppContext
 from app.db.seed import seed_demo
 
@@ -26,14 +27,27 @@ async def health():
 
 
 @router.post("/seed")
-async def seed():
+async def seed(principal: Principal | None = Depends(get_optional_principal)):
+    """演示数据复位。无鉴权裸奔的版本等于把"重置全库"挂在公网上。
+
+    门禁两层：调试环境（settings.debug）直接放行，demo/联调不受影响；
+    非调试环境要求管理员身份，其余一律 403。
+    """
     ctx = get_ctx()
+    if not ctx.settings.debug:
+        if principal is None or principal.role != "admin":
+            raise HTTPException(403, "数据复位仅限调试环境或管理员")
     result = await seed_demo(ctx.repos)
     return {
         "ok": True,
         "elder": {"id": result["elder"]["id"], "name": result["elder"]["name"]},
         "child": {"id": result["child"]["id"], "name": result["child"]["name"]},
     }
+
+
+def _public_user(row: dict) -> dict:
+    """出库用户行 → 可给前端的形状。password_hash 永远不出库。"""
+    return {k: v for k, v in row.items() if k != "password_hash"}
 
 
 @router.get("/demo/family")
@@ -45,7 +59,8 @@ async def demo_family():
     if not elders or not children:
         result = await seed_demo(ctx.repos)
         elders, children = [result["elder"]], [result["child"]]
-    return {"elders": elders, "children": children}
+    return {"elders": [_public_user(u) for u in elders],
+            "children": [_public_user(u) for u in children]}
 
 
 @router.get("/weather")

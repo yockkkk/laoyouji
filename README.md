@@ -33,7 +33,7 @@ python -m venv .venv
 # 2. 前端（Node 20）
 cd frontend/laoyouji-app
 npm install
-npm run dev:h5        # http://localhost:5173
+npm run dev:h5        # http://127.0.0.1:5174
 
 # 3. 演示数据复位（任何时候）
 curl -X POST http://127.0.0.1:8000/api/seed

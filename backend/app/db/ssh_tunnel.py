@@ -31,8 +31,12 @@ class _Handler(socketserver.BaseRequestHandler):
 
     def handle(self) -> None:  # noqa: D102
         try:
+            # timeout 必须给：paramiko 默认无限等。transport 半死（keepalive 还没
+            # 判超时）时请求会整批堆死在这里，aiomysql 那边 connect_timeout 到点
+            # 抛 TimeoutError，前端看到的就是 500/CORS。10 秒内开不了就明确失败，
+            # 让 sql_repo._ensure_pool 走重建，而不是吊着不放。
             chan = self.transport.open_channel(
-                "direct-tcpip", self.dest, self.request.getpeername()
+                "direct-tcpip", self.dest, self.request.getpeername(), timeout=10
             )
         except Exception as exc:
             logger.warning("SSH 隧道开 channel 失败 %s: %s", self.dest, exc)
@@ -125,8 +129,10 @@ class SSHPortForwarder:
         if transport is None:  # pragma: no cover - 理论上 connect 成功就有
             client.close()
             raise RuntimeError("SSH 连上了但拿不到 transport")
-        # 演示时会有长时间没人说话的间隙，别让中间设备把连接掐了
-        transport.set_keepalive(30)
+        # 演示时会有长时间没人说话的间隙，别让中间设备把连接掐了。
+        # 15s 而不是 30s：半死状态（对端已凉、TCP 还没判死）能更快被
+        # is_alive() 发现，隧道重建发生得更早，而不是让请求堆在半死通道上。
+        transport.set_keepalive(15)
 
         handler = type("_BoundHandler", (_Handler,), {"transport": transport, "dest": self._dest})
         try:

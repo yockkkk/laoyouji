@@ -12,17 +12,17 @@
   <view class="mic-wrap" :class="'mode-' + mode">
     <view
       class="mic"
-      :class="{ recording, disabled }"
+      :class="{ recording, processing, disabled }"
       @touchstart.prevent="micDown"
       @touchend.prevent="micUp"
       @touchcancel.prevent="micUp"
       @mousedown.prevent="micDown"
       @mouseup.prevent="micUp"
     >
-      <text class="mic-icon">{{ recording ? '🎙️' : '🎤' }}</text>
-      <text class="mic-label">{{ recording ? '松开说完' : '按住说话' }}</text>
+      <text class="mic-icon">{{ processing ? '⏳' : (recording ? '🎙️' : '🎤') }}</text>
+      <text class="mic-label">{{ processing ? '正在转录...' : (recording ? '松开说完' : '按住说话') }}</text>
     </view>
-    <view v-if="recording && interimText" class="interim">
+    <view v-if="(recording || processing) && interimText" class="interim">
       <text class="interim-text">{{ interimText }}</text>
     </view>
     <text v-else-if="hint" class="hint">{{ hint }}</text>
@@ -42,7 +42,12 @@ export default {
   },
   emits: ['text'],
   data() {
-    return { recording: false, interimText: '', _recorder: null, _webSpeech: null }
+    return {
+      recording: false, processing: false, interimText: '',
+      _recorder: null, _webSpeech: null,
+      _downAt: 0, // 按下时刻：最短时长判定用
+      _onWindowMouseUp: null, // PC 端 window mouseup 兜底句柄
+    }
   },
   beforeUnmount() {
     // 录音中离开页面：必须把麦克风关掉，否则轨道一直开着（H5 上是个亮着的红点）
@@ -50,9 +55,16 @@ export default {
   },
   methods: {
     async micDown() {
-      if (this.disabled || this.recording) return
+      if (this.disabled || this.recording || this.processing) return
       this.recording = true
       this.interimText = ''
+      this._downAt = Date.now()
+      // PC 兜底：鼠标按下后滑出按钮再松开，按钮自己的 mouseup 收不到，
+      // 没有这一层 window 监听录音就会一直卡死（H5 上轨道一直亮着红点）。
+      // #ifdef H5
+      this._onWindowMouseUp = () => this.micUp()
+      window.addEventListener('mouseup', this._onWindowMouseUp)
+      // #endif
       try {
         // 主链路：录音上传后端方言 ASR
         this._recorder = await startRecording()
@@ -77,23 +89,47 @@ export default {
     async micUp() {
       if (!this.recording) return
       this.recording = false
+      this._removeWindowMouseUp()
+      const heldMs = Date.now() - this._downAt
       const ws = this._webSpeech
       this._webSpeech = null
       if (ws) ws.stop()
-      if (!this._recorder) return
+      if (!this._recorder) {
+        this.processing = false
+        return
+      }
 
-      let text = (this.interimText || '').trim()
-      this.interimText = ''
+      // 最短时长 400ms：老人点按误触（碰一下就松）不该发起一次识别，
+      // 更不该把误触识别成的怪话发给老友记。
+      if (heldMs < 400) {
+        const rec = this._recorder
+        this._recorder = null
+        Promise.resolve(rec.stop()).catch(() => {}) // 释放音轨，结果丢弃
+        this.interimText = ''
+        uni.showToast({ title: '按住多说一会儿再松开', icon: 'none', duration: 2000 })
+        return
+      }
+
+      this.processing = true
+      let text = ''
       try {
         const audio = await this._recorder.stop()
         this._recorder = null
-        if (!text) {
-          text = ((await recognizeAudio(audio.tempFilePath, this.dialect)) || '').trim()
-        }
+        // 主链路永远走专业方言 ASR：Web Speech 草稿只做预览。旧逻辑是
+        // "草稿有值就不调 ASR"，方言老人被浏览器识别成错字就直接发出去了。
+        text = ((await recognizeAudio(audio.tempFilePath, this.dialect)) || '').trim()
       } catch (e) {
         uni.showToast({ title: '没听清，您再按住说一遍', icon: 'none', duration: 2000 })
+        this.processing = false
+        this.interimText = ''
         return
       }
+      if (!text) {
+        // 专业 ASR 没识别出来时，浏览器草稿兜底一句，总比让老人重说强
+        text = (this.interimText || '').trim()
+      }
+      this.processing = false
+      this.interimText = ''
       if (!text) {
         uni.showToast({ title: '没听到声音，您再试试', icon: 'none', duration: 2000 })
         return
@@ -101,7 +137,17 @@ export default {
       this.$emit('text', text)
     },
 
+    _removeWindowMouseUp() {
+      // #ifdef H5
+      if (this._onWindowMouseUp) {
+        window.removeEventListener('mouseup', this._onWindowMouseUp)
+        this._onWindowMouseUp = null
+      }
+      // #endif
+    },
+
     _teardown() {
+      this._removeWindowMouseUp()
       if (this._webSpeech) {
         try {
           this._webSpeech.stop()
@@ -116,6 +162,7 @@ export default {
         this._recorder = null
       }
       this.recording = false
+      this.processing = false
       this.interimText = ''
     },
   },
@@ -149,6 +196,16 @@ export default {
 .mic.recording {
   transform: scale(1.12);
   background: linear-gradient(160deg, $lyj-danger, $lyj-danger-dark);
+}
+.mic.processing {
+  transform: scale(1.05);
+  background: linear-gradient(160deg, $lyj-primary, $lyj-primary-dark);
+  animation: pulse 1.5s infinite ease-in-out;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 10rpx 30rpx rgba(232, 84, 30, 0.4); }
+  50% { box-shadow: 0 10rpx 50rpx rgba(232, 84, 30, 0.8); }
+  100% { box-shadow: 0 10rpx 30rpx rgba(232, 84, 30, 0.4); }
 }
 .mic.disabled {
   filter: grayscale(0.8);
@@ -195,6 +252,12 @@ export default {
   }
   .mic.recording {
     transform: scale(1.02);
+  }
+  .mic.processing {
+    background: $lyj-primary-soft;
+    color: $lyj-primary;
+    transform: scale(1.02);
+    box-shadow: 0 4rpx 20rpx rgba(232, 84, 30, 0.4);
   }
   .interim {
     position: absolute;
