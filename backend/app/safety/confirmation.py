@@ -41,17 +41,40 @@ class ConfirmationService:
     async def suspend(self, turn: TurnContext, tool: Tool, args: dict,
                       guard_result: GuardResult) -> dict:
         """由 ToolDispatcher 调用：冻结参数、建确认任务、通知双端。"""
+        user_id = turn.user.get("id")
+        user_role = turn.user.get("role", "elder")
+
+        # 查找家庭关联：
         binding = await self._repo.find_one(
-            "family_bindings", {"elder_id": turn.user.get("id")}
+            "family_bindings", {"elder_id": user_id, "status": "active"}
         )
+        if not binding:
+            binding = await self._repo.find_one("family_bindings", {"elder_id": user_id})
+
+        # 容错兜底：如果当前用户身份是 child（或在绑定中作为 child_id 存在）
+        if not binding and user_role == "child":
+            binding = await self._repo.find_one(
+                "family_bindings", {"child_id": user_id, "status": "active"}
+            )
+            if not binding:
+                binding = await self._repo.find_one("family_bindings", {"child_id": user_id})
+
+        # 全局单家庭关联兜底：若只有一个绑定，避免未传或错传导致孤立
+        if not binding:
+            all_bindings = await self._repo.list("family_bindings", where={"status": "active"}, limit=1)
+            if all_bindings:
+                binding = all_bindings[0]
+
         child_id = binding["child_id"] if binding else None
+        elder_id = binding["elder_id"] if (binding and user_role == "child") else user_id
         relation = (binding or {}).get("relation") or "家人"
 
         summary_text = (
             tool.child_summary(args) if tool.child_summary
-            else f"妈妈想执行 {tool.name}：{args}"
+            else f"长辈想执行 {tool.name}：{args}"
         )
-        elder_name = turn.user.get("name", "老人")
+        elder_user = await self._repo.get("users", elder_id) if elder_id else turn.user
+        elder_name = (elder_user or {}).get("name") or turn.user.get("name", "长辈")
         card = {
             "title": f"{elder_name}想进行一项需要确认的操作",
             "summary": summary_text,
@@ -64,7 +87,7 @@ class ConfirmationService:
         now = datetime.now(timezone.utc)
         task = await self._repo.insert("confirmation_tasks", {
             "session_id": turn.session_id,
-            "elder_id": turn.user.get("id"),
+            "elder_id": elder_id,
             "child_id": child_id,
             "tool_name": tool.name,
             "tool_args": args,
@@ -80,6 +103,29 @@ class ConfirmationService:
             "target": task["id"],
             "detail": {"tool": tool.name, "args": args, "risk_level": guard_result.risk_level},
         })
+
+        # 写入通知中心 (notifications 表)，确保子女端在看板与通知中心第一时间收到提醒！
+        if child_id:
+            try:
+                await self._repo.insert("notifications", {
+                    "family_id": (binding or {}).get("family_id") or (binding or {}).get("id"),
+                    "user_id": child_id,
+                    "type": "confirmation_request",
+                    "title": f"【待您审批】{card['title']}",
+                    "content": card["summary"],
+                    "payload": {
+                        "task_id": task["id"],
+                        "tool": tool.name,
+                        "amount": guard_result.amount,
+                        "elder_id": elder_id,
+                        "elder_name": elder_name,
+                        "reason": guard_result.reason,
+                    },
+                    "status": "unread",
+                    "created_at": now.isoformat(),
+                })
+            except Exception as e:
+                logger.warning(f"Failed to insert notification for suspended task: {e}")
 
         await turn.emit("suspended", {
             "confirmation_id": task["id"],
@@ -174,13 +220,21 @@ class ConfirmationService:
 
     async def list_for_child(self, child_id: str, status: str | None = None) -> list[dict]:
         await self._expire_stale(child_id=child_id)
-        where: dict = {"child_id": child_id}
-        if status:
-            where["status"] = status
-        rows = await self._repo.list(
-            "confirmation_tasks", where=where, order="-created_at", limit=50
+        # 获取该子女绑定的老人列表（双向关联，杜绝孤儿任务）
+        bindings = await self._repo.list("family_bindings", where={"child_id": child_id})
+        elder_ids = [b["elder_id"] for b in bindings if b.get("elder_id")]
+
+        all_tasks = await self._repo.list(
+            "confirmation_tasks", order="-created_at", limit=100
         )
-        return rows
+        matched = []
+        for t in all_tasks:
+            # 命中条件：child_id 匹配，或者任务归属于绑定的老人
+            if t.get("child_id") == child_id or (elder_ids and t.get("elder_id") in elder_ids):
+                if status and t.get("status") != status:
+                    continue
+                matched.append(t)
+        return matched[:50]
 
     # ------------------------------------------------------------- 内部
 

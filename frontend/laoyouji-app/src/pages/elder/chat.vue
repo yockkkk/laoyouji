@@ -212,7 +212,7 @@ import { get, post } from '../../api/client'
 import { NET_FAILED_TEXT, SESSION_GONE_TEXT, TURN_FAILED_TEXT } from '../../api/messages'
 import { chatStream, fetchEvents } from '../../api/sse'
 import { speak } from '../../api/asr'
-import { getCurrentUser } from '../../store/user'
+import { getCurrentUser, setAuthSession } from '../../store/user'
 import { takeUtterance } from '../../store/handoff'
 
 // 子智能体的门面。名字与后端 display_name 一致（travel_agent.py:30 等），
@@ -350,6 +350,22 @@ export default {
       uni.reLaunch({ url: '/pages/login/login' })
       return
     }
+    if (this.user.role === 'child') {
+      uni.showModal({
+        title: '身份提示',
+        content: `您当前使用的是家人账号【${this.user.name}】。老人端聊天专为长辈设计，是否立即切换为长辈身份（张桂芳）？`,
+        confirmText: '切换长辈',
+        cancelText: '返回看板',
+        success: async (res) => {
+          if (res.confirm) {
+            await this.quickSwitchToElder()
+          } else {
+            uni.reLaunch({ url: '/pages/child/dashboard' })
+          }
+        },
+      })
+      return
+    }
     if (!this.messages.length) {
       await this.initSessionHistory()
     }
@@ -401,6 +417,27 @@ export default {
       this.drawerDragging = false
       this._hasDragged = false
       this.treeDrawerVisible = false
+    },
+
+    async quickSwitchToElder() {
+      try {
+        uni.showLoading({ title: '切换长辈身份…' })
+        const res = await post('/api/auth/login', {
+          username: 'zhangguifang',
+          password: 'elder123456',
+        })
+        setAuthSession(res)
+        this.user = res.user
+        uni.hideLoading()
+        uni.showToast({ title: '已切换为长辈张桂芳', icon: 'success' })
+        this.messages = []
+        this.sessionId = null
+        await this.initSessionHistory()
+        this._watchConfirmations()
+      } catch (e) {
+        uni.hideLoading()
+        uni.showToast({ title: '切换失败: ' + (e.message || ''), icon: 'none' })
+      }
     },
 
     onDrawerTouchStart(e) {

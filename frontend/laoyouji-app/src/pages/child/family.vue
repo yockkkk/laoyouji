@@ -17,8 +17,8 @@
     <view class="section">
       <text class="section-title">➕ 关联新长辈/家人</text>
       <view class="form-row">
-        <input class="input" v-model="targetUsername" placeholder="请输入对方账号（用户名）" />
-        <input class="input short" v-model="relation" placeholder="关系（如：儿子/女儿）" />
+        <input class="input" v-model="targetUsername" placeholder="对方账号（如: zhangguifang）" />
+        <input class="input short" v-model="relation" placeholder="您与对方关系（如: 儿子/女儿）" />
       </view>
       <button class="btn-main bind-btn" :loading="binding" @tap="submitBindRequest">
         发送绑定申请
@@ -31,8 +31,14 @@
       <view v-if="!members.length" class="empty"><text>暂无关联成员</text></view>
       <view v-for="m in members" :key="m.id" class="member-item">
         <view class="member-main">
-          <text class="member-name">{{ m.user ? m.user.name : '家庭成员' }}（{{ m.relation }}）</text>
-          <text class="member-sub">账号: {{ m.user ? m.user.username : '' }} · 状态: {{ statusText(m.status) }}</text>
+          <view class="member-name-row">
+            <text class="member-name">{{ m.user ? m.user.name : '家庭成员' }}</text>
+            <text class="role-badge elder" v-if="m.user && m.user.role === 'elder'">👵 长辈</text>
+            <text class="role-badge child" v-else>👨 家人</text>
+          </view>
+          <text class="member-sub">
+            绑定身份：{{ formatRelation(m) }} · 账号: {{ m.user ? m.user.username : '' }} · 状态: {{ statusText(m.status) }}
+          </text>
         </view>
         <!-- 删掉 accept/reject 后这里一度剩个空 flex 容器：非 active 成员
              渲染一条什么都没有的占位，列表对不齐。有动作才渲染容器。 -->
@@ -90,6 +96,17 @@ export default {
     },
     statusText(s) {
       return { active: '已绑定', pending: '待确认', rejected: '已拒绝', revoked: '已解除' }[s] || s
+    },
+    formatRelation(m) {
+      const rel = (m.relation || '').trim()
+      if (!rel) return '家人'
+      if (['儿子', '女儿', '孙子', '孙女', '儿媳', '女婿'].includes(rel)) {
+        return `我是长辈的【${rel}】`
+      }
+      if (['母亲', '父亲', '妈妈', '爸爸', '爷爷', '奶奶', '姥姥', '姥爷'].includes(rel)) {
+        return `长辈是我的【${rel}】`
+      }
+      return `关系: ${rel}`
     },
     async submitBindRequest() {
       if (!this.targetUsername.trim() || !this.relation.trim()) {
@@ -218,11 +235,32 @@ export default {
   padding: $lyj-space-sm 0;
   border-bottom: 2rpx solid $lyj-child-line;
 }
+.member-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 6rpx;
+}
+.role-badge {
+  font-size: 20rpx;
+  padding: 2rpx 14rpx;
+  border-radius: 20rpx;
+  font-weight: 500;
+  &.elder {
+    background: rgba(33, 150, 243, 0.12);
+    color: #1976d2;
+    border: 1rpx solid rgba(25, 118, 210, 0.3);
+  }
+  &.child {
+    background: rgba(76, 175, 80, 0.12);
+    color: #388e3c;
+    border: 1rpx solid rgba(56, 142, 60, 0.3);
+  }
+}
 .member-name {
   font-size: $lyj-font-md;
   font-weight: 600;
   color: $lyj-child-text;
-  display: block;
 }
 .member-sub {
   font-size: $lyj-font-sm;
