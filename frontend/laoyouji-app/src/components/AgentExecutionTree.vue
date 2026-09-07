@@ -182,6 +182,7 @@
                   'is-frontier': isHealthFrontier,
                   'is-completed': healthStatusClass === 'status-completed',
                   'is-suspended': healthStatusClass === 'status-suspended',
+                  'is-inactive': !isHealthActive,
                 }"
                 @tap="scrollToSection('health')"
               >
@@ -202,6 +203,7 @@
                   'is-frontier': isTravelFrontier,
                   'is-completed': travelStatusClass === 'status-completed',
                   'is-suspended': travelStatusClass === 'status-suspended',
+                  'is-inactive': !isTravelActive,
                 }"
                 @tap="scrollToSection('travel')"
               >
@@ -221,6 +223,8 @@
                 :class="{
                   'is-frontier': isCommunityFrontier,
                   'is-completed': communityStatusClass === 'status-completed',
+                  'is-suspended': communityStatusClass === 'status-suspended',
+                  'is-inactive': !isCommunityActive,
                 }"
                 @tap="scrollToSection('community')"
               >
@@ -249,6 +253,7 @@
                 'is-suspended': pendingTasksCount > 0,
                 'is-completed': pendingTasksCount === 0 && (hasTaskStarted || replay.step >= 4),
                 'is-rejected': hasAnyRejected,
+                'is-inactive': !isSafetyActive,
               }"
               @tap="scrollToSection('safety')"
             >
@@ -276,6 +281,7 @@
               :class="{
                 'is-frontier': isPlanBuilderFrontier,
                 'is-completed': planBuilderStatusClass === 'status-completed',
+                'is-inactive': !isPlanBuilderActive,
               }"
               @tap="scrollToSection('planBuilder')"
             >
@@ -303,6 +309,7 @@
               :class="{
                 'is-ready': isArtifactReady,
                 'is-frontier': isArtifactReady,
+                'is-inactive': !isArtifactReady && !replay.active,
               }"
               @tap="openArtifactModal"
             >
@@ -310,11 +317,11 @@
                 <text class="dag-avatar-icon">📄</text>
               </view>
               <view class="dag-node-text-group">
-                <text class="dag-node-title">《五页就医出行计划书》</text>
-                <text class="dag-node-role">五页适老大字版 · 挂号凭证+高铁票+酒店+慢病清单+天气</text>
+                <text class="dag-node-title">{{ artifactDisplayTitle }}</text>
+                <text class="dag-node-role">{{ artifactDisplaySubtitle }}</text>
               </view>
               <view class="dag-node-state-chip" :class="isArtifactReady ? 'status-completed' : 'status-ready'">
-                {{ isArtifactReady ? '✅ 已交付 (点击预览)' : '⏳ 待审批后交付' }}
+                {{ artifactChipText }}
               </view>
             </view>
           </view>
@@ -362,7 +369,7 @@
           </view>
 
           <!-- 全局规划链路步骤 (阶段动态状态机) (R2) -->
-          <view class="plan-steps-track">
+          <view v-if="displaySteps.length > 0" class="plan-steps-track">
             <view class="track-header">
               <text class="track-title">📋 任务分解流水线 (Todo State Machine)</text>
               <text class="track-progress tabular-num">{{ completedStepsCount }}/{{ totalStepsCount }} 已完成</text>
@@ -395,7 +402,7 @@
         <view class="subagent-branches-container">
 
           <!-- 分支 1：健康守护 (Health Agent · 安康助手) -->
-          <view class="subagent-branch-card health-branch" :class="{ 'collapsed': collapsedAgents.health }">
+          <view class="subagent-branch-card health-branch" :class="{ 'collapsed': collapsedAgents.health, 'is-inactive': !isHealthActive, 'is-active-branch': isHealthActive }">
             <view class="branch-header" @tap="toggleAgentCollapse('health')">
               <view class="branch-header-left">
                 <view class="avatar-box health-avatar">
@@ -429,8 +436,13 @@
                   <text class="monologue-text">{{ agentThoughts.health }}</text>
                 </view>
 
+                <!-- 空工具提示 -->
+                <view v-if="healthTools.length === 0" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isHealthActive ? '正在分析并准备调用健康工具…' : '本轮未派发健康医疗相关工具' }}</text>
+                </view>
+
                 <!-- 工具节点列表：节点、入参、状态全部来自该智能体真实发出的 tool_call / tool_result -->
-                <view class="tools-flow">
+                <view v-if="healthTools.length > 0" class="tools-flow">
                   <view
                     v-for="tool in healthTools"
                     :key="tool.key"
@@ -512,7 +524,7 @@
           </view>
 
           <!-- 分支 2：银发导航 (Travel Agent · 银发导航) -->
-          <view class="subagent-branch-card travel-branch" :class="{ 'collapsed': collapsedAgents.travel }">
+          <view class="subagent-branch-card travel-branch" :class="{ 'collapsed': collapsedAgents.travel, 'is-inactive': !isTravelActive, 'is-active-branch': isTravelActive }">
             <view class="branch-header" @tap="toggleAgentCollapse('travel')">
               <view class="branch-header-left">
                 <view class="avatar-box travel-avatar">
@@ -546,8 +558,13 @@
                   <text class="monologue-text">{{ agentThoughts.travel }}</text>
                 </view>
 
+                <!-- 空工具提示 -->
+                <view v-if="travelTools.length === 0" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isTravelActive ? '正在规划并准备调用出行工具…' : '本轮未派发交通出行相关工具' }}</text>
+                </view>
+
                 <!-- 工具节点列表：节点、入参、状态全部来自该智能体真实发出的 tool_call / tool_result -->
-                <view class="tools-flow">
+                <view v-if="travelTools.length > 0" class="tools-flow">
                   <view
                     v-for="tool in travelTools"
                     :key="tool.key"
@@ -629,7 +646,7 @@
           </view>
 
           <!-- 分支 3：邻里帮 (Community Agent · 邻里帮) -->
-          <view class="subagent-branch-card community-branch" :class="{ 'collapsed': collapsedAgents.community }">
+          <view class="subagent-branch-card community-branch" :class="{ 'collapsed': collapsedAgents.community, 'is-inactive': !isCommunityActive, 'is-active-branch': isCommunityActive }">
             <view class="branch-header" @tap="toggleAgentCollapse('community')">
               <view class="branch-header-left">
                 <view class="avatar-box community-avatar">
@@ -663,8 +680,13 @@
                   <text class="monologue-text">{{ agentThoughts.community }}</text>
                 </view>
 
+                <!-- 空工具提示 -->
+                <view v-if="communityTools.length === 0" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isCommunityActive ? '正在对接社区便民资源…' : '本轮未派发社区便民服务相关工具' }}</text>
+                </view>
+
                 <!-- 工具节点列表：节点、入参、状态全部来自该智能体真实发出的 tool_call / tool_result -->
-                <view class="tools-flow">
+                <view v-if="communityTools.length > 0" class="tools-flow">
                   <view
                     v-for="tool in communityTools"
                     :key="tool.key"
@@ -746,7 +768,7 @@
           </view>
 
           <!-- 分支 4：资金与医疗安全防护网 (Safety Guard Gateway) (R3) -->
-          <view class="subagent-branch-card safety-branch" :class="{ 'collapsed': collapsedAgents.safety }">
+          <view class="subagent-branch-card safety-branch" :class="{ 'collapsed': collapsedAgents.safety, 'is-inactive': !isSafetyActive, 'is-active-branch': isSafetyActive }">
             <view class="branch-header" @tap="toggleAgentCollapse('safety')">
               <view class="branch-header-left">
                 <view class="avatar-box safety-avatar">
@@ -813,7 +835,7 @@
                       </view>
                     </view>
                   </view>
-                  <view class="safety-pool-summary">
+                  <view v-if="highRiskTools.length > 0" class="safety-pool-summary">
                     <text class="pool-label">资金拦截池受控总额：</text>
                     <text class="pool-val tabular-num">¥{{ highRiskAmountTotal }}</text>
                     <text class="pool-shield-tag">已通过加密长连接推送子女端</text>
@@ -824,7 +846,7 @@
           </view>
 
           <!-- 分支 5：方案建造师 (PlanBuilder · 方案装配) -->
-          <view class="subagent-branch-card planbuilder-branch" :class="{ 'collapsed': collapsedAgents.planBuilder }">
+          <view class="subagent-branch-card planbuilder-branch" :class="{ 'collapsed': collapsedAgents.planBuilder, 'is-inactive': !isPlanBuilderActive, 'is-active-branch': isPlanBuilderActive }">
             <view class="branch-header" @tap="toggleAgentCollapse('planBuilder')">
               <view class="branch-header-left">
                 <view class="avatar-box planbuilder-avatar">
@@ -858,19 +880,24 @@
                   <text class="monologue-text">{{ agentThoughts.planBuilder }}</text>
                 </view>
 
-                <view class="tools-flow">
-                  <!-- 工具节点: compose_deliverable -->
-                  <view class="tool-node" :class="'node-' + planBuilderTools.composeDeliverable.status">
+                <view v-if="planBuilderTools.length > 0" class="tools-flow">
+                  <!-- 工具节点: compose_deliverable 等真实调用 -->
+                  <view
+                    v-for="tool in planBuilderTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="'node-' + tool.status"
+                  >
                     <view class="node-connector-dot"></view>
                     <view class="node-card-inner">
                       <view class="node-top-row">
                         <view class="node-name-box">
-                          <text class="tool-fn-name">compose_deliverable</text>
-                          <text class="tool-cn-name">方案聚合装配</text>
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
                         </view>
                         <view class="node-tags-group">
-                          <view class="node-status-tag" :class="planBuilderTools.composeDeliverable.status">
-                            {{ formatToolStatus(planBuilderTools.composeDeliverable.status, 'composeDeliverable') }}
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
                           </view>
                         </view>
                       </view>
@@ -881,7 +908,7 @@
                         </view>
                         <view class="mono-code-tokens">
                           <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(planBuilderTools.composeDeliverable.args)" :key="tIdx" class="token-item">
+                          <view v-for="(tok, tIdx) in parseParamsTokens(tool.args)" :key="tIdx" class="token-item">
                             <text class="tok-key">"{{ tok.k }}"</text>
                             <text class="tok-colon">: </text>
                             <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
@@ -890,36 +917,38 @@
                           <text class="token-brace">}</text>
                         </view>
                       </view>
-                      <view v-if="planBuilderTools.composeDeliverable.result" class="result-box">
-                        <text class="result-text">✅ 已成功从多智能体回放提取全部事实，装配成五页大字适老就医计划书</text>
+                      <view v-if="tool.result" class="result-box">
+                        <text class="result-text">{{ tool.resultText || '✅ 已完成事实提取与交付方案装配' }}</text>
                       </view>
                     </view>
                   </view>
+                </view>
+                <view v-else-if="!isArtifactReady" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isPlanBuilderActive ? '正在等待提取全部事实数据…' : '待各子智能体完成任务后装配交付方案' }}</text>
+                </view>
 
-                  <!-- ================= 终极产物叶子节点：可点击计划书 Artifact (R2/R3) ================= -->
-                  <view
-                    class="artifact-leaf-node"
-                    :class="{ 'is-ready': isArtifactReady, 'is-dimmed': !isArtifactReady }"
-                    @tap="openArtifactModal"
-                  >
-                    <view class="leaf-glow"></view>
-                    <view class="leaf-head">
-                      <view class="leaf-icon-badge">
-                        <text class="leaf-icon">📄</text>
+                <!-- ================= 终极产物叶子节点：可点击计划书 Artifact (R2/R3) ================= -->
+                <view
+                  class="artifact-leaf-node"
+                  :class="{ 'is-ready': isArtifactReady, 'is-dimmed': !isArtifactReady }"
+                  @tap="openArtifactModal"
+                >
+                  <view class="leaf-glow"></view>
+                  <view class="leaf-head">
+                    <view class="leaf-icon-badge">
+                      <text class="leaf-icon">📄</text>
+                    </view>
+                    <view class="leaf-info">
+                      <view class="leaf-title-row">
+                        <text class="leaf-title">{{ artifactDisplayTitle }}</text>
+                        <text class="leaf-tag">适老大字版</text>
                       </view>
-                      <view class="leaf-info">
-                        <view class="leaf-title-row">
-                          <text class="leaf-title">《五页就医出行计划书》</text>
-                          <text class="leaf-tag">可打印适老大字版</text>
-                        </view>
-                        <text class="leaf-desc">挂号凭证 · 高铁车次 · 适老酒店 · 携带清单 · 天气预警</text>
-                      </view>
-                      <view class="leaf-action-badge" :class="{ 'badge-ready': isArtifactReady }">
-                        <text class="leaf-action-text">{{ isArtifactReady ? '点击预览 🔍' : '等待装配 ⏳' }}</text>
-                      </view>
+                      <text class="leaf-desc">{{ artifactDisplaySubtitle }}</text>
+                    </view>
+                    <view class="leaf-action-badge" :class="{ 'badge-ready': isArtifactReady }">
+                      <text class="leaf-action-text">{{ isArtifactReady ? '点击预览 🔍' : '等待装配 ⏳' }}</text>
                     </view>
                   </view>
-
                 </view>
               </view>
             </view>
@@ -935,8 +964,8 @@
       <view class="artifact-modal" @tap.stop>
         <view class="artifact-modal-header">
           <view class="header-main-box">
-            <text class="modal-title">📄 就医出行计划书 (可打印适老大字版)</text>
-            <text class="modal-sub">由老友记主调度协同安康助手与银发导航自动生成 · 4/4 阶段全部闭环</text>
+            <text class="modal-title">📄 {{ modalTitleText }}</text>
+            <text class="modal-sub">{{ modalSubText }}</text>
           </view>
           <button class="modal-close-btn" @tap="showArtifactModal = false">✕</button>
         </view>
@@ -968,6 +997,210 @@
 </template>
 
 <script>
+const REPLAY_SANDBOX = {
+  intentText: '老人诉求：“我想去北京看腿疼的老毛病” ➔ 拆解为权威骨科挂号、G102高铁订票、积水潭适老酒店及五页就医出行方案',
+  scenarioTag: '跨城异地就医全闭环',
+  stepsInfo: [
+    {
+      num: '0/5',
+      title: '老友记总调度：意图拆解与全局任务编排',
+      desc: '总调度 Orchestrator 感知老人诉求，分解为医院挂号、高铁、适老酒店及计划书 4 阶段流水线',
+      icon: '🎯',
+    },
+    {
+      num: '1/5',
+      title: '安康助手：权威专家号源智能匹配',
+      desc: '健康智能体启动 search_hospital，锁定北京积水潭医院骨科田伟主任医师号源',
+      icon: '🏥',
+    },
+    {
+      num: '2/5',
+      title: '银发导航：高铁车次与适老无障碍酒店检索',
+      desc: '并发执行 search_train 与 search_hotel，锁定 G102 次适老车厢与漫心无障碍酒店',
+      icon: '🧭',
+    },
+    {
+      num: '3/5',
+      title: '安全防护网：高危拦截与强行挂起保护',
+      desc: '触发资金医疗安全防线（挂号¥100 + 高铁¥443.50 + 酒店¥680），已向子女端发送审批请求',
+      icon: '🛡️',
+    },
+    {
+      num: '4/5',
+      title: '双向回路：子女端审批放行 (Loopback)',
+      desc: '模拟子女手机端通过 3 项核准，工具状态立即转为已完成/已出票/已预约，闭环放行',
+      icon: '⚡',
+    },
+    {
+      num: '5/5',
+      title: '方案建造师：五页大字就医出行计划书装配',
+      desc: '汇总挂号凭证、车次、酒店及携带清单，成功生成《就医出行计划书》，流水线 4/4 阶段全部达成！',
+      icon: '📄',
+    },
+  ],
+  thoughts: {
+    orchestrator: '针对长辈主诉“去北京看腿疼老毛病”，总调度启动跨城异地就医多智能体并行编排：分发骨科名医筛查至安康助手，往返高铁与适老住宿派发至银发导航，全流程注入安全护栏防线。',
+    health: '老人腿痛初筛为膝关节退行性病变。锁定全国骨科标杆北京积水潭医院（国家骨科医学中心），优选关节外科田伟主任医师周二上午专家号，提示携带既往病历与X光片。',
+    travel: '配合田主任上午就诊时序，优选南京南站始发 G102 次清晨高铁（08:15开，12:30到，配置无障碍设施）。选定距门诊450米的漫心适老酒店无障碍房，配备应急呼叫与安全扶手。',
+    community: '考虑到老人异地就医独行困难，主动匹配三甲医院持证陪诊员，预约北京南站轮椅接站进出站服务，提供全流程代取药与就医引导。',
+    safety: '依据金融与医疗双重风控机制，门诊挂号费(¥100.00)、高铁票款(¥443.50)及酒店住宿费(¥680.00)单次超额，触发强行挂起保护，已将工单推至子女手机端待批。',
+    planBuilder: '汇总各子智能体返回的凭证号源与执行事实，经过去重与交叉校验，最终组装输出五页大字可读、可打印、可语音播报的《异地就医出行全套方案》。',
+  },
+  displaySteps(step) {
+    return [
+      {
+        name: '选医院挂专家号',
+        status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'in_progress' : 'pending')),
+      },
+      {
+        name: '查高铁车次及订票',
+        status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
+      },
+      {
+        name: '订适老无障碍酒店',
+        status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
+      },
+      {
+        name: '聚合装配计划书',
+        status: step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending'),
+      },
+    ]
+  },
+  getTools(step) {
+    const h1 = {
+      key: 'replay_h_1',
+      name: 'search_hospital',
+      summary: '医院与号源检索',
+      status: step >= 1 ? 'completed' : 'pending',
+      args: { city: '北京', department: '骨科', specialty: '关节外科' },
+      result: '已查到北京积水潭医院骨科田伟主任医师号源',
+      isHighRisk: false,
+    }
+    const h2 = {
+      key: 'replay_h_2',
+      name: 'register_appointment',
+      summary: '预约专家门诊',
+      status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'running' : 'pending')),
+      args: { hospital: '北京积水潭医院', doctor: '田伟 主任医师', date: '明天上午', fee: 100 },
+      result: step >= 4 ? '已锁定田伟主任医师上午专家号凭证' : '',
+      isHighRisk: true,
+      amount: '100.00',
+      desc: '专家门诊预约挂号扣费已安全拦截，需子女手机端核准放行',
+      confirmationId: 'conf_demo_appoint_01',
+    }
+    const healthTools = step >= 1 ? [h1, h2] : []
+
+    const t1 = {
+      key: 'replay_t_1',
+      name: 'search_train',
+      summary: '检索高铁车次',
+      status: step >= 2 ? 'completed' : 'pending',
+      args: { from_station: '南京南站', to_station: '北京南站', date: 'tomorrow' },
+      result: '锁定 G102 次清晨高铁（配置无障碍设施）',
+      isHighRisk: false,
+    }
+    const t2 = {
+      key: 'replay_t_2',
+      name: 'book_ticket',
+      summary: '预订高铁车票',
+      status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'running' : 'pending')),
+      args: { train_no: 'G102', seat_type: '二等座', price: 443.50 },
+      result: step >= 4 ? 'G102 次 03 车 06A 适老二等座已出票' : '',
+      isHighRisk: true,
+      amount: '443.50',
+      desc: '高铁车票订购涉及资金支出，需子女核准',
+      confirmationId: 'conf_demo_ticket_01',
+    }
+    const t3 = {
+      key: 'replay_t_3',
+      name: 'search_hotel',
+      summary: '检索适老酒店',
+      status: step >= 2 ? 'completed' : 'pending',
+      args: { city: '北京', keyword: '积水潭医院 漫心适老酒店' },
+      result: '选定漫心酒店（距门诊450米无障碍房）',
+      isHighRisk: false,
+    }
+    const t4 = {
+      key: 'replay_t_4',
+      name: 'book_hotel',
+      summary: '预订适老酒店',
+      status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'running' : 'pending')),
+      args: { hotel_name: '漫心酒店（北京积水潭医院店）', room_type: '无障碍双床房', price: 680.00 },
+      result: step >= 4 ? '适老无障碍双床房（2晚）预订成功' : '',
+      isHighRisk: true,
+      amount: '680.00',
+      desc: '适老无障碍酒店预订扣费已拦截，需子女端核准',
+      confirmationId: 'conf_demo_hotel_01',
+    }
+    const travelTools = step >= 2 ? [t1, t2, t3, t4] : []
+
+    const highRiskTools = step >= 3 ? [h2, t2, t4] : []
+
+    const pb1 = {
+      key: 'replay_pb_1',
+      name: 'compose_deliverable',
+      summary: '方案聚合装配',
+      status: step >= 5 ? 'completed' : (step === 4 ? 'running' : 'pending'),
+      args: { kind: 'trip_plan', city: '北京' },
+      result: step >= 5,
+      resultText: '✅ 已成功从多智能体回放提取全部事实，装配成五页大字适老就医计划书',
+    }
+    const planBuilderTools = step >= 4 ? [pb1] : []
+
+    return { healthTools, travelTools, highRiskTools, planBuilderTools }
+  },
+  artifactPages: [
+    {
+      title: '北京积水潭医院专家挂号凭证',
+      rows: [
+        { label: '就诊医院', val: '北京积水潭医院（新街口院区）' },
+        { label: '科室医生', val: '骨科专家门诊 · 田伟 主任医师' },
+        { label: '门诊时段', val: '明天上午 08:30 - 09:30' },
+        { label: '诊查费用', val: '¥100.00（家人已代付确认）' },
+      ],
+      note: '就诊当天请携带老人医保卡及既往腿部关节 X 光片。',
+    },
+    {
+      title: '往返高铁车次出行凭证',
+      rows: [
+        { label: '去程车次', val: 'G102 次 高铁二等座' },
+        { label: '发到站点', val: '南京南站 (08:15) ➔ 北京南站 (12:30)' },
+        { label: '乘车证件', val: '刷居民身份证直接刷闸进出站' },
+        { label: '票价金额', val: '¥443.50（家人已代付确认）' },
+      ],
+      note: '已申请重点旅客无障碍轮椅进站引导服务，候车室 A12 专区。',
+    },
+    {
+      title: '积水潭漫心适老无障碍酒店',
+      rows: [
+        { label: '预订酒店', val: '漫心酒店（北京积水潭医院店）' },
+        { label: '入住房型', val: '适老无障碍双床房（2晚）' },
+        { label: '适老设施', val: '卫浴防滑扶手、紧急呼叫铃、电梯直达' },
+        { label: '到院距离', val: '步行 450 米，出南门即达积水潭门诊' },
+      ],
+      note: '酒店前台已登记老人优先入住及无障碍轮椅借用。',
+    },
+    {
+      title: '随身物品与就医携带清单',
+      rows: [
+        { label: '必带证件', val: '二代身份证原件、全国医保电子凭证 / 社保卡' },
+        { label: '健康病历', val: '既往关节拍片底片、日常用药盒 / 慢病处方本' },
+        { label: '常备药品', val: '降压药、硝酸甘油、关节止痛膏贴' },
+      ],
+      note: '随身小包放随身证件与药盒，大件衣物由家属或陪诊人员协助。',
+    },
+    {
+      title: '目的地出行天气与健康叮嘱',
+      rows: [
+        { label: '目的地天气', val: '晴间多云，气温 18℃ ~ 26℃，微风' },
+        { label: '空气质量', val: '优良 (AQI 42)，体感舒适适宜出行' },
+        { label: '穿衣建议', val: '轻薄透气棉质长袖，早晚可加一件防风薄外套' },
+      ],
+      note: '候车室与车厢内冷气较足，上车前请先备好披肩或外套保暖。',
+    },
+  ],
+}
+
 export default {
   name: 'AgentExecutionTree',
   props: {
@@ -983,31 +1216,47 @@ export default {
     return {
       rootThinking: false,
       collapsedAgents: {
-        health: false,
-        travel: false,
-        community: false,
-        safety: false,
-        planBuilder: false,
+        health: true,
+        travel: true,
+        community: true,
+        safety: true,
+        planBuilder: true,
       },
       showArtifactModal: false,
-      // 演示覆盖状态
-      demoModeActive: false,
-      demoApprovals: {
-        appointment: false,
-        ticket: false,
-        hotel: false,
-      },
-      // 动态演播全链路状态 (R3)
       replay: {
         active: false,
         playing: false,
-        step: 0, // 0 到 5 阶段
+        step: 0,
         timer: null,
       },
       expandedToolResults: {},
+      _userChangedAllExpanded: false,
     }
   },
+  watch: {
+    messages: {
+      deep: true,
+      immediate: true,
+      handler(newMsgs, oldMsgs) {
+        const safeNew = (newMsgs || []).filter((m) => m && typeof m === 'object')
+        const safeOld = (oldMsgs || []).filter((m) => m && typeof m === 'object')
+        const lastNew = safeNew[safeNew.length - 1]
+        const lastOld = safeOld[safeOld.length - 1]
+        if (lastNew && lastNew.isUser && (!lastOld || lastOld !== lastNew)) {
+          this._userChangedAllExpanded = false
+        }
+        this.syncActiveBranches()
+      },
+    },
+    thinking() {
+      this.syncActiveBranches()
+    },
+    currentAgent() {
+      this.syncActiveBranches()
+    },
+  },
   mounted() {
+    this.syncActiveBranches()
     if (typeof document !== 'undefined') {
       this._onVisChange = () => {
         if (document.hidden && this.replay && this.replay.playing) {
@@ -1027,6 +1276,10 @@ export default {
     }
   },
   computed: {
+    safeMessages() {
+      return (this.messages || []).filter((m) => m && typeof m === 'object')
+    },
+
     allExpanded: {
       get() {
         return (
@@ -1047,9 +1300,8 @@ export default {
     },
 
     hasTaskStarted() {
-      if (this.replay.active || this.demoModeActive) return true
-      const msgs = this.messages || []
-      return msgs.some(
+      if (this.replay.active) return true
+      return this.safeMessages.some(
         (m) =>
           m.isUser ||
           m.kind === 'tool' ||
@@ -1061,36 +1313,106 @@ export default {
 
     hasAnyRejected() {
       if (this.replay.active) return false
-      if (
-        this.demoApprovals.appointment === 'rejected' ||
-        this.demoApprovals.ticket === 'rejected' ||
-        this.demoApprovals.hotel === 'rejected'
-      ) {
-        return true
-      }
       if (this.allTools.some((t) => t.status === 'rejected')) return true
-      return (this.messages || []).some(
+      return this.safeMessages.some(
         (m) => m.kind === 'suspend' && m.status === 'rejected',
       )
     },
 
+    // 动态判断子智能体活跃状态
+    isHealthActive() {
+      if (this.replay.active) return this.replay.step >= 1
+      if (this.healthTools.length > 0) return true
+      const hasAgentMsg = this.safeMessages.some(
+        (m) =>
+          (m.kind === 'status' || m.agent) &&
+          this.matchesAgent(m.agent, 'health'),
+      )
+      if (hasAgentMsg) return true
+      if (this.thinking && this.isCurrentAgent('health')) return true
+      return false
+    },
+
+    isTravelActive() {
+      if (this.replay.active) return this.replay.step >= 2
+      if (this.travelTools.length > 0) return true
+      const hasAgentMsg = this.safeMessages.some(
+        (m) =>
+          (m.kind === 'status' || m.agent) &&
+          this.matchesAgent(m.agent, 'travel'),
+      )
+      if (hasAgentMsg) return true
+      if (this.thinking && this.isCurrentAgent('travel')) return true
+      return false
+    },
+
+    isCommunityActive() {
+      if (this.replay.active) return false
+      if (this.communityTools.length > 0) return true
+      const hasAgentMsg = this.safeMessages.some(
+        (m) =>
+          (m.kind === 'status' || m.agent) &&
+          this.matchesAgent(m.agent, 'community'),
+      )
+      if (hasAgentMsg) return true
+      if (this.thinking && this.isCurrentAgent('community')) return true
+      return false
+    },
+
+    isSafetyActive() {
+      if (this.replay.active) return this.replay.step >= 3
+      return this.highRiskTools.length > 0 || this.pendingTasksCount > 0 || this.hasAnyRejected
+    },
+
+    isPlanBuilderActive() {
+      if (this.replay.active) return this.replay.step >= 4
+      if (this.isArtifactReady) return true
+      if (this.planBuilderTools.length > 0) return true
+      const hasAgentMsg = this.safeMessages.some(
+        (m) =>
+          (m.kind === 'status' || m.agent) &&
+          this.matchesAgent(m.agent, 'plan_builder'),
+      )
+      if (hasAgentMsg) return true
+      if (this.thinking && this.isCurrentAgent('planBuilder')) return true
+      return false
+    },
+
+    // 协同智能体数严格等于当前真实激活的子智能体数量
+    activeAgentsCount() {
+      if (this.replay.active) {
+        if (this.replay.step === 0) return 0
+        if (this.replay.step === 1) return 1
+        if (this.replay.step <= 4) return 2
+        return 3
+      }
+      const activeList = [
+        this.isHealthActive,
+        this.isTravelActive,
+        this.isCommunityActive,
+        this.isPlanBuilderActive,
+      ]
+      return activeList.filter(Boolean).length
+    },
+
+    // 执行工具数严格等于当前分支展示的全部工具数量
+    totalToolsCount() {
+      if (this.replay.active) {
+        const tools = REPLAY_SANDBOX.getTools(this.replay.step)
+        return (tools.healthTools.length + tools.travelTools.length + tools.planBuilderTools.length)
+      }
+      return this.allTools.length
+    },
+
+    // 待批拦截数严格等于真实挂起待确权项目
     pendingTasksCount() {
       if (this.replay.active) {
         if (this.replay.step === 3) return 3
         return 0
       }
-      // 数真实挂起的调用：有几个就是几项待批，不再写死 3 个工具名
-      return this.allTools.filter((t) => t.status === 'suspended').length
-    },
-
-    activeAgentsCount() {
-      if (!this.hasTaskStarted) return 0
-      return 4
-    },
-
-    totalToolsCount() {
-      if (!this.hasTaskStarted) return 0
-      return 8
+      const suspendedTools = this.allTools.filter((t) => t.status === 'suspended').length
+      const suspendedMsgs = this.safeMessages.filter((m) => m.kind === 'suspend' && m.status === 'pending').length
+      return Math.max(suspendedTools, suspendedMsgs)
     },
 
     globalStatusText() {
@@ -1100,8 +1422,13 @@ export default {
       if (this.thinking || this.rootThinking) return 'LLM 正在并行规划推理'
       if (this.pendingTasksCount > 0) return '高危操作等待子女端审批'
       if (this.hasAnyRejected) return '高危操作已被子女拒绝拦截'
-      if (this.isArtifactReady) return '执行闭环 · 计划书交付完毕'
-      if (this.hasTaskStarted) return '四阶段流水线协同进行中'
+      if (this.isArtifactReady) return '执行闭环 · 方案交付完毕'
+      if (this.hasTaskStarted) {
+        if (this.completedStepsCount === this.totalStepsCount && this.totalStepsCount > 0) {
+          return `全部 ${this.totalStepsCount} 阶段已达成 · 随时待命`
+        }
+        return this.thinking ? (this.displaySteps.length > 0 ? `${this.displaySteps.length} 阶段协同进行中` : '协同处理进行中') : '协同响应已交付 · 随时待命'
+      }
       return '协同网络就绪 · 随时待命'
     },
 
@@ -1111,7 +1438,12 @@ export default {
       if (this.pendingTasksCount > 0) return 'status-suspended'
       if (this.hasAnyRejected) return 'status-rejected'
       if (this.isArtifactReady) return 'status-completed'
-      if (this.hasTaskStarted) return 'status-thinking'
+      if (this.hasTaskStarted) {
+        if (this.completedStepsCount === this.totalStepsCount && this.totalStepsCount > 0) {
+          return 'status-completed'
+        }
+        return this.thinking ? 'status-thinking' : 'status-ready'
+      }
       return 'status-ready'
     },
 
@@ -1126,7 +1458,9 @@ export default {
       if (this.thinking || this.rootThinking) return 'status-thinking'
       if (this.hasAnyRejected) return 'status-rejected'
       if (this.isArtifactReady) return 'status-completed'
-      if (this.hasTaskStarted) return 'status-thinking'
+      if (this.hasTaskStarted) {
+        return this.thinking ? 'status-thinking' : 'status-completed'
+      }
       return 'status-ready'
     },
 
@@ -1137,6 +1471,7 @@ export default {
       if (this.thinking || this.rootThinking) return '⚡'
       if (this.hasAnyRejected) return '🛑'
       if (this.isArtifactReady) return '✅'
+      if (this.hasTaskStarted && !this.thinking) return '✅'
       return '🎯'
     },
 
@@ -1147,85 +1482,359 @@ export default {
       if (this.thinking || this.rootThinking) return '意图拆解与全局调度中'
       if (this.hasAnyRejected) return '局部流程已由家人终止'
       if (this.isArtifactReady) return '全链路执行完毕'
-      if (this.hasTaskStarted) return '调度执行中'
-      return '主调度就绪 · 等待老人诉求'
+      if (this.hasTaskStarted) {
+        return this.thinking ? '调度执行中' : '任务调度完成 · 随时待命'
+      }
+      return '主调度就绪 · 等待长辈诉求'
     },
 
+    // 动态根据真实上下文推导场景标签
     currentScenarioTag() {
+      if (this.replay.active) return REPLAY_SANDBOX.scenarioTag
       if (!this.hasTaskStarted) return '待命中'
-      return '跨城异地就医全闭环'
-    },
 
-    currentIntentText() {
-      const userMsgs = (this.messages || []).filter((m) => m.isUser && m.text)
+      // 1. 优先从 todo 任务清单推导
+      const todoMsgs = this.safeMessages.filter((m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0)
+      const todoMsg = todoMsgs.length > 0 ? todoMsgs[todoMsgs.length - 1] : null
+      if (todoMsg && todoMsg.todos.length > 0) {
+        const validTodos = todoMsg.todos.filter((t) => t && typeof t === 'object')
+        const text = validTodos.map((t) => t.content || t.title || t.text || '').join(' ')
+        if ((text.includes('挂号') || text.includes('医院') || text.includes('就医')) && (text.includes('高铁') || text.includes('车票') || text.includes('酒店') || text.includes('出行'))) {
+          return '跨城就医出行协同'
+        }
+        if (text.includes('挂号') || text.includes('医院') || text.includes('就医') || text.includes('门诊')) {
+          return '健康医疗就诊规划'
+        }
+        if (text.includes('高铁') || text.includes('车次') || text.includes('车票') || text.includes('酒店') || text.includes('出行')) {
+          return '交通住宿出行规划'
+        }
+        if (text.includes('用药') || text.includes('配药') || text.includes('服药') || text.includes('慢病')) {
+          return '慢病用药管理服务'
+        }
+        if (text.includes('陪诊') || text.includes('助餐') || text.includes('助老') || text.includes('社区') || text.includes('食堂')) {
+          return '邻里居家便民服务'
+        }
+        return '智能协同任务规划'
+      }
+
+      // 2. 从真实调用的工具类型推导
+      if (this.allTools.length > 0) {
+        const hasHealth = this.healthTools.length > 0
+        const hasTravel = this.travelTools.length > 0
+        const hasCommunity = this.communityTools.length > 0
+        const hasPlan = this.planBuilderTools.length > 0
+        if (hasHealth && hasTravel) return '跨城就医出行协同'
+        if (hasHealth) return '健康医疗导诊服务'
+        if (hasTravel) return '银发交通出行规划'
+        if (hasCommunity) return '邻里助老便民服务'
+        if (hasPlan) return '适老方案规划装配'
+      }
+
+      // 3. 从长辈最近一条提问文本推导
+      const userMsgs = this.safeMessages.filter((m) => m.isUser && m.text)
       if (userMsgs.length > 0) {
         const last = userMsgs[userMsgs.length - 1].text
-        return `解析老人诉求："${last}" · 编排拆解三甲挂号、往返高铁、适老酒店及交付大字计划书`
+        if (last.includes('看病') || last.includes('医院') || last.includes('挂号') || last.includes('门诊') || last.includes('疼') || last.includes('病')) {
+          const isIntercity =
+            last.includes('高铁') ||
+            last.includes('火车') ||
+            last.includes('车票') ||
+            last.includes('外地') ||
+            last.includes('跨城') ||
+            last.includes('跨市') ||
+            last.includes('飞机') ||
+            last.includes('机票')
+          return isIntercity ? '跨城就医出行规划' : '健康医疗咨询服务'
+        }
+        if (last.includes('高铁') || last.includes('火车') || last.includes('车票') || last.includes('酒店') || last.includes('旅游') || last.includes('出行') || last.includes('打车') || last.includes('叫车')) {
+          return '交通出行预订规划'
+        }
+        if (last.includes('药') || last.includes('血压') || last.includes('血糖') || last.includes('慢病') || last.includes('提醒')) {
+          return '健康慢病用药管理'
+        }
+        if (last.includes('报告') || last.includes('体检') || last.includes('解读')) {
+          return '健康报告分析解读'
+        }
+        if (last.includes('诈') || last.includes('骗')) {
+          return '防诈预警与安全核验'
+        }
+        if (last.includes('食堂') || last.includes('陪诊') || last.includes('助老') || last.includes('邻里') || last.includes('饭') || last.includes('订餐')) {
+          return '邻里生活便民关怀'
+        }
+        if (last.includes('你好') || last.includes('您好') || last.includes('早上好') || last.includes('是谁') || last.includes('介绍')) {
+          return '日常关怀与问候'
+        }
       }
-      if (this.replay.active || this.demoModeActive) {
-        return '老人诉求："我想去北京看腿疼的老毛病" ➔ 拆解为权威骨科挂号、G102高铁订票、积水潭适老酒店及五页就医出行方案'
+
+      return '长辈生活智能助理'
+    },
+
+    // 动态根据真实诉求与任务推导意图文本
+    currentIntentText() {
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.intentText
+      }
+      const userMsgs = this.safeMessages.filter((m) => m.isUser && m.text)
+      if (userMsgs.length > 0) {
+        const last = userMsgs[userMsgs.length - 1].text
+        if (this.displaySteps.length > 0) {
+          const stepsStr = this.displaySteps.map((s) => s.name).join(' ➔ ')
+          return `解析长辈诉求：“${last}” ➔ 拆解规划：${stepsStr}`
+        }
+        if (this.allTools.length > 0) {
+          const toolsStr = this.allTools.map((t) => t.summary || t.name).slice(0, 3).join('、')
+          return `解析长辈诉求：“${last}” ➔ 实时调度执行：${toolsStr}`
+        }
+        if (this.thinking || this.rootThinking) {
+          return `解析长辈诉求：“${last}” ➔ 主调度正在意图理解与任务规划中…`
+        }
+        return `解析长辈诉求：“${last}” ➔ 意图理解完成，已协同处理回复。`
       }
       return '等待长辈输入诉求… 可按住说话或打字告诉老友记，主调度将实时理解意图并下发协同网络。'
     },
 
-    // 演播当前步骤说明 (R3)
     currentReplayStepInfo() {
-      const steps = [
-        {
-          num: '0/5',
-          title: '老友记总调度：意图拆解与全局任务编排',
-          desc: '总调度 Orchestrator 感知老人诉求，分解为医院挂号、高铁、适老酒店及计划书 4 阶段流水线',
-          icon: '🎯'
-        },
-        {
-          num: '1/5',
-          title: '安康助手：权威专家号源智能匹配',
-          desc: '健康智能体启动 search_hospital，锁定北京积水潭医院骨科田伟主任医师号源',
-          icon: '🏥'
-        },
-        {
-          num: '2/5',
-          title: '银发导航：高铁车次与适老无障碍酒店检索',
-          desc: '并发执行 search_train 与 search_hotel，锁定 G102 次适老车厢与漫心无障碍酒店',
-          icon: '🧭'
-        },
-        {
-          num: '3/5',
-          title: '安全防护网：高危拦截与强行挂起保护',
-          desc: '触发资金医疗安全防线（挂号¥100 + 高铁¥443.50 + 酒店¥680），已向子女端发送审批请求',
-          icon: '🛡️'
-        },
-        {
-          num: '4/5',
-          title: '双向回路：子女端审批放行 (Loopback)',
-          desc: '模拟子女手机端通过 3 项核准，工具状态立即转为已完成/已出票/已预约，闭环放行',
-          icon: '⚡'
-        },
-        {
-          num: '5/5',
-          title: '方案建造师：五页大字就医出行计划书装配',
-          desc: '汇总挂号凭证、车次、酒店及携带清单，成功生成《就医出行计划书》，流水线 4/4 阶段全部达成！',
-          icon: '📄'
-        },
-      ]
-      return steps[this.replay.step] || steps[0]
+      return REPLAY_SANDBOX.stepsInfo[this.replay.step] || REPLAY_SANDBOX.stepsInfo[0]
     },
 
-    // 智能体推理独白文本 (R3)
+    // 智能体推理独白：真实模式下完全由会话真实上下文生成
     agentThoughts() {
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.thoughts
+      }
+
+      const msgs = this.safeMessages
+      const userMsgs = msgs.filter((m) => m.isUser && m.text)
+      const lastUser = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].text : ''
+
+      // 1. 主调度独白
+      let orchestratorThought = ''
+      const mainStatus = msgs.filter(
+        (m) =>
+          (m.kind === 'status' && (!m.agent || this.matchesAgent(m.agent, 'main'))) ||
+          (this.matchesAgent(m.agent, 'main') && (m.reasoning || m.thought)),
+      )
+      const explicitMainReasoning = mainStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+      if (explicitMainReasoning) {
+        orchestratorThought = explicitMainReasoning.reasoning || explicitMainReasoning.thought
+      } else if (lastUser) {
+        if (this.displaySteps.length > 0) {
+          const sList = this.displaySteps.map((s) => s.name).join('、')
+          orchestratorThought = `接收长辈诉求“${lastUser}”，主调度已建立协同流水线（${sList}），按需调度子智能体并全程护栏监测。`
+        } else if (this.allTools.length > 0) {
+          const tList = this.allTools.map((t) => t.summary || t.name).slice(0, 3).join('、')
+          orchestratorThought = `接收长辈诉求“${lastUser}”，总调度已组织多智能体并行调度（${tList}），落实服务闭环。`
+        } else if (this.thinking || this.rootThinking) {
+          orchestratorThought = `正在深度理解长辈诉求“${lastUser}”，解析意图与上下文，编排子智能体调度任务…`
+        } else {
+          orchestratorThought = `长辈问询“${lastUser}”已完成意图解析与响应交付，老友记随时待命。`
+        }
+      } else {
+        orchestratorThought = '老友记主调度处于就绪待命状态，长辈输入诉求后将实时拆解意图并下发专业子智能体。'
+      }
+
+      // 2. 健康智能体独白
+      let healthThought = ''
+      if (!this.isHealthActive) {
+        healthThought = '本轮未派发健康医疗相关任务，健康守护助手处于待命状态。'
+      } else {
+        const hStatus = msgs.filter(
+          (m) =>
+            (m.kind === 'status' && this.matchesAgent(m.agent, 'health')) ||
+            (this.matchesAgent(m.agent, 'health') && (m.reasoning || m.thought)),
+        )
+        const explicitHealth = hStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+        if (explicitHealth) {
+          healthThought = explicitHealth.reasoning || explicitHealth.thought
+        } else if (this.healthTools.length > 0) {
+          const descs = this.healthTools.map((t) => {
+            const a = t.args || {}
+            if (t.name === 'search_hospital') {
+              const d = a.department || a.symptom || '科室'
+              const c = a.city ? `${a.city}` : ''
+              return `检索${c}${d}号源`
+            }
+            if (t.name === 'register_appointment') {
+              const hosp = a.hospital || ''
+              const doc = a.doctor || ''
+              const fee = a.fee ? `，诊查费¥${a.fee}` : ''
+              return `挂号预约（${hosp} ${doc}${fee}）`
+            }
+            if (t.name === 'interpret_report' || t.name === 'explain_medical_report') {
+              const title = a.title || '体检报告'
+              return `解读${title}指标`
+            }
+            if (t.name === 'add_medication' || t.name === 'set_medication_reminder') {
+              const drug = a.drug_name || a.medicine || a.name || '药品'
+              const dose = a.dose ? `（${a.dose}）` : ''
+              return `添加用药提醒（${drug}${dose}）`
+            }
+            if (t.name === 'check_scam') return '排查疑似涉诈信息'
+            if (t.name === 'diet_advice') {
+              const pref = a.preference ? `（${a.preference}）` : ''
+              return `提供适老健康饮食建议${pref}`
+            }
+            return `${t.summary || t.name}`
+          })
+          healthThought = `健康守护已介入：${descs.join('；')}。严格遵循适老医疗安全规范与免责提示。`
+        } else if (this.thinking && this.isCurrentAgent('health')) {
+          healthThought = '健康守护助手正在分析健康医疗需求，准备调用适老导诊与号源工具…'
+        } else if (hStatus.length > 0) {
+          healthThought = hStatus[hStatus.length - 1].text
+        } else {
+          healthThought = '健康守护助手已就绪，随时提供导医与健康辅助服务。'
+        }
+      }
+
+      // 3. 银发导航独白
+      let travelThought = ''
+      if (!this.isTravelActive) {
+        travelThought = '本轮未派发出行或住宿相关任务，银发导航助手处于待命状态。'
+      } else {
+        const tStatus = msgs.filter(
+          (m) =>
+            (m.kind === 'status' && this.matchesAgent(m.agent, 'travel')) ||
+            (this.matchesAgent(m.agent, 'travel') && (m.reasoning || m.thought)),
+        )
+        const explicitTravel = tStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+        if (explicitTravel) {
+          travelThought = explicitTravel.reasoning || explicitTravel.thought
+        } else if (this.travelTools.length > 0) {
+          const descs = this.travelTools.map((t) => {
+            const a = t.args || {}
+            if (t.name === 'search_train') {
+              const r = (a.from_city || a.from_station || a.origin || '') + (a.to_city || a.to_station || a.destination ? `至${a.to_city || a.to_station || a.destination}` : '')
+              return `检索适老车次${r ? `（${r}）` : ''}`
+            }
+            if (t.name === 'book_ticket') {
+              const tr = a.train_no || a.train || ''
+              const f = a.price || a.amount ? `，票价¥${a.price || a.amount}` : ''
+              return `预订车票（${tr}${f}）`
+            }
+            if (t.name === 'search_hotel') {
+              const loc = (a.city || '') + (a.near_hospital ? ` ${a.near_hospital}` : (a.keyword ? ` ${a.keyword}` : ''))
+              return `检索无障碍适老住宿${loc ? `（${loc}）` : ''}`
+            }
+            if (t.name === 'book_hotel') {
+              const h = a.hotel || a.hotel_name || ''
+              const f = a.price || a.amount ? `，房费¥${a.price || a.amount}` : ''
+              return `预订适老酒店（${h}${f}）`
+            }
+            if (t.name === 'plan_route') {
+              const r = (a.origin || '') + (a.destination ? `至${a.destination}` : '')
+              return `规划出行路线${r ? `（${r}）` : ''}`
+            }
+            if (t.name === 'hail_ride') {
+              const d = a.destination ? `前往${a.destination}` : ''
+              return `适老网约车呼叫${d ? `（${d}）` : ''}`
+            }
+            if (t.name === 'get_weather') {
+              return `查询目的地天气（${a.city || ''}）`
+            }
+            return `${t.summary || t.name}`
+          })
+          travelThought = `银发导航已介入：${descs.join('；')}。核验无障碍设施配置与行程无缝衔接。`
+        } else if (this.thinking && this.isCurrentAgent('travel')) {
+          travelThought = '银发导航助手正在规划交通出行路线与适老住宿…'
+        } else if (tStatus.length > 0) {
+          travelThought = tStatus[tStatus.length - 1].text
+        } else {
+          travelThought = '银发导航助手已就绪，提供适老车票与无障碍酒店支持。'
+        }
+      }
+
+      // 4. 邻里帮独白
+      let communityThought = ''
+      if (!this.isCommunityActive) {
+        communityThought = '本轮未派发社区便民或陪诊相关任务，邻里帮处于待命状态。'
+      } else {
+        const cStatus = msgs.filter(
+          (m) =>
+            (m.kind === 'status' && this.matchesAgent(m.agent, 'community')) ||
+            (this.matchesAgent(m.agent, 'community') && (m.reasoning || m.thought)),
+        )
+        const explicitComm = cStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+        if (explicitComm) {
+          communityThought = explicitComm.reasoning || explicitComm.thought
+        } else if (this.communityTools.length > 0) {
+          const descs = this.communityTools.map((t) => {
+            const a = t.args || {}
+            if (t.name === 'canteen_order') {
+              const m = a.menu_item || '适老软食套餐'
+              const c = a.count ? ` ×${a.count}` : ''
+              return `社区食堂订餐（${m}${c}）`
+            }
+            if (t.name === 'order_service') {
+              const sType = a.service_type === 'cleaning' ? '居家保洁' : '助老陪诊'
+              const d = a.date ? `，${a.date}` : ''
+              return `预约社区服务（${sType}${d}）`
+            }
+            if (t.name === 'query_order_status') return '查询社区服务订单进度'
+            if (t.name === 'push_activities') return '查询社区助老与文娱活动'
+            return `${t.summary || t.name}${a.service_type ? `（${a.service_type}）` : ''}`
+          })
+          communityThought = `邻里帮已介入：${descs.join('；')}。安排就医陪诊与助老生活服务支持。`
+        } else if (this.thinking && this.isCurrentAgent('community')) {
+          communityThought = '邻里帮正在对接社区助老资源与陪诊人员…'
+        } else if (cStatus.length > 0) {
+          communityThought = cStatus[cStatus.length - 1].text
+        } else {
+          communityThought = '邻里帮助手随时待命，提供陪诊引导与助老便民服务。'
+        }
+      }
+
+      // 5. 安全网独白
+      let safetyThought = ''
+      const sStatus = msgs.filter(
+        (m) =>
+          (m.kind === 'status' && this.matchesAgent(m.agent, 'safety')) ||
+          (this.matchesAgent(m.agent, 'safety') && (m.reasoning || m.thought)),
+      )
+      const explicitSafety = sStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+      if (explicitSafety) {
+        safetyThought = explicitSafety.reasoning || explicitSafety.thought
+      } else if (!this.isSafetyActive) {
+        safetyThought = '安全防护网实时监测中：严格实施金融资金与医疗诊断双重防护，当前对话未触发强行挂起风控规则。'
+      } else if (this.pendingTasksCount > 0) {
+        const items = this.highRiskTools.filter((t) => t.status === 'suspended').map((t) => t.summary || t.name)
+        safetyThought = `双向审批回路生效：拦截到 ${this.pendingTasksCount} 项高风险操作（${items.join('、')}），累计管控金额 ¥${this.highRiskAmountTotal}，已通过安全通道推至子女手机端待核准。`
+      } else if (this.hasAnyRejected) {
+        safetyThought = '安全网关阻断生效：检测到子女端已拒绝高危操作请求，系统已阻断执行链路并撤销相应操作，未发生扣费。'
+      } else if (this.highRiskTools.length > 0 && this.highRiskTools.every((t) => t.status === 'completed')) {
+        safetyThought = `双向审批回路已成功闭环：全部 ${this.highRiskTools.length} 项受控操作已获子女端授权核准，资金与操作安全验证通过。`
+      } else {
+        safetyThought = '资金与医疗安全防护网正常运行，全流程合规受控。'
+      }
+
+      // 6. 建造师独白
+      let planBuilderThought = ''
+      const pStatus = msgs.filter(
+        (m) =>
+          (m.kind === 'status' && this.matchesAgent(m.agent, 'plan_builder')) ||
+          (this.matchesAgent(m.agent, 'plan_builder') && (m.reasoning || m.thought)),
+      )
+      const explicitPlan = pStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+      if (explicitPlan) {
+        planBuilderThought = explicitPlan.reasoning || explicitPlan.thought
+      } else if (this.isArtifactReady) {
+        planBuilderThought = '已聚合多智能体协同产生的全部事实与凭证，消除幻觉与冲突，装配成适老大字版交付成果。'
+      } else if (this.isPlanBuilderActive) {
+        planBuilderThought = '方案建造师正在监听各子智能体执行回报，提取结构化事实数据进行装配准备…'
+      } else {
+        planBuilderThought = '等待前序子智能体任务达成，将自动对齐多源执行事实并装配成果。'
+      }
+
       return {
-        orchestrator: '针对长辈主诉"去北京看腿疼老毛病"，总调度启动跨城异地就医多智能体并行编排：分发骨科名医筛查至安康助手，往返高铁与适老住宿派发至银发导航，全流程注入安全护栏防线。',
-        health: '老人腿痛初筛为膝关节退行性病变。锁定全国骨科标杆北京积水潭医院（国家骨科医学中心），优选关节外科田伟主任医师周二上午专家号，提示携带既往病历与X光片。',
-        travel: '配合田主任上午就诊时序，优选南京南站始发 G102 次清晨高铁（08:15开，12:30到，配置无障碍设施）。选定距门诊450米的漫心适老酒店无障碍房，配备应急呼叫与安全扶手。',
-        community: '考虑到老人异地就医独行困难，主动匹配三甲医院持证陪诊员，预约北京南站轮椅接站进出站服务，提供全流程代取药与就医引导。',
-        safety: '依据金融与医疗双重风控机制，门诊挂号费(¥100.00)、高铁票款(¥443.50)及酒店住宿费(¥680.00)单次超额，触发强行挂起保护，已将工单推至子女手机端待批。',
-        planBuilder: '汇总各子智能体返回的凭证号源与执行事实，经过去重与交叉校验，最终组装输出五页大字可读、可打印、可语音播报的《异地就医出行全套方案》。',
+        orchestrator: orchestratorThought,
+        health: healthThought,
+        travel: travelThought,
+        community: communityThought,
+        safety: safetyThought,
+        planBuilder: planBuilderThought,
       }
     },
 
-
-
-    // DAG 前沿活跃判断 (R3)
+    // DAG 前沿活跃判断
     isRootFrontier() {
       if (this.replay.active) return this.replay.step === 0
       return this.thinking || this.rootThinking
@@ -1244,23 +1853,15 @@ export default {
     },
     isCommunityFrontier() {
       if (this.replay.active) return this.replay.step === 2
-      return this.communityStatusClass === 'status-thinking'
+      return this.communityStatusClass === 'status-thinking' || this.communityStatusClass === 'status-suspended'
     },
     isSafetyFrontier() {
       if (this.replay.active) return this.replay.step === 3
       return this.pendingTasksCount > 0
     },
-    isSafetyActive() {
-      if (this.replay.active) return this.replay.step >= 3
-      return this.pendingTasksCount > 0 || this.hasAnyRejected
-    },
     isPlanBuilderFrontier() {
       if (this.replay.active) return this.replay.step === 4
       return this.planBuilderStatusClass === 'status-thinking'
-    },
-    isPlanBuilderActive() {
-      if (this.replay.active) return this.replay.step >= 4
-      return this.planBuilderStatusClass === 'status-thinking' || this.planBuilderStatusClass === 'status-completed'
     },
 
     safetyStatusClass() {
@@ -1271,7 +1872,9 @@ export default {
       }
       if (this.pendingTasksCount > 0) return 'status-suspended'
       if (this.hasAnyRejected) return 'status-rejected'
-      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0)) return 'status-completed'
+      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0 && this.highRiskTools.length > 0)) {
+        return 'status-completed'
+      }
       return 'status-ready'
     },
     safetyStatusIcon() {
@@ -1282,7 +1885,9 @@ export default {
       }
       if (this.pendingTasksCount > 0) return '⏸️'
       if (this.hasAnyRejected) return '🛑'
-      if (this.isArtifactReady) return '✅'
+      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0 && this.highRiskTools.length > 0)) {
+        return '✅'
+      }
       return '🛡️'
     },
     safetyStatusText() {
@@ -1293,138 +1898,90 @@ export default {
       }
       if (this.pendingTasksCount > 0) return `${this.pendingTasksCount}项高危待批`
       if (this.hasAnyRejected) return '已拦截终止'
-      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0)) return '安全闭环放行'
+      if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0 && this.highRiskTools.length > 0)) {
+        return '安全闭环放行'
+      }
       return '安全防线待命'
     },
 
-    // 任务流水线 4 个阶段：解决“阶段3-4”Bug与动态状态机同步 (R2)
+    // 动态推导流水线任务分解步骤（杜绝写死“选医院挂专家号”）
     displaySteps() {
-      // 1. 演播模式
+      // 1. 演播模式：自包含 4 阶段
       if (this.replay && this.replay.active) {
-        const step = this.replay.step
-        return [
-          {
-            name: '选医院挂专家号',
-            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'in_progress' : 'pending')),
-          },
-          {
-            name: '查高铁车次及订票',
-            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
-          },
-          {
-            name: '订适老无障碍酒店',
-            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
-          },
-          {
-            name: '聚合装配计划书',
-            status: step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending'),
-          },
-        ]
+        return REPLAY_SANDBOX.displaySteps(this.replay.step)
       }
 
-      // 2. 解析最新 todo 快照（取 messages 中最后一个 kind === 'todo'） (R2)
-      const todoMsgs = (this.messages || []).filter((m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0)
+      // 2. 真实模式：从 messages 中提取最新真实 todo 快照
+      const todoMsgs = this.safeMessages.filter(
+        (m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0,
+      )
       const todoMsg = todoMsgs.length > 0 ? todoMsgs[todoMsgs.length - 1] : null
 
-      const fallbackTitles = [
-        '选医院挂专家号',
-        '查高铁车次及订票',
-        '订适老无障碍酒店',
-        '聚合装配计划书',
-      ]
-
       if (todoMsg && todoMsg.todos.length > 0) {
-        return todoMsg.todos.map((t, idx) => {
-          let st = t.status || 'in_progress'
-          // 读取 t.content || t.text || t.title，杜绝“阶段 3/4”占位 (R2)
+        const validTodos = todoMsg.todos.filter((t) => t && typeof t === 'object')
+        return validTodos.map((t, idx) => {
           const rawName = (t.content || t.text || t.title || '').trim()
-          const name = rawName || fallbackTitles[idx] || `阶段 ${idx + 1}`
+          const name = rawName || `待办事项 ${idx + 1}`
+          let st = t.status || 'in_progress'
 
-          // 动态同步里程碑状态
-          const isStage1 = idx === 0 || name.includes('挂号') || name.includes('医院') || name.includes('专家')
-          const isStage2 = idx === 1 || name.includes('车次') || name.includes('车票') || name.includes('高铁') || name.includes('订票')
-          const isStage3 = idx === 2 || name.includes('酒店') || name.includes('住宿')
-          const isStage4 = idx === 3 || name.includes('计划书') || name.includes('装配') || name.includes('聚合') || name.includes('出行方案')
-
-          if (isStage1) {
+          // 动态核验工具完成态
+          const lower = name.toLowerCase()
+          if (lower.includes('挂号') || lower.includes('医院') || lower.includes('专家')) {
             if (this.statusOf('register_appointment') === 'completed') st = 'completed'
             else if (this.statusOf('register_appointment') === 'rejected') st = 'rejected'
             else if (this.statusOf('register_appointment') === 'suspended') st = 'suspended'
             else if (this.statusOf('search_hospital') === 'completed' && !this.thinking) st = 'completed'
-          } else if (isStage2) {
+          } else if (lower.includes('车次') || lower.includes('车票') || lower.includes('高铁') || lower.includes('订票')) {
             if (this.statusOf('book_ticket') === 'completed') st = 'completed'
             else if (this.statusOf('book_ticket') === 'rejected') st = 'rejected'
             else if (this.statusOf('book_ticket') === 'suspended') st = 'suspended'
             else if (this.statusOf('search_train') === 'completed' && !this.thinking) st = 'completed'
-          } else if (isStage3) {
+          } else if (lower.includes('酒店') || lower.includes('住宿')) {
             if (this.statusOf('book_hotel') === 'completed') st = 'completed'
             else if (this.statusOf('book_hotel') === 'rejected') st = 'rejected'
             else if (this.statusOf('book_hotel') === 'suspended') st = 'suspended'
             else if (this.statusOf('search_hotel') === 'completed' && !this.thinking) st = 'completed'
-          } else if (isStage4) {
+          } else if (lower.includes('计划书') || lower.includes('装配') || lower.includes('聚合') || lower.includes('方案')) {
             if (this.isArtifactReady) st = 'completed'
             else if (this.hasAnyRejected) st = 'rejected'
+          } else if (lower.includes('陪诊') || lower.includes('保洁') || lower.includes('社区服务')) {
+            if (this.statusOf('order_service') === 'completed') st = 'completed'
+            else if (this.statusOf('order_service') === 'rejected') st = 'rejected'
+            else if (this.statusOf('order_service') === 'suspended') st = 'suspended'
+          } else if (lower.includes('食堂') || lower.includes('订餐') || lower.includes('助餐')) {
+            if (this.statusOf('canteen_order') === 'completed') st = 'completed'
+            else if (this.statusOf('canteen_order') === 'rejected') st = 'rejected'
+            else if (this.statusOf('canteen_order') === 'suspended') st = 'suspended'
+          } else if (lower.includes('用药') || lower.includes('服药') || lower.includes('药品')) {
+            if (this.statusOf('add_medication') === 'completed') st = 'completed'
+          } else if (lower.includes('报告') || lower.includes('体检')) {
+            if (this.statusOf('interpret_report') === 'completed') st = 'completed'
+          } else if (lower.includes('反诈') || lower.includes('诈骗')) {
+            if (this.statusOf('check_scam') === 'completed') st = 'completed'
           }
 
-          return {
-            name,
-            status: st,
-          }
+          return { name, status: st }
         })
       }
 
-      // 3. 演示模式
-      if (this.demoModeActive) {
-        const hEx = this.demoApprovals.appointment === true
-        const tEx = this.demoApprovals.ticket === true
-        const hoEx = this.demoApprovals.hotel === true
-        return [
-          {
-            name: '选医院挂专家号',
-            status: hEx ? 'completed' : (this.demoApprovals.appointment === 'rejected' ? 'rejected' : 'suspended'),
-          },
-          {
-            name: '查高铁车次及订票',
-            status: tEx ? 'completed' : (this.demoApprovals.ticket === 'rejected' ? 'rejected' : 'suspended'),
-          },
-          {
-            name: '订适老无障碍酒店',
-            status: hoEx ? 'completed' : (this.demoApprovals.hotel === 'rejected' ? 'rejected' : 'suspended'),
-          },
-          {
-            name: '聚合装配计划书',
-            status: (hEx && tEx && hoEx) || this.isArtifactReady ? 'completed' : (this.hasAnyRejected ? 'rejected' : 'pending'),
-          },
-        ]
+      // 3. 真实对话中若无 todo 快照，但有真实工具调用，按实际执行的工具动态生成步骤
+      if (this.allTools.length > 0) {
+        return this.allTools.map((t) => ({
+          name: t.summary || t.name,
+          status: t.status === 'executed' ? 'completed' : t.status,
+        }))
       }
 
-      // 4. 任务未启动时的默认状态
-      if (!this.hasTaskStarted) {
-        return [
-          { name: '选医院挂专家号', status: 'pending' },
-          { name: '查高铁车次及订票', status: 'pending' },
-          { name: '订适老无障碍酒店', status: 'pending' },
-          { name: '聚合装配计划书', status: 'pending' },
-        ]
+      // 4. 正在思考但未发 todo/tool
+      if (this.thinking || this.rootThinking) {
+        return [{ name: '长辈诉求理解与任务规划', status: 'in_progress' }]
       }
 
-      // 5. 任务进行中：按各阶段真实工具调用推导，工具没出来就一律 in_progress/pending
-      const step1Status = this.stageStatus('register_appointment', 'search_hospital', 'in_progress')
-      const step2Status = this.stageStatus('book_ticket', 'search_train', 'in_progress')
-      const step3Status = this.stageStatus('book_hotel', 'search_hotel', 'pending')
-
-      const step4Status = (this.isArtifactReady || (step1Status === 'completed' && step2Status === 'completed' && step3Status === 'completed'))
-        ? 'completed'
-        : (this.hasAnyRejected
-          ? 'rejected'
-          : (this.thinking ? 'in_progress' : 'pending'))
-
-      return [
-        { name: '选医院挂专家号', status: step1Status },
-        { name: '查高铁车次及订票', status: step2Status },
-        { name: '订适老无障碍酒店', status: step3Status },
-        { name: '聚合装配计划书', status: step4Status },
-      ]
+      // 5. 任务未启动或日常对话无分步
+      if (this.hasTaskStarted) {
+        return [{ name: '意图感知与对话调度', status: 'completed' }]
+      }
+      return []
     },
 
     completedStepsCount() {
@@ -1435,79 +1992,76 @@ export default {
       return this.displaySteps.length
     },
 
-    // ------------------------------------------------------------ 工具节点
-    /**
-     * 高危工具集合：这些工具命中内核的高危拦截（app/safety/risk_rules.py），
-     * 走"挂起 → 子女确权 → 放行 / 拒绝"的双向审批回路。
-     */
     highRiskToolNames() {
       return ['register_appointment', 'book_ticket', 'book_hotel', 'order_service', 'pay_deposit']
     },
 
-    /**
-     * 把消息队列里的工具调用收敛成渲染用的节点 —— 这是执行树唯一的工具事实来源。
-     *
-     * 两条链路必须等价，所以都在这里收敛：
-     * ① SSE 实时：chat.vue 把 tool_call / tool_result 推成 kind:'tool'；
-     * ② 历史回放：后端 /api/chat/history 由 assistant/message.tool_calls +
-     *   tool/result 还原出同构消息。
-     * 两边状态词不同（completed/failed vs executed/error），统一交给 toolStatus 归一。
-     */
-    parseTools(agentPrefixes) {
-      const msgs = this.messages || []
-      const suspends = msgs.filter((m) => m.kind === 'suspend')
-      return msgs
-        .filter(
-          (m) =>
-            m.kind === 'tool' &&
-            agentPrefixes.some((p) => String(m.agent || '').indexOf(p) === 0),
-        )
-        .map((m, idx) => {
-          // 挂起卡片（kind:'suspend'）带金额、话术和 confirmationId，按工具名配对；
-          // 配不上也照样渲染，只是没有"待确认"那块。
-          const suspend =
-            suspends.find((s) => s.tool === m.tool) ||
-            (m.confirmationId ? suspends.find((s) => s.confirmationId === m.confirmationId) : null)
-          const args = m.args || {}
-          const rawAmount =
-            args.fee || args.price || args.total_amount || args.amount ||
-            (suspend ? suspend.amount : null)
-          const amount = Number(rawAmount)
-          return {
-            key: m.callId || `${m.tool || 'tool'}#${idx}`,
-            name: m.tool || 'tool',
-            summary: m.summary || m.tool || '',
-            status: this.toolStatus(m),
-            args,
-            result: this.toolResultText(m),
-            isHighRisk: this.highRiskToolNames.indexOf(m.tool) !== -1 || !!suspend,
-            amount: rawAmount != null && rawAmount !== '' && !isNaN(amount) ? amount.toFixed(2) : null,
-            desc: (suspend && (suspend.message || suspend.summary)) || '',
-            confirmationId: (suspend && suspend.confirmationId) || m.confirmationId || '',
-          }
-        })
-    },
-
     healthTools() {
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.getTools(this.replay.step).healthTools
+      }
       return this.parseTools(['health', '安康助手'])
     },
 
     travelTools() {
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.getTools(this.replay.step).travelTools
+      }
       return this.parseTools(['travel', '银发导航'])
     },
 
     communityTools() {
+      if (this.replay.active) {
+        return []
+      }
       return this.parseTools(['community', '邻里帮'])
     },
 
-    // 三个子智能体的全部真实调用，供流水线与安全网做全局判定
-    allTools() {
-      return this.healthTools.concat(this.travelTools, this.communityTools)
+    planBuilderTools() {
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.getTools(this.replay.step).planBuilderTools
+      }
+      return this.parseTools(['plan_builder', 'planBuilder', '方案建造师'])
     },
 
-    // 真正走双向审批回路的那些（安全网面板按它渲染，不再写死三行）
+    allTools() {
+      if (this.replay.active) {
+        const t = REPLAY_SANDBOX.getTools(this.replay.step)
+        return t.healthTools.concat(t.travelTools, t.planBuilderTools)
+      }
+      return this.healthTools.concat(this.travelTools, this.communityTools, this.planBuilderTools)
+    },
+
     highRiskTools() {
-      return this.allTools.filter((t) => t.isHighRisk)
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.getTools(this.replay.step).highRiskTools
+      }
+      const tools = this.allTools.filter((t) => t.isHighRisk)
+      const existingCids = new Set(tools.map((t) => t.confirmationId).filter(Boolean))
+      const existingNames = new Set(tools.map((t) => t.name))
+
+      const suspends = this.safeMessages.filter((m) => m.kind === 'suspend')
+      suspends.forEach((s, idx) => {
+        const cid = s.confirmationId || ''
+        const toolName = s.tool || 'high_risk_op'
+        if ((cid && existingCids.has(cid)) || (!cid && existingNames.has(toolName))) {
+          return
+        }
+        tools.push({
+          key: cid || `suspend_${toolName}_${idx}`,
+          name: toolName,
+          summary: s.summary || s.message || toolName,
+          status: s.status === 'executed' || s.status === 'completed' ? 'completed' : (s.status === 'rejected' ? 'rejected' : 'suspended'),
+          args: {},
+          result: '',
+          resultText: '',
+          isHighRisk: true,
+          amount: s.amount ? Number(s.amount).toFixed(2) : null,
+          desc: s.message || s.summary || '',
+          confirmationId: cid,
+        })
+      })
+      return tools
     },
 
     highRiskAmountTotal() {
@@ -1516,32 +2070,6 @@ export default {
       return sum.toFixed(2)
     },
 
-    /**
-     * 分支徽标：不看任何写死的阶段，只看这个智能体自己的工具状态。
-     * 优先级：挂起 > 被拒 > 执行中 > 该智能体正在说话 > 全部结算 > 待命。
-     */
-    branchStatus(tools, agentId, displayName) {
-      if (tools.some((t) => t.status === 'suspended')) return 'status-suspended'
-      if (tools.some((t) => t.status === 'rejected')) return 'status-rejected'
-      if (tools.some((t) => t.status === 'running')) return 'status-thinking'
-      if (this.thinking && (this.currentAgent === agentId || this.currentAgent === displayName)) {
-        return 'status-thinking'
-      }
-      if (tools.length > 0 && tools.every((t) => t.status === 'completed' || t.status === 'failed')) {
-        return 'status-completed'
-      }
-      return 'status-ready'
-    },
-
-    branchIcon(statusClass, idleIcon) {
-      if (statusClass === 'status-suspended') return '⏸️'
-      if (statusClass === 'status-rejected') return '🛑'
-      if (statusClass === 'status-thinking') return '⚡'
-      if (statusClass === 'status-completed') return '✅'
-      return idleIcon
-    },
-
-    // 健康助手
     healthStatusClass() {
       if (this.replay.active) {
         if (this.replay.step === 1) return 'status-thinking'
@@ -1564,7 +2092,7 @@ export default {
 
     healthStatusText() {
       if (this.replay.active) {
-        if (this.replay.step === 1) return '积水潭号源检索中'
+        if (this.replay.step === 1) return '专家号源检索中'
         if (this.replay.step === 3) return '待子女确认挂号'
         if (this.replay.step >= 4) return '挂号成功 · 已确认'
         return '安康助手待命'
@@ -1577,7 +2105,6 @@ export default {
       return '健康守护待命'
     },
 
-    // 银发导航
     travelStatusClass() {
       if (this.replay.active) {
         if (this.replay.step === 2) return 'status-thinking'
@@ -1613,7 +2140,6 @@ export default {
       return '银发导航待命'
     },
 
-    // 邻里帮
     communityStatusClass() {
       return this.branchStatus(this.communityTools, 'community', '邻里帮')
     },
@@ -1631,51 +2157,15 @@ export default {
       return '邻里帮待命'
     },
 
-    // 规划建造师
-    planBuilderTools() {
-      if (this.replay.active) {
-        const step = this.replay.step
-        let status = step >= 5 ? 'completed' : (step === 4 ? 'running' : 'pending')
-        return {
-          composeDeliverable: { status, args: {}, result: status === 'completed' },
-        }
-      }
-
-      const msgs = this.messages || []
-      const hasCard = msgs.some((m) => m.kind === 'card')
-      const composeTool = msgs.slice().reverse().find((m) => m.kind === 'tool' && m.tool === 'compose_deliverable')
-      const args = (composeTool && composeTool.args) || {}
-
-      let status = 'pending'
-      if (this.hasAnyRejected) {
-        status = 'rejected'
-      } else if (hasCard || this.isArtifactReady) {
-        status = 'completed'
-      } else if (composeTool) {
-        status = composeTool.status === 'running' ? 'running' : 'completed'
-      } else if (this.demoModeActive) {
-        if (this.isArtifactReady) status = 'completed'
-        else status = 'pending'
-      } else if (this.pendingTasksCount > 0) {
-        status = 'pending'
-      } else if (this.thinking) {
-        status = 'running'
-      }
-
-      return {
-        composeDeliverable: { status, args, result: status === 'completed' },
-      }
-    },
-
     planBuilderStatusClass() {
       if (this.replay.active) {
         if (this.replay.step === 4) return 'status-thinking'
         if (this.replay.step >= 5) return 'status-completed'
         return 'status-ready'
       }
-      if (this.planBuilderTools.composeDeliverable.status === 'running') return 'status-thinking'
-      if (this.planBuilderTools.composeDeliverable.status === 'rejected') return 'status-rejected'
-      if (this.planBuilderTools.composeDeliverable.status === 'completed') return 'status-completed'
+      if (this.isArtifactReady) return 'status-completed'
+      if (this.planBuilderTools.some((t) => t.status === 'running')) return 'status-thinking'
+      if (this.planBuilderTools.some((t) => t.status === 'rejected')) return 'status-rejected'
       if (this.pendingTasksCount > 0) return 'status-suspended'
       return 'status-ready'
     },
@@ -1685,9 +2175,9 @@ export default {
         if (this.replay.step >= 5) return '✅'
         return '📐'
       }
-      if (this.planBuilderTools.composeDeliverable.status === 'running') return '⚡'
-      if (this.planBuilderTools.composeDeliverable.status === 'rejected') return '🛑'
-      if (this.planBuilderTools.composeDeliverable.status === 'completed') return '✅'
+      if (this.isArtifactReady) return '✅'
+      if (this.planBuilderTools.some((t) => t.status === 'running')) return '⚡'
+      if (this.planBuilderTools.some((t) => t.status === 'rejected')) return '🛑'
       if (this.pendingTasksCount > 0) return '⏸️'
       return '📐'
     },
@@ -1697,9 +2187,9 @@ export default {
         if (this.replay.step >= 5) return '五页计划书装配完成'
         return '方案装配待命'
       }
-      if (this.planBuilderTools.composeDeliverable.status === 'running') return '装配计划书中'
-      if (this.planBuilderTools.composeDeliverable.status === 'rejected') return '前序审批已拒绝 · 装配终止'
-      if (this.planBuilderTools.composeDeliverable.status === 'completed') return '五页计划书装配完成'
+      if (this.isArtifactReady) return '交付方案装配完成'
+      if (this.hasAnyRejected) return '前序审批已拒绝 · 装配终止'
+      if (this.thinking && this.isPlanBuilderActive) return '装配方案中'
       if (this.pendingTasksCount > 0) return '等待前序审批解锁'
       return '方案装配待命'
     },
@@ -1708,112 +2198,389 @@ export default {
       if (this.replay.active) {
         return this.replay.step >= 5
       }
-      const hasCard = (this.messages || []).some((m) => m.kind === 'card')
+      const hasCard = this.safeMessages.some((m) => m.kind === 'card')
       if (hasCard) return true
+      const suspends = this.safeMessages.filter((m) => m.kind === 'suspend')
       if (
-        this.demoApprovals.appointment === true &&
-        this.demoApprovals.ticket === true &&
-        this.demoApprovals.hotel === true
+        suspends.length > 0 &&
+        suspends.every((m) => m.status === 'executed' || m.status === 'completed') &&
+        !this.hasAnyRejected &&
+        !this.thinking
       ) {
-        return true
-      }
-      const msgs = this.messages || []
-      const suspends = msgs.filter((m) => m.kind === 'suspend')
-      if (suspends.length > 0 && suspends.every((m) => m.status === 'executed') && !this.hasAnyRejected && !this.thinking) {
-        return true
-      }
-      // 高危操作全部放行（且没有一个被拒）→ 可以装计划书
-      const risk = this.highRiskTools
-      if (risk.length > 0 && risk.every((t) => t.status === 'completed') && !this.hasAnyRejected) {
         return true
       }
       return false
     },
 
+    artifactDisplayTitle() {
+      if (this.replay.active) {
+        return '《五页就医出行计划书》'
+      }
+      const msgs = this.safeMessages
+      const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
+      if (realCard && realCard.title) {
+        return realCard.title.startsWith('《') ? realCard.title : `《${realCard.title}》`
+      }
+      return this.currentScenarioTag && this.currentScenarioTag !== '待命中'
+        ? `《${this.currentScenarioTag}交付方案》`
+        : '《智能协同服务交付物》'
+    },
+
+    artifactDisplaySubtitle() {
+      if (this.replay.active) {
+        return '五页适老大字版 · 挂号凭证+高铁票+酒店+慢病清单+天气'
+      }
+      const msgs = this.safeMessages
+      const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
+      if (realCard) {
+        if (Array.isArray(realCard.notes) && realCard.notes.length > 0) {
+          return realCard.notes.join(' · ')
+        }
+        if (realCard.sections && realCard.sections.length > 0) {
+          return `${realCard.sections.length} 页适老大字版 · 事实对齐与闭环交付`
+        }
+        return '适老大字版 · 事实对齐与闭环交付'
+      }
+      return '适老大字版 · 待各协同智能体完成事实聚合后交付'
+    },
+
+    artifactChipText() {
+      if (this.replay.active) {
+        return this.replay.step >= 5 ? '✅ 已交付 (点击预览)' : '⏳ 待装配交付'
+      }
+      if (this.isArtifactReady) return '✅ 已交付 (点击预览)'
+      if (this.pendingTasksCount > 0) return '⏳ 等待审批后交付'
+      if (this.thinking) return '⚡ 方案装配中'
+      return '⏳ 待方案闭环交付'
+    },
+
+    modalTitleText() {
+      if (this.replay.active) {
+        return '就医出行计划书 (可打印适老大字版)'
+      }
+      const msgs = this.safeMessages
+      const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
+      if (realCard && realCard.title) {
+        return `${realCard.title.replace(/^《|》$/g, '')} (适老大字版)`
+      }
+      return this.currentScenarioTag && this.currentScenarioTag !== '待命中'
+        ? `${this.currentScenarioTag}交付方案 (适老大字版)`
+        : '智能协同方案交付物 (适老大字版)'
+    },
+
+    modalSubText() {
+      if (this.replay.active) {
+        return '由老友记主调度协同安康助手与银发导航自动生成 · 4/4 阶段全部闭环'
+      }
+      return '由老友记多智能体协同网络聚合生成 · 事实对齐已闭环'
+    },
+
     artifactPages() {
-      const realCard = (this.messages || []).slice().reverse().find(
-        (m) => m.kind === 'card' && Array.isArray(m.sections || m.pages),
+      if (this.replay.active) {
+        return REPLAY_SANDBOX.artifactPages
+      }
+
+      const msgs = this.safeMessages
+      const realCard = msgs.slice().reverse().find(
+        (m) => m.kind === 'card' && (Array.isArray(m.sections || m.pages) || (m.body && typeof m.body === 'object')),
       )
       if (realCard) {
         const pages = realCard.pages || realCard.sections || []
         if (pages.length > 0) {
           return pages.map((p, idx) => ({
-            title: p.title || p.heading || `第 ${idx + 1} 页`,
-            rows: (p.rows || []).map((r) => ({
-              label: r.label || r.k || '',
-              val: r.val || r.v || r.value || '',
+            title: (p && (p.title || p.heading)) || `第 ${idx + 1} 页`,
+            rows: ((p && p.rows) || []).map((r) => ({
+              label: (r && (r.label || r.k)) || '',
+              val: (r && (r.val || r.v || r.value)) || '',
             })),
-            note: Array.isArray(p.notes) ? p.notes.join('；') : (p.notes || p.note || ''),
+            note: p && Array.isArray(p.notes) ? p.notes.join('；') : ((p && (p.notes || p.note)) || ''),
           }))
+        }
+        if (realCard.body && typeof realCard.body === 'object') {
+          return [
+            {
+              title: realCard.title || '服务确认凭证',
+              rows: Object.entries(realCard.body).map(([label, val]) => ({
+                label,
+                val: String(val),
+              })),
+              note: Array.isArray(realCard.notes) ? realCard.notes.join('；') : (realCard.note || '已完成事实对齐与家人核准。'),
+            },
+          ]
         }
       }
 
-      return [
-        {
-          title: '北京积水潭医院专家挂号凭证',
-          rows: [
-            { label: '就诊医院', val: '北京积水潭医院（新街口院区）' },
-            { label: '科室医生', val: '骨科专家门诊 · 田伟 主任医师' },
-            { label: '门诊时段', val: '明天上午 08:30 - 09:30' },
-            { label: '诊查费用', val: '¥100.00（家人已代付确认）' },
-          ],
-          note: '就诊当天请携带老人医保卡及既往腿部关节 X 光片。',
-        },
-        {
-          title: '往返高铁车次出行凭证',
-          rows: [
-            { label: '去程车次', val: 'G102 次 高铁二等座' },
-            { label: '发到站点', val: '南京南站 (08:15) ➔ 北京南站 (12:30)' },
-            { label: '乘车证件', val: '刷居民身份证直接刷闸进出站' },
-            { label: '票价金额', val: '¥443.50（家人已代付确认）' },
-          ],
-          note: '已申请重点旅客无障碍轮椅进站引导服务，候车室 A12 专区。',
-        },
-        {
-          title: '积水潭漫心适老无障碍酒店',
-          rows: [
-            { label: '预订酒店', val: '漫心酒店（北京积水潭医院店）' },
-            { label: '入住房型', val: '适老无障碍双床房（2晚）' },
-            { label: '适老设施', val: '卫浴防滑扶手、紧急呼叫铃、电梯直达' },
-            { label: '到院距离', val: '步行 450 米，出南门即达积水潭门诊' },
-          ],
-          note: '酒店前台已登记老人优先入住及无障碍轮椅借用。',
-        },
-        {
-          title: '随身物品与就医携带清单',
-          rows: [
-            { label: '必带证件', val: '二代身份证原件、全国医保电子凭证 / 社保卡' },
-            { label: '健康病历', val: '既往关节拍片底片、日常用药盒 / 慢病处方本' },
-            { label: '常备药品', val: '降压药、硝酸甘油、关节止痛膏贴' },
-          ],
-          note: '随身小包放随身证件与药盒，大件衣物由家属或陪诊人员协助。',
-        },
-        {
-          title: '目的地出行天气与健康叮嘱',
-          rows: [
-            { label: '北京天气', val: '晴间多云，气温 18℃ ~ 26℃，微风' },
-            { label: '空气质量', val: '优良 (AQI 42)，体感舒适适宜出行' },
-            { label: '穿衣建议', val: '轻薄透气棉质长袖，早晚可加一件防风薄外套' },
-          ],
-          note: '候车室与车厢内冷气较足，上车前请先备好披肩或外套保暖。',
-        },
-      ]
+      // 若已达成闭环放行（高危全部批复/执行完毕）但无 card 事件，由真实执行工具动态合成方案页
+      if (this.isArtifactReady && this.allTools.length > 0) {
+        const pages = []
+        const completedHealth = this.healthTools.filter((t) => t.status === 'completed')
+        if (completedHealth.length > 0) {
+          const rows = []
+          completedHealth.forEach((t) => {
+            const a = t.args || {}
+            if (a.hospital) rows.push({ label: '就诊医院', val: a.hospital })
+            if (a.doctor) rows.push({ label: '预约专家', val: a.doctor })
+            if (a.date || a.time) rows.push({ label: '门诊时段', val: `${a.date || ''} ${a.time || ''}`.trim() })
+            if (a.fee || t.amount) rows.push({ label: '挂号费用', val: `¥${a.fee || t.amount}（家人已核准）` })
+            if (t.result) rows.push({ label: '号源凭证', val: String(t.result) })
+          })
+          pages.push({
+            title: '健康医疗预约凭证',
+            rows: rows.length > 0 ? rows : [{ label: '服务状态', val: '专家号源预约成功' }],
+            note: '就诊当天请携带老人社保卡与既往病历资料。',
+          })
+        }
+
+        const completedTravel = this.travelTools.filter((t) => t.status === 'completed')
+        if (completedTravel.length > 0) {
+          const rows = []
+          completedTravel.forEach((t) => {
+            const a = t.args || {}
+            if (a.train_no || a.train) rows.push({ label: '出行车次', val: a.train_no || a.train })
+            if (a.from_station || a.to_station) rows.push({ label: '行程区间', val: `${a.from_station || ''} ➔ ${a.to_station || ''}`.trim() })
+            if (a.hotel || a.hotel_name) rows.push({ label: '适老酒店', val: a.hotel || a.hotel_name })
+            if (a.price || t.amount) rows.push({ label: '支付金额', val: `¥${a.price || t.amount}（家人已核准）` })
+            if (t.result) rows.push({ label: '行程凭证', val: String(t.result) })
+          })
+          pages.push({
+            title: '交通住宿出行凭证',
+            rows: rows.length > 0 ? rows : [{ label: '出行状态', val: '车次与适老住宿已锁定' }],
+            note: '出行前请核对随身身份证件并关注目的地天气变化。',
+          })
+        }
+
+        const completedCommunity = this.communityTools.filter((t) => t.status === 'completed')
+        if (completedCommunity.length > 0) {
+          const rows = []
+          completedCommunity.forEach((t) => {
+            const a = t.args || {}
+            if (a.service_type) rows.push({ label: '服务类型', val: a.service_type === 'cleaning' ? '居家保洁' : '助老陪诊' })
+            if (a.menu_item) rows.push({ label: '食堂订餐', val: a.menu_item })
+            if (a.date || a.deliver_time) rows.push({ label: '服务时间', val: a.date || a.deliver_time })
+            if (t.result) rows.push({ label: '订单状态', val: String(t.result) })
+          })
+          pages.push({
+            title: '社区便民服务确认单',
+            rows: rows.length > 0 ? rows : [{ label: '服务状态', val: '社区助老服务已排单' }],
+            note: '社区服务人员将按预定时间上门，有任何调整可随时告知。',
+          })
+        }
+
+        if (pages.length > 0) return pages
+      }
+
+      return []
     },
   },
   methods: {
-    /**
-     * 入参高亮：直接吃大模型真实下发的 args 对象。
-     * 没调用就没有入参，不再拿写死的样例参数填充面板。
-     */
+    matchesAgent(agentVal, targetKey) {
+      if (!agentVal) return false
+      const a = String(agentVal).toLowerCase()
+      if (targetKey === 'health' || targetKey === '安康助手') {
+        return a.includes('health') || a.includes('安康')
+      }
+      if (targetKey === 'travel' || targetKey === '银发导航') {
+        return a.includes('travel') || a.includes('银发')
+      }
+      if (targetKey === 'community' || targetKey === '邻里帮') {
+        return a.includes('community') || a.includes('邻里')
+      }
+      if (targetKey === 'plan_builder' || targetKey === 'planBuilder' || targetKey === '方案建造师') {
+        return a.includes('plan') || a.includes('建造师')
+      }
+      if (targetKey === 'main' || targetKey === 'orchestrator' || targetKey === '老友记') {
+        return a.includes('main') || a.includes('orchestrator') || a.includes('老友记') || a.includes('主调度')
+      }
+      if (targetKey === 'safety' || targetKey === '风控') {
+        return a.includes('safety') || a.includes('guard') || a.includes('风控') || a.includes('安全')
+      }
+      return false
+    },
+
+    isCurrentAgent(agentKey) {
+      return this.matchesAgent(this.currentAgent, agentKey)
+    },
+
+    syncActiveBranches() {
+      if (this.replay && this.replay.active) return
+      if (!this._userChangedAllExpanded) {
+        this.collapsedAgents.health = !this.isHealthActive
+        this.collapsedAgents.travel = !this.isTravelActive
+        this.collapsedAgents.community = !this.isCommunityActive
+        this.collapsedAgents.safety = !this.isSafetyActive
+        this.collapsedAgents.planBuilder = !this.isPlanBuilderActive
+      }
+    },
+
+    getAgentForTool(toolName, explicitAgent) {
+      const t = String(toolName || '').toLowerCase()
+      // 0. 主调度内部派发与调度工具
+      if (
+        t === 'delegate' ||
+        t === 'todo_write' ||
+        t === 'ask_user' ||
+        t === 'handshake' ||
+        this.matchesAgent(explicitAgent, 'main')
+      ) {
+        if (t === 'delegate' || t === 'todo_write' || t === 'ask_user' || t === 'handshake') {
+          return 'main'
+        }
+      }
+
+      if (this.matchesAgent(explicitAgent, 'health')) return 'health'
+      if (this.matchesAgent(explicitAgent, 'travel')) return 'travel'
+      if (this.matchesAgent(explicitAgent, 'community')) return 'community'
+      if (this.matchesAgent(explicitAgent, 'plan_builder')) return 'plan_builder'
+
+      // 1. 出行交通类（route/ride/taxi/train/ticket/hotel/weather/travel；route 优先于 plan）
+      if (
+        t.includes('route') ||
+        t.includes('ride') ||
+        t.includes('taxi') ||
+        t.includes('train') ||
+        t.includes('ticket') ||
+        t.includes('hotel') ||
+        t.includes('weather') ||
+        t.includes('travel')
+      ) {
+        return 'travel'
+      }
+
+      // 2. 健康医疗类（hospital/appoint/medic/health/doctor/report/scam/diet/drug）
+      if (
+        t.includes('hospital') ||
+        t.includes('appoint') ||
+        t.includes('medic') ||
+        t.includes('health') ||
+        t.includes('doctor') ||
+        t.includes('report') ||
+        t.includes('scam') ||
+        t.includes('diet') ||
+        t.includes('drug')
+      ) {
+        return 'health'
+      }
+
+      // 3. 方案建造师类（compose/deliverable/build_plan/trip_plan）
+      if (
+        t.includes('compose') ||
+        t.includes('deliverable') ||
+        t.includes('build_plan') ||
+        t.includes('trip_plan') ||
+        (t.includes('plan') && !t.includes('route'))
+      ) {
+        return 'plan_builder'
+      }
+
+      // 4. 社区居家便民与生活服务类（保洁、陪诊、助餐、用药翻译、支付等兜底纳入邻里便民分支，确保无工具遗漏）
+      return 'community'
+    },
+
+    parseTools(agentPrefixes) {
+      const msgs = this.safeMessages
+      const suspends = msgs.filter((m) => m.kind === 'suspend')
+      return msgs
+        .filter(
+          (m) =>
+            m.kind === 'tool' &&
+            agentPrefixes.some((p) => {
+              if (p === '') return true
+              const explicit = String(m.agent || '')
+              const toolName = m.tool || m.name || ''
+              const inferred = this.getAgentForTool(toolName, explicit)
+              return (
+                this.matchesAgent(explicit, p) ||
+                explicit.indexOf(p) === 0 ||
+                this.matchesAgent(inferred, p) ||
+                inferred.indexOf(p) === 0
+              )
+            }),
+        )
+        .map((m, idx) => {
+          const toolName = m.tool || m.name || 'tool'
+          const suspend =
+            (m.confirmationId ? suspends.slice().reverse().find((s) => s.confirmationId === m.confirmationId) : null) ||
+            suspends.slice().reverse().find((s) => s.tool === toolName)
+          let args = m.args
+          if (typeof args === 'string') {
+            try {
+              args = JSON.parse(args)
+            } catch (e) {
+              args = {}
+            }
+          }
+          if (!args || typeof args !== 'object') args = {}
+          const rawAmount =
+            args.fee || args.price || args.total_amount || args.amount ||
+            (suspend ? suspend.amount : null)
+          const amount = Number(rawAmount)
+          return {
+            key: m.callId || `${toolName}#${idx}`,
+            name: toolName,
+            summary: m.summary || toolName,
+            status: this.toolStatus(m, suspend),
+            args,
+            result: this.toolResultText(m),
+            resultText: this.toolResultText(m),
+            isHighRisk: this.highRiskToolNames.indexOf(toolName) !== -1 || !!suspend,
+            amount: rawAmount != null && rawAmount !== '' && !isNaN(amount) ? amount.toFixed(2) : null,
+            desc: (suspend && (suspend.message || suspend.summary)) || '',
+            confirmationId: (suspend && suspend.confirmationId) || m.confirmationId || '',
+          }
+        })
+    },
+
+    branchStatus(tools, agentId, displayName) {
+      if (tools.some((t) => t.status === 'suspended')) return 'status-suspended'
+      if (tools.some((t) => t.status === 'rejected')) return 'status-rejected'
+      if (tools.some((t) => t.status === 'running')) return 'status-thinking'
+      if (this.thinking && (this.isCurrentAgent(agentId) || this.isCurrentAgent(displayName))) {
+        return 'status-thinking'
+      }
+      if (tools.length > 0 && tools.every((t) => t.status === 'completed' || t.status === 'failed')) {
+        return 'status-completed'
+      }
+      return 'status-ready'
+    },
+
+    branchIcon(statusClass, idleIcon) {
+      if (statusClass === 'status-suspended') return '⏸️'
+      if (statusClass === 'status-rejected') return '🛑'
+      if (statusClass === 'status-thinking') return '⚡'
+      if (statusClass === 'status-completed') return '✅'
+      return idleIcon
+    },
+
     parseParamsTokens(params) {
       if (!params) return []
-      if (typeof params === 'object') {
-        return Object.entries(params).map(([k, v], idx, arr) => ({
-          k,
-          v: typeof v === 'string' ? `"${v}"` : String(v),
-          type: typeof v === 'number' ? 'number' : (typeof v === 'boolean' ? 'boolean' : 'string'),
-          isLast: idx === arr.length - 1
-        }))
+      let parsed = params
+      if (typeof parsed === 'string' && (parsed.trim().startsWith('{') || parsed.trim().startsWith('['))) {
+        try {
+          parsed = JSON.parse(parsed)
+        } catch (e) {
+          // fallback to string format
+        }
+      }
+      if (typeof parsed === 'object' && parsed !== null) {
+        return Object.entries(parsed).map(([k, v], idx, arr) => {
+          let valStr = String(v)
+          const type = typeof v === 'number' ? 'number' : (typeof v === 'boolean' ? 'boolean' : 'string')
+          if (typeof v === 'string') {
+            valStr = `"${v}"`
+          } else if (typeof v === 'object' && v !== null) {
+            try {
+              valStr = JSON.stringify(v)
+            } catch (e) {
+              valStr = String(v)
+            }
+          }
+          return {
+            k,
+            v: valStr,
+            type,
+            isLast: idx === arr.length - 1,
+          }
+        })
       }
       const parts = String(params).split(/,\s*(?=[a-zA-Z0-9_]+\s*:)/)
       return parts.map((part, idx) => {
@@ -1828,14 +2595,14 @@ export default {
             k,
             v: rawV,
             type,
-            isLast: idx === parts.length - 1
+            isLast: idx === parts.length - 1,
           }
         }
         return {
           k: 'arg',
           v: part.trim(),
           type: 'string',
-          isLast: idx === parts.length - 1
+          isLast: idx === parts.length - 1,
         }
       })
     },
@@ -1843,7 +2610,7 @@ export default {
     toggleToolResultExpand(key) {
       this.expandedToolResults = {
         ...this.expandedToolResults,
-        [key]: !this.expandedToolResults[key]
+        [key]: !this.expandedToolResults[key],
       }
     },
 
@@ -1852,11 +2619,13 @@ export default {
     },
 
     toggleAllExpanded() {
+      this._userChangedAllExpanded = true
       this.allExpanded = !this.allExpanded
     },
 
     toggleAgentCollapse(agentKey) {
       this.collapsedAgents[agentKey] = !this.collapsedAgents[agentKey]
+      this._userChangedAllExpanded = true
     },
 
     formatStepStatus(status) {
@@ -1886,6 +2655,8 @@ export default {
           if (k.includes('ticket')) return '已出票 ✅'
           if (k.includes('hotel') && (k.includes('book') || status === 'executed')) return '已预订 ✅'
           if (k.includes('compose') || k.includes('deliverable')) return '已装配 ✅'
+          if (k.includes('order') || k.includes('service') || k.includes('canteen')) return '已下单 ✅'
+          if (k.includes('pay') || k.includes('deposit')) return '已支付 ✅'
           return '已完成 ✅'
         case 'suspended':
           return '⏸️ 待确认'
@@ -1902,11 +2673,12 @@ export default {
       }
     },
 
-    /**
-     * 状态归一：实时链路给 completed/failed，历史回放给 executed/error，
-     * 两边都收敛到 pending / running / completed / suspended / rejected / failed。
-     */
-    toolStatus(m) {
+    toolStatus(m, suspend = null) {
+      if (suspend) {
+        if (suspend.status === 'executed' || suspend.status === 'completed') return 'completed'
+        if (suspend.status === 'rejected') return 'rejected'
+        if (suspend.status === 'pending') return 'suspended'
+      }
       if (m.status === 'suspended') return 'suspended'
       if (m.status === 'rejected' || m.blocked) return 'rejected'
       if (m.status === 'running') return 'running'
@@ -1918,8 +2690,11 @@ export default {
     },
 
     toolResultText(m) {
-      if (m.result === undefined || m.result === null || m.result === '') return ''
-      let text = m.result
+      const raw = m.result !== undefined && m.result !== null && m.result !== ''
+        ? m.result
+        : (m.data !== undefined && m.data !== null && m.data !== '' ? m.data : '')
+      if (raw === '') return ''
+      let text = raw
       if (typeof text === 'object') {
         try {
           text = JSON.stringify(text)
@@ -1931,13 +2706,11 @@ export default {
       return text.length > 240 ? `${text.slice(0, 240)}…` : text
     },
 
-    // 按工具名取状态：没调用过就是 pending，调用方无需知道它在哪个分支
     statusOf(name) {
       const hit = this.allTools.filter((t) => t.name === name).pop()
       return hit ? hit.status : 'pending'
     },
 
-    // 一个流水线阶段 = 高危工具（有则听它的）+ 检索工具（兜底）
     stageStatus(riskTool, searchTool, idleStatus) {
       const risk = this.statusOf(riskTool)
       if (risk === 'completed') return 'completed'
@@ -1954,51 +2727,41 @@ export default {
       if (n.indexOf('ticket') !== -1 || n.indexOf('train') !== -1) return '🚅'
       if (n.indexOf('hotel') !== -1) return '🏨'
       if (n.indexOf('weather') !== -1) return '🌤️'
+      if (n.indexOf('ride') !== -1 || n.indexOf('taxi') !== -1 || n.indexOf('route') !== -1) return '🚖'
       if (n.indexOf('order') !== -1 || n.indexOf('escort') !== -1 || n.indexOf('canteen') !== -1) return '🤝'
+      if (n.indexOf('medic') !== -1 || n.indexOf('drug') !== -1 || n.indexOf('report') !== -1) return '💊'
       if (n.indexOf('deposit') !== -1 || n.indexOf('pay') !== -1) return '💰'
       return '🛡️'
     },
 
     triggerApprove(confirmationId, toolName) {
-      // 本地"模拟通过"的状态只对演示卡片（conf_demo_）生效。
-      // 真实任务必须等服务端确认（由父组件 await 后才翻卡片），
-      // 否则这里先把界面翻绿、服务端却 403，界面就在替家人撒谎。
-      const isDemo = !confirmationId || confirmationId.startsWith('conf_demo_')
-      if (isDemo) {
-        if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
-          this.demoApprovals.appointment = true
-        } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
-          this.demoApprovals.ticket = true
-        } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
-          this.demoApprovals.hotel = true
-        }
+      if (this.replay.active) {
+        this.seekReplay(4)
+        uni.showToast({ title: '已模拟子女端审核同意！', icon: 'success' })
+        return
       }
       this.$emit('resolve-confirmation', {
         confirmationId,
         tool: toolName,
         status: 'executed',
       })
+      const isDemo = !confirmationId || confirmationId.startsWith('conf_demo_')
       if (isDemo) {
         uni.showToast({ title: '已模拟子女端审核同意！', icon: 'success' })
       }
     },
 
     triggerReject(confirmationId, toolName) {
-      const isDemo = !confirmationId || confirmationId.startsWith('conf_demo_')
-      if (isDemo) {
-        if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
-          this.demoApprovals.appointment = 'rejected'
-        } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
-          this.demoApprovals.ticket = 'rejected'
-        } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
-          this.demoApprovals.hotel = 'rejected'
-        }
+      if (this.replay.active) {
+        uni.showToast({ title: '已模拟子女端拒绝该操作', icon: 'none' })
+        return
       }
       this.$emit('resolve-confirmation', {
         confirmationId,
         tool: toolName,
         status: 'rejected',
       })
+      const isDemo = !confirmationId || confirmationId.startsWith('conf_demo_')
       if (isDemo) {
         uni.showToast({ title: '已模拟子女端拒绝该操作', icon: 'none' })
       }
@@ -2007,8 +2770,9 @@ export default {
     approveAllPending() {
       if (this.replay.active) {
         this.seekReplay(4)
+        uni.showToast({ title: '已模拟子女端一键核准全部操作！', icon: 'success' })
+        return
       }
-      // 只批真正挂起的那几项：数量与工具名都来自实时链路
       const pending = this.highRiskTools.filter((t) => t.status === 'suspended')
       if (pending.length === 0) {
         uni.showToast({ title: '当前没有待子女确认的高危操作', icon: 'none' })
@@ -2018,7 +2782,6 @@ export default {
       uni.showToast({ title: `已模拟子女端一键核准 ${pending.length} 项操作！`, icon: 'success' })
     },
 
-    // 动态演播全链路机制 (R3)
     toggleReplayMode() {
       if (!this.replay.active) {
         this.startReplay()
@@ -2097,10 +2860,14 @@ export default {
       this.pauseReplay()
       this.replay.active = false
       this.replay.step = 0
-      uni.showToast({ title: '已退出演播，切回实时状态', icon: 'none' })
+      this.showArtifactModal = false
+      this._userChangedAllExpanded = false
+      this.syncActiveBranches()
+      uni.showToast({ title: '已退出演播，恢复实时状态', icon: 'none' })
     },
 
     scrollToSection(id) {
+      this._userChangedAllExpanded = true
       if (id === 'health') this.collapsedAgents.health = false
       if (id === 'travel') this.collapsedAgents.travel = false
       if (id === 'community') this.collapsedAgents.community = false
@@ -2114,11 +2881,15 @@ export default {
         uni.showToast({ title: '多智能体尚未完成方案装配，请稍候…', icon: 'none' })
         return
       }
+      if (this.artifactPages.length === 0) {
+        uni.showToast({ title: '暂未生成可展示的方案页面', icon: 'none' })
+        return
+      }
       this.showArtifactModal = true
     },
 
     readAloud() {
-      uni.showToast({ title: '正在为您大字朗读《就医出行计划书》…', icon: 'none' })
+      uni.showToast({ title: `正在为您大字朗读${this.artifactDisplayTitle}…`, icon: 'none' })
     },
 
     simulatePrint() {
@@ -2773,6 +3544,15 @@ export default {
   white-space: nowrap;
 }
 
+.dag-sub-node.is-inactive {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+}
+
+.dag-node.is-inactive {
+  opacity: 0.65;
+}
+
 /* 智能体推理独白卡片 (R3) */
 .agent-monologue-card {
   background: #fffbf5;
@@ -3119,6 +3899,34 @@ export default {
   overflow: hidden;
   box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.04);
   transition: all 0.25s;
+}
+
+.subagent-branch-card.is-inactive {
+  opacity: 0.72;
+  border-color: #f1f5f9;
+  background: #fafafa;
+  .branch-header {
+    background: #fafafa;
+  }
+}
+
+.subagent-branch-card.is-active-branch {
+  border-color: #cbd5e1;
+  box-shadow: 0 6rpx 20rpx rgba(15, 23, 42, 0.08);
+}
+
+.branch-idle-box {
+  padding: 24rpx;
+  text-align: center;
+  background: #f8fafc;
+  border-radius: 12rpx;
+  border: 1rpx dashed #cbd5e1;
+  margin: 12rpx 0;
+}
+
+.branch-idle-text {
+  font-size: 22rpx;
+  color: #94a3b8;
 }
 
 .branch-header {
