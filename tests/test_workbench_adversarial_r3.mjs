@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 console.log('=== LaoYouJi Round 3 Workbench Adversarial Test Suite ===\n')
 
@@ -363,14 +364,12 @@ console.log('Test 6: Multi-turn Reverse-Lookup Picks Latest Tool Execution')
 // -------------------------------------------------------------
 console.log('Test 7: Static Verification that AgentExecutionTree.vue Uses Reverse Lookup')
 {
-  import('node:fs').then(({ readFileSync }) => {
-    const code = readFileSync('frontend/laoyouji-app/src/components/AgentExecutionTree.vue', 'utf8')
-    assert.ok(!code.includes('msgs.find('), 'AgentExecutionTree.vue must NOT contain un-reversed msgs.find(')
-    assert.ok(!code.includes('suspends.find('), 'AgentExecutionTree.vue must NOT contain un-reversed suspends.find(')
-    assert.ok(code.includes('msgs.slice().reverse().find('), 'AgentExecutionTree.vue must use msgs.slice().reverse().find(')
-    assert.ok(code.includes('suspends.slice().reverse().find('), 'AgentExecutionTree.vue must use suspends.slice().reverse().find(')
-    console.log('✓ Passed: AgentExecutionTree.vue confirmed using reverse lookup for all tools and suspends\n')
-  })
+  const code = readFileSync('frontend/laoyouji-app/src/components/AgentExecutionTree.vue', 'utf8')
+  assert.ok(!code.includes('msgs.find('), 'AgentExecutionTree.vue must NOT contain un-reversed msgs.find(')
+  assert.ok(!code.includes('suspends.find('), 'AgentExecutionTree.vue must NOT contain un-reversed suspends.find(')
+  assert.ok(code.includes('msgs.slice().reverse().find('), 'AgentExecutionTree.vue must use msgs.slice().reverse().find(')
+  assert.ok(code.includes('suspends.slice().reverse().find('), 'AgentExecutionTree.vue must use suspends.slice().reverse().find(')
+  console.log('✓ Passed: AgentExecutionTree.vue confirmed using reverse lookup for all tools and suspends\n')
 }
 
 // -------------------------------------------------------------
@@ -470,19 +469,193 @@ console.log('Test 9: Batch Approval Progress 4/4 & Full Transition')
 // -------------------------------------------------------------
 console.log('Test 10: App.vue Button Active Press Physics Rule Presence')
 {
-  import('node:fs').then(({ readFileSync }) => {
-    const appCode = readFileSync('frontend/laoyouji-app/src/App.vue', 'utf8')
-    assert.ok(
-      appCode.includes('translateY(1px) scale(0.99)'),
-      'App.vue must include translateY(1px) scale(0.99) button tactile rule',
-    )
-    assert.ok(
-      appCode.includes('min-height: 44px'),
-      'App.vue must declare touch-target min-height: 44px',
-    )
-    console.log('✓ Passed: App.vue button press physics and touch target baseline verified\n')
-  })
+  const appCode = readFileSync('frontend/laoyouji-app/src/App.vue', 'utf8')
+  assert.ok(
+    appCode.includes('translateY(1px) scale(0.99)'),
+    'App.vue must include translateY(1px) scale(0.99) button tactile rule',
+  )
+  assert.ok(
+    appCode.includes('min-height: 44px'),
+    'App.vue must declare touch-target min-height: 44px',
+  )
+  console.log('✓ Passed: App.vue button press physics and touch target baseline verified\n')
 }
 
-console.log('=== ALL ADVERSARIAL TESTS PASSED (10/10) ===')
+// -------------------------------------------------------------
+// Test 11: Replay Mode Dynamic State-Machine Synchronization
+// -------------------------------------------------------------
+console.log('Test 11: Replay Mode Dynamic State-Machine Synchronization')
+{
+  const replaySim = {
+    replay: { active: true, playing: true, step: 3, timer: 123 },
+    demoApprovals: { appointment: false, ticket: false, hotel: false },
+    pauseReplay() {
+      this.replay.playing = false
+      this.replay.timer = null
+    },
+    seekReplay(step) {
+      this.pauseReplay()
+      this.replay.step = step
+    },
+    triggerApprove(confirmationId, toolName) {
+      if (toolName === 'register_appointment') this.demoApprovals.appointment = true
+      if (toolName === 'book_ticket') this.demoApprovals.ticket = true
+      if (toolName === 'book_hotel') this.demoApprovals.hotel = true
+      if (this.replay.active && this.replay.step === 3) {
+        if (this.demoApprovals.appointment === true && this.demoApprovals.ticket === true && this.demoApprovals.hotel === true) {
+          this.seekReplay(4)
+        }
+      }
+    },
+    get healthTools() {
+      const step = this.replay.step
+      let aStatus = 'pending'
+      if (this.demoApprovals.appointment === true) aStatus = 'executed'
+      else if (this.demoApprovals.appointment === 'rejected') aStatus = 'rejected'
+      else if (step >= 4) aStatus = 'executed'
+      else if (step === 3) aStatus = 'suspended'
+      return { registerAppointment: { status: aStatus } }
+    },
+    get travelTools() {
+      const step = this.replay.step
+      let tBook = 'pending'
+      if (this.demoApprovals.ticket === true) tBook = 'executed'
+      else if (this.demoApprovals.ticket === 'rejected') tBook = 'rejected'
+      else if (step >= 4) tBook = 'executed'
+      else if (step === 3) tBook = 'suspended'
+
+      let hBook = 'pending'
+      if (this.demoApprovals.hotel === true) hBook = 'executed'
+      else if (this.demoApprovals.hotel === 'rejected') hBook = 'rejected'
+      else if (step >= 4) hBook = 'executed'
+      else if (step === 3) hBook = 'suspended'
+
+      return {
+        bookTicket: { status: tBook },
+        bookHotel: { status: hBook },
+      }
+    },
+    get pendingTasksCount() {
+      let count = 0
+      if (this.healthTools.registerAppointment.status === 'suspended') count++
+      if (this.travelTools.bookTicket.status === 'suspended') count++
+      if (this.travelTools.bookHotel.status === 'suspended') count++
+      return count
+    },
+    get displaySteps() {
+      const step = this.replay.step
+      const s1 = this.demoApprovals.appointment === true ? 'completed' : (step >= 4 ? 'completed' : 'suspended')
+      const s2 = this.demoApprovals.ticket === true ? 'completed' : (step >= 4 ? 'completed' : 'suspended')
+      const s3 = this.demoApprovals.hotel === true ? 'completed' : (step >= 4 ? 'completed' : 'suspended')
+      const s4 = step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending')
+      return [
+        { name: '选医院挂专家号', status: s1 },
+        { name: '查高铁车次及订票', status: s2 },
+        { name: '订适老无障碍酒店', status: s3 },
+        { name: '聚合装配计划书', status: s4 },
+      ]
+    },
+  }
+
+  assert.equal(replaySim.pendingTasksCount, 3, 'Initially 3 tasks pending at step 3')
+  assert.equal(replaySim.displaySteps[0].status, 'suspended')
+
+  // Approve 1:
+  replaySim.triggerApprove('c1', 'register_appointment')
+  assert.equal(replaySim.healthTools.registerAppointment.status, 'executed')
+  assert.equal(replaySim.pendingTasksCount, 2, 'Pending tasks count drops to 2')
+  assert.equal(replaySim.displaySteps[0].status, 'completed', 'Stage 1 transitions to completed')
+  assert.equal(replaySim.replay.step, 3, 'Still on step 3')
+
+  // Approve 2:
+  replaySim.triggerApprove('c2', 'book_ticket')
+  assert.equal(replaySim.travelTools.bookTicket.status, 'executed')
+  assert.equal(replaySim.pendingTasksCount, 1, 'Pending tasks count drops to 1')
+  assert.equal(replaySim.displaySteps[1].status, 'completed', 'Stage 2 transitions to completed')
+
+  // Approve 3:
+  replaySim.triggerApprove('c3', 'book_hotel')
+  assert.equal(replaySim.travelTools.bookHotel.status, 'executed')
+  assert.equal(replaySim.pendingTasksCount, 0, 'Pending tasks count drops to 0')
+  assert.equal(replaySim.displaySteps[2].status, 'completed', 'Stage 3 transitions to completed')
+  assert.equal(replaySim.replay.step, 4, 'Auto-advances to step 4 upon full approvals!')
+  console.log('✓ Passed: Replay mode dynamically synchronizes individual approvals and decrements pending count\n')
+}
+
+// -------------------------------------------------------------
+// Test 12: Replay Mode Rejection Safety Stoppage
+// -------------------------------------------------------------
+console.log('Test 12: Replay Mode Rejection Safety Stoppage')
+{
+  const replaySim = {
+    replay: { active: true, playing: true, step: 3, timer: 456 },
+    demoApprovals: { appointment: false, ticket: false, hotel: false },
+    pauseReplay() {
+      this.replay.playing = false
+      this.replay.timer = null
+    },
+    triggerReject(confirmationId, toolName) {
+      if (this.replay.active) this.pauseReplay()
+      if (toolName === 'register_appointment') this.demoApprovals.appointment = 'rejected'
+    },
+    get hasAnyRejected() {
+      return (
+        this.demoApprovals.appointment === 'rejected' ||
+        this.demoApprovals.ticket === 'rejected' ||
+        this.demoApprovals.hotel === 'rejected'
+      )
+    },
+    get planBuilderTools() {
+      let status = 'pending'
+      if (this.hasAnyRejected) status = 'rejected'
+      else if (this.replay.step >= 5) status = 'completed'
+      return { composeDeliverable: { status } }
+    },
+    get isArtifactReady() {
+      if (this.hasAnyRejected) return false
+      return this.replay.step >= 5
+    },
+  }
+
+  assert.equal(replaySim.hasAnyRejected, false)
+  replaySim.triggerReject('c1', 'register_appointment')
+  assert.equal(replaySim.replay.playing, false, 'Timer must pause immediately on reject')
+  assert.equal(replaySim.hasAnyRejected, true, 'hasAnyRejected must become true')
+  assert.equal(replaySim.planBuilderTools.composeDeliverable.status, 'rejected', 'Plan builder must be rejected')
+  assert.equal(replaySim.isArtifactReady, false, 'Artifact must not be ready')
+  console.log('✓ Passed: Replay mode rejection halts replay and transitions downstream builder to rejected\n')
+}
+
+// -------------------------------------------------------------
+// Test 13: chat.vue _resolveCard Multi-Turn Reverse-Lookup
+// -------------------------------------------------------------
+console.log('Test 13: chat.vue _resolveCard Multi-Turn Reverse-Lookup')
+{
+  const chatCode = readFileSync('frontend/laoyouji-app/src/pages/elder/chat.vue', 'utf8')
+  assert.ok(
+    chatCode.includes("this.messages.slice().reverse().find((m) => m.kind === 'suspend'"),
+    'chat.vue _resolveCard must use reverse lookup on messages for suspend resolution',
+  )
+  console.log('✓ Passed: chat.vue _resolveCard confirmed using slice().reverse().find\n')
+}
+
+// -------------------------------------------------------------
+// Test 14: Replay Progress Dot Touch-Target Accessibility Compliance
+// -------------------------------------------------------------
+console.log('Test 14: Replay Progress Dot Touch-Target Accessibility Compliance')
+{
+  const treeCode = readFileSync('frontend/laoyouji-app/src/components/AgentExecutionTree.vue', 'utf8')
+  assert.ok(
+    treeCode.includes('min-width: 44px') && treeCode.includes('min-height: 44px'),
+    'AgentExecutionTree.vue replay-progress-dot must declare min-width: 44px & min-height: 44px',
+  )
+  assert.ok(
+    treeCode.includes('beforeDestroy()') && treeCode.includes('unmounted()'),
+    'AgentExecutionTree.vue must support beforeDestroy and unmounted lifecycle cleanup hooks',
+  )
+  console.log('✓ Passed: Replay progress dot touch target and lifecycle cleanup verified\n')
+}
+
+console.log('=== ALL ADVERSARIAL TESTS PASSED (14/14) ===')
+
 

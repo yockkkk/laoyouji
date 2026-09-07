@@ -23,6 +23,7 @@ async def seed_demo(repo: Repository) -> dict[str, Any]:
         "status": "active",
         "role": "elder", "name": "张桂芳", "phone": "13800000001",
         "dialect": "southwestern", "city": "南京",
+        "relation_to_child": "母亲",
     })
     child = await repo.insert("users", {
         "username": "liming",
@@ -30,6 +31,7 @@ async def seed_demo(repo: Repository) -> dict[str, Any]:
         "status": "active",
         "role": "child", "name": "李明", "phone": "13900000002",
         "dialect": "mandarin", "city": "北京",
+        "relation_to_elder": "儿子",
     })
     await repo.insert("family_bindings", {
         "elder_id": elder["id"], "child_id": child["id"], "relation": "儿子",

@@ -59,10 +59,18 @@ async def approve(
         raise HTTPException(exc.status_code, str(exc)) from exc
 
 
+from pydantic import BaseModel
+
+class RejectPayload(BaseModel):
+    reason: str = ""
+
+
 @router.post("/confirmations/{task_id}/reject")
 async def reject(
     task_id: str,
+    payload: RejectPayload | None = None,
     child_id: str | None = None,
+    reason: str | None = None,
     principal: Principal = Depends(get_current_principal),
     ctx: AppContext = Depends(get_ctx),
 ):
@@ -72,7 +80,8 @@ async def reject(
     if principal.role != "child":
         raise HTTPException(403, "仅家人角色可拒绝高危操作")
     await _ensure_task_in_family(ctx, task_id, actor_id)
+    reject_reason = (payload.reason if payload and payload.reason else reason) or ""
     try:
-        return await ctx.confirmation.reject(task_id, ctx, actor_id)
+        return await ctx.confirmation.reject(task_id, ctx, actor_id, reason=reject_reason)
     except ConfirmationError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc

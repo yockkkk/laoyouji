@@ -34,8 +34,13 @@ class MockHotelProvider(HotelProvider):
             hc_clean = h["city"].replace("市", "").strip()
             if c_clean and (c_clean not in hc_clean and hc_clean not in c_clean):
                 continue
-            if near_hospital and (near_hospital not in h["near_hospital"] and h["near_hospital"] not in near_hospital):
-                continue
+            if near_hospital:
+                nh = h.get("near_hospital", "")
+                h_name = h.get("name", "")
+                h_addr = h.get("address", "")
+                near_clean = near_hospital.replace("附近", "").replace("周边", "").strip()
+                if not (near_clean in nh or nh in near_clean or near_clean in h_name or near_clean in h_addr):
+                    continue
             if accessible and not h["accessible"]:
                 continue
             out.append(h)

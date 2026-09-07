@@ -1,6 +1,19 @@
 {
   "hotels": [
     {
+      "name": "漫心酒店（积水潭店）",
+      "city": "北京",
+      "address": "北京市西城区新街口东街 16 号",
+      "near_hospital": "北京积水潭医院",
+      "distance_m": 450,
+      "walk_min": 6,
+      "price": 340,
+      "accessible": true,
+      "accessible_note": "配适老无障碍客房、浴室安全扶手与呼叫铃",
+      "phone": "010-66178888",
+      "rating": 4.8
+    },
+    {
       "name": "如家精选（新街口地铁站店）",
       "city": "北京",
       "address": "北京市西城区新街口南大街 108 号",
@@ -129,6 +142,32 @@
       "accessible_note": "有坡道和电梯，前台可代叫无障碍车",
       "phone": "021-62496655",
       "rating": 4.4
+    },
+    {
+      "name": "西湖金座大酒店",
+      "city": "杭州",
+      "address": "杭州市上城区定安路 88 号",
+      "near_hospital": "西湖风景区",
+      "distance_m": 800,
+      "walk_min": 10,
+      "price": 368,
+      "accessible": true,
+      "accessible_note": "近西湖，无障碍通道，电梯直达，卫生间配安全扶手",
+      "phone": "0571-87088888",
+      "rating": 4.7
+    },
+    {
+      "name": "如家精选酒店（杭州西湖断桥店）",
+      "city": "杭州",
+      "address": "杭州市拱墅区保俶路 99 号",
+      "near_hospital": "西湖",
+      "distance_m": 650,
+      "walk_min": 8,
+      "price": 298,
+      "accessible": true,
+      "accessible_note": "步行可达西湖，有无障碍坡道和电梯，适老服务完善",
+      "phone": "0571-85170000",
+      "rating": 4.6
     }
   ]
 }

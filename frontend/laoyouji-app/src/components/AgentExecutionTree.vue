@@ -1218,13 +1218,13 @@ export default {
     }
   },
   beforeUnmount() {
-    if (this.replay.timer) {
-      clearInterval(this.replay.timer)
-      this.replay.timer = null
-    }
-    if (typeof document !== 'undefined' && this._onVisChange) {
-      document.removeEventListener('visibilitychange', this._onVisChange)
-    }
+    this._teardown()
+  },
+  beforeDestroy() {
+    this._teardown()
+  },
+  unmounted() {
+    this._teardown()
   },
   computed: {
     allExpanded: {
@@ -1260,7 +1260,6 @@ export default {
     },
 
     hasAnyRejected() {
-      if (this.replay.active) return false
       if (
         this.demoApprovals.appointment === 'rejected' ||
         this.demoApprovals.ticket === 'rejected' ||
@@ -1268,16 +1267,13 @@ export default {
       ) {
         return true
       }
+      if (this.replay.active) return false
       return (this.messages || []).some(
         (m) => m.kind === 'suspend' && m.status === 'rejected',
       )
     },
 
     pendingTasksCount() {
-      if (this.replay.active) {
-        if (this.replay.step === 3) return 3
-        return 0
-      }
       let count = 0
       if (this.healthTools.registerAppointment.status === 'suspended') count++
       if (this.travelTools.bookTicket.status === 'suspended') count++
@@ -1479,7 +1475,10 @@ export default {
 
     safetyStatusClass() {
       if (this.replay.active) {
-        if (this.replay.step === 3) return 'status-suspended'
+        if (this.hasAnyRejected) return 'status-rejected'
+        if (this.replay.step === 3) {
+          return this.pendingTasksCount > 0 ? 'status-suspended' : 'status-completed'
+        }
         if (this.replay.step >= 4) return 'status-completed'
         return 'status-ready'
       }
@@ -1490,7 +1489,10 @@ export default {
     },
     safetyStatusIcon() {
       if (this.replay.active) {
-        if (this.replay.step === 3) return '⏸️'
+        if (this.hasAnyRejected) return '🛑'
+        if (this.replay.step === 3) {
+          return this.pendingTasksCount > 0 ? '⏸️' : '✅'
+        }
         if (this.replay.step >= 4) return '✅'
         return '🛡️'
       }
@@ -1501,7 +1503,11 @@ export default {
     },
     safetyStatusText() {
       if (this.replay.active) {
-        if (this.replay.step === 3) return '3项高危拦截待批'
+        if (this.hasAnyRejected) return '已拦截终止'
+        if (this.replay.step === 3) {
+          const pending = this.pendingTasksCount
+          return pending > 0 ? `${pending}项高危待批` : '双向回路放行完成'
+        }
         if (this.replay.step >= 4) return '双向回路放行完成'
         return '安全防线待命'
       }
@@ -1516,23 +1522,29 @@ export default {
       // 1. 演播模式
       if (this.replay && this.replay.active) {
         const step = this.replay.step
+        const s1 = this.demoApprovals.appointment === true
+          ? 'completed'
+          : (this.demoApprovals.appointment === 'rejected'
+            ? 'rejected'
+            : (step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'in_progress' : 'pending'))))
+        const s2 = this.demoApprovals.ticket === true
+          ? 'completed'
+          : (this.demoApprovals.ticket === 'rejected'
+            ? 'rejected'
+            : (step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending'))))
+        const s3 = this.demoApprovals.hotel === true
+          ? 'completed'
+          : (this.demoApprovals.hotel === 'rejected'
+            ? 'rejected'
+            : (step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending'))))
+        const s4 = this.hasAnyRejected
+          ? 'rejected'
+          : (step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending'))
         return [
-          {
-            name: '选医院挂专家号',
-            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'in_progress' : 'pending')),
-          },
-          {
-            name: '查高铁车次及订票',
-            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
-          },
-          {
-            name: '订适老无障碍酒店',
-            status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
-          },
-          {
-            name: '聚合装配计划书',
-            status: step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending'),
-          },
+          { name: '选医院挂专家号', status: s1 },
+          { name: '查高铁车次及订票', status: s2 },
+          { name: '订适老无障碍酒店', status: s3 },
+          { name: '聚合装配计划书', status: s4 },
         ]
       }
 
@@ -1675,7 +1687,18 @@ export default {
       if (this.replay.active) {
         const step = this.replay.step
         let sStatus = step >= 1 ? 'completed' : (step === 0 ? 'running' : 'pending')
-        let aStatus = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step >= 1 ? 'running' : 'pending'))
+        let aStatus = 'pending'
+        if (this.demoApprovals.appointment === true) {
+          aStatus = 'executed'
+        } else if (this.demoApprovals.appointment === 'rejected') {
+          aStatus = 'rejected'
+        } else if (step >= 4) {
+          aStatus = 'executed'
+        } else if (step === 3) {
+          aStatus = 'suspended'
+        } else if (step >= 1) {
+          aStatus = 'running'
+        }
         return {
           searchHospital: {
             status: sStatus,
@@ -1815,8 +1838,31 @@ export default {
         const step = this.replay.step
         let tSearch = step >= 2 ? 'completed' : 'pending'
         let hSearch = step >= 2 ? 'completed' : 'pending'
-        let tBook = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step === 2 ? 'running' : 'pending'))
-        let hBook = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step === 2 ? 'running' : 'pending'))
+        let tBook = 'pending'
+        if (this.demoApprovals.ticket === true) {
+          tBook = 'executed'
+        } else if (this.demoApprovals.ticket === 'rejected') {
+          tBook = 'rejected'
+        } else if (step >= 4) {
+          tBook = 'executed'
+        } else if (step === 3) {
+          tBook = 'suspended'
+        } else if (step === 2) {
+          tBook = 'running'
+        }
+
+        let hBook = 'pending'
+        if (this.demoApprovals.hotel === true) {
+          hBook = 'executed'
+        } else if (this.demoApprovals.hotel === 'rejected') {
+          hBook = 'rejected'
+        } else if (step >= 4) {
+          hBook = 'executed'
+        } else if (step === 3) {
+          hBook = 'suspended'
+        } else if (step === 2) {
+          hBook = 'running'
+        }
         return {
           searchTrain: {
             status: tSearch,
@@ -2098,7 +2144,10 @@ export default {
     planBuilderTools() {
       if (this.replay.active) {
         const step = this.replay.step
-        let status = step >= 5 ? 'completed' : (step === 4 ? 'running' : 'pending')
+        let status = 'pending'
+        if (this.hasAnyRejected) status = 'rejected'
+        else if (step >= 5) status = 'completed'
+        else if (step === 4) status = 'running'
         return {
           composeDeliverable: { status, params: 'kind: "trip_plan", sources: ["health", "travel", "community"]', result: status === 'completed' },
         }
@@ -2132,6 +2181,7 @@ export default {
 
     planBuilderStatusClass() {
       if (this.replay.active) {
+        if (this.hasAnyRejected) return 'status-rejected'
         if (this.replay.step === 4) return 'status-thinking'
         if (this.replay.step >= 5) return 'status-completed'
         return 'status-ready'
@@ -2144,6 +2194,7 @@ export default {
     },
     planBuilderStatusIcon() {
       if (this.replay.active) {
+        if (this.hasAnyRejected) return '🛑'
         if (this.replay.step === 4) return '⚡'
         if (this.replay.step >= 5) return '✅'
         return '📐'
@@ -2156,6 +2207,7 @@ export default {
     },
     planBuilderStatusText() {
       if (this.replay.active) {
+        if (this.hasAnyRejected) return '前序审批已拒绝 · 装配终止'
         if (this.replay.step === 4) return '装配计划书中'
         if (this.replay.step >= 5) return '五页计划书装配完成'
         return '方案装配待命'
@@ -2168,6 +2220,7 @@ export default {
     },
 
     isArtifactReady() {
+      if (this.hasAnyRejected) return false
       if (this.replay.active) {
         return this.replay.step >= 5
       }
@@ -2396,9 +2449,17 @@ export default {
         status: 'executed',
       })
       uni.showToast({ title: '已模拟子女端审核同意！', icon: 'success' })
+      if (this.replay.active && this.replay.step === 3) {
+        if (this.demoApprovals.appointment === true && this.demoApprovals.ticket === true && this.demoApprovals.hotel === true) {
+          this.seekReplay(4)
+        }
+      }
     },
 
     triggerReject(confirmationId, toolName) {
+      if (this.replay.active) {
+        this.pauseReplay()
+      }
       if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
         this.demoApprovals.appointment = 'rejected'
       } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
@@ -2438,10 +2499,20 @@ export default {
       this.replay.playing = true
       this.replay.step = 0
       this.allExpanded = true
+      this.demoApprovals = { appointment: false, ticket: false, hotel: false }
       if (this.replay.timer) clearInterval(this.replay.timer)
       this.replay.timer = setInterval(() => {
         if (this.replay.step < 5) {
+          if (this.hasAnyRejected) {
+            this.pauseReplay()
+            return
+          }
           this.replay.step++
+          if (this.replay.step >= 4 && !this.hasAnyRejected) {
+            this.demoApprovals.appointment = true
+            this.demoApprovals.ticket = true
+            this.demoApprovals.hotel = true
+          }
         } else {
           this.pauseReplay()
         }
@@ -2458,12 +2529,28 @@ export default {
     },
 
     resumeReplay() {
-      if (this.replay.step >= 5) this.replay.step = 0
+      if (this.hasAnyRejected) {
+        uni.showToast({ title: '已拒绝高危操作，演播已终止', icon: 'none' })
+        return
+      }
+      if (this.replay.step >= 5) {
+        this.replay.step = 0
+        this.demoApprovals = { appointment: false, ticket: false, hotel: false }
+      }
       this.replay.playing = true
       if (this.replay.timer) clearInterval(this.replay.timer)
       this.replay.timer = setInterval(() => {
         if (this.replay.step < 5) {
+          if (this.hasAnyRejected) {
+            this.pauseReplay()
+            return
+          }
           this.replay.step++
+          if (this.replay.step >= 4 && !this.hasAnyRejected) {
+            this.demoApprovals.appointment = true
+            this.demoApprovals.ticket = true
+            this.demoApprovals.hotel = true
+          }
         } else {
           this.pauseReplay()
         }
@@ -2480,23 +2567,45 @@ export default {
 
     nextReplayStep() {
       this.pauseReplay()
-      if (this.replay.step < 5) this.replay.step++
+      if (this.replay.step < 5) {
+        this.replay.step++
+        if (this.replay.step >= 4 && !this.hasAnyRejected) {
+          this.demoApprovals.appointment = true
+          this.demoApprovals.ticket = true
+          this.demoApprovals.hotel = true
+        }
+      }
     },
 
     prevReplayStep() {
       this.pauseReplay()
-      if (this.replay.step > 0) this.replay.step--
+      if (this.replay.step > 0) {
+        this.replay.step--
+        if (this.replay.step <= 3 && !this.hasAnyRejected) {
+          this.demoApprovals = { appointment: false, ticket: false, hotel: false }
+        }
+      }
     },
 
     resetReplay() {
-      this.replay.step = 0
       this.pauseReplay()
+      this.replay.step = 0
+      this.demoApprovals = { appointment: false, ticket: false, hotel: false }
       uni.showToast({ title: '演播已重置至阶段 0', icon: 'none' })
     },
 
     seekReplay(step) {
       this.pauseReplay()
       this.replay.step = step
+      if (step <= 3) {
+        if (!this.hasAnyRejected) {
+          this.demoApprovals = { appointment: false, ticket: false, hotel: false }
+        }
+      } else if (step >= 4) {
+        if (!this.hasAnyRejected) {
+          this.demoApprovals = { appointment: true, ticket: true, hotel: true }
+        }
+      }
     },
 
     exitReplay() {
@@ -2504,6 +2613,16 @@ export default {
       this.replay.active = false
       this.replay.step = 0
       uni.showToast({ title: '已退出演播，切回实时状态', icon: 'none' })
+    },
+
+    _teardown() {
+      if (this.replay && this.replay.timer) {
+        clearInterval(this.replay.timer)
+        this.replay.timer = null
+      }
+      if (typeof document !== 'undefined' && this._onVisChange) {
+        document.removeEventListener('visibilitychange', this._onVisChange)
+      }
     },
 
     scrollToSection(id) {
@@ -2984,8 +3103,9 @@ export default {
 }
 
 .replay-progress-dot {
-  width: 32rpx;
-  height: 32rpx;
+  position: relative;
+  width: 36rpx;
+  height: 36rpx;
   border-radius: 50%;
   background: #ffffff;
   border: 4rpx solid #cbd5e1;
@@ -2994,7 +3114,20 @@ export default {
   justify-content: center;
   z-index: 2;
   cursor: pointer;
+  touch-action: manipulation;
   transition: all 0.2s;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
+    width: 88rpx;
+    height: 88rpx;
+  }
 }
 
 .replay-progress-dot .dot-num {

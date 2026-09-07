@@ -161,7 +161,7 @@ def register_travel_tools(registry) -> None:
         },
         book_ticket, agent="travel",
         execution_mode=BARRIER, report_key="ticket",
-        child_summary=lambda a: (f"妈妈想买 {human_date(a.get('date'))} "
+        child_summary=lambda a: (f"母亲张桂芳想买 {human_date(a.get('date'))} "
                                  f"{a.get('train_no', '')} 次"
                                  f"高铁票（{a.get('seat_type', '二等座')}），"
                                  f"约 {a.get('price', '?')} 元"),
@@ -195,7 +195,7 @@ def register_travel_tools(registry) -> None:
         },
         book_hotel, agent="travel",
         execution_mode=BARRIER, report_key="hotel",
-        child_summary=lambda a: (f"妈妈想订酒店 {a.get('hotel', '')}，"
+        child_summary=lambda a: (f"母亲张桂芳想订酒店 {a.get('hotel', '')}，"
                                  f"{human_date(a.get('checkin'))} 入住 "
                                  f"{a.get('nights', 1)} 晚，"
                                  f"约 {a.get('price', '?')} 元/晚"),

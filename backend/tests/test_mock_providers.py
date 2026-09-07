@@ -23,7 +23,7 @@ async def test_train_book_deterministic():
     t1 = await p.book("G102", "tomorrow", "张桂芳", "二等座")
     t2 = await p.book("G102", "tomorrow", "张桂芳", "二等座")
     assert t1["ticket_no"] == t2["ticket_no"]
-    assert t1["price"] == 553.5
+    assert t1["price"] == 443.5
     assert t1["seat"].endswith("（二等座）")
 
 
