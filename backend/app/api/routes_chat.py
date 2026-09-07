@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -30,12 +29,9 @@ from app.core.turn_gate import QUEUED_HINT, TurnBusy
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
 
-# 会话保留窗口（天）。列表接口在这里过滤，scripts/cleanup_sessions.py 负责物理
-# 清理 —— 两边必须用同一个数，否则清理周期之间会露出过期会话。
-SESSION_KEEP_DAYS = 7
-# 时间过滤只能在 Python 里做（仓库层没有范围查询），所以先多取几倍再裁，
-# 否则取回的一页全是旧会话时，过滤完会一个不剩。
-SESSION_FETCH_OVERFETCH = 3
+# 存储策略：会话、行程、计划书、用药方案、确认工单一律**永久保留**（已评估库容量
+# 充裕，且这些都是老人真要用的资产，删了不可逆）。因此这里不做任何保留窗口过滤，
+# 也没有定时清理任务 —— 库里有就返回，老会话不会莫名消失。
 
 # 断线后仍在跑的轮次。**必须留强引用** —— asyncio 只弱引用 task，
 # 没人持有的话事件循环可能在它落库之前就把它回收了，
@@ -207,19 +203,12 @@ async def list_chat_sessions(
     ctx: AppContext = Depends(get_ctx),
 ):
     user = await _resolve_user(ctx, principal, user_id)
-    page = max(1, min(limit, 100))
-
-    # 7 日保留窗口。仓库层只能按 JSON 字段等值过滤，时间比较只能取回 Python 做，
-    # 所以先多取几倍再裁：否则一个攒了几百条旧会话的老人，取回的 100 条全是
-    # 过期数据、过滤完一个不剩 —— 他最近 7 天的对话会"凭空消失"。
-    rows = await ctx.repos.list(
+    sessions = await ctx.repos.list(
         "sessions",
         where={"user_id": user["id"]},
         order="-created_at",
-        limit=page * SESSION_FETCH_OVERFETCH,
+        limit=max(1, min(limit, 100)),
     )
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=SESSION_KEEP_DAYS)).isoformat()
-    sessions = [s for s in rows if s.get("created_at", "") >= cutoff][:page]
 
     # 标题只是第一句话的前 20 字，重名会话（演示期尤其多）靠它根本分不出
     # 谁是谁。给每行补"最后说的话"和"最后活跃时间"，老人按内容和时间找回
