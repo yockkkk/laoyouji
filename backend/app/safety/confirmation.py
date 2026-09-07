@@ -70,16 +70,28 @@ class ConfirmationService:
         # 只有子女本人发起的挂起，才采用他名下绑定里的 elder_id；
         # binding 是按 child_id == user_id 查出来的，归属已经成立。
         elder_id = binding["elder_id"] if (binding and user_role == "child") else user_id
-        relation = (binding or {}).get("relation") or "家人"
+        relation = (binding or {}).get("relation") or ("儿子" if binding else "家人")
+
+        elder_user = await self._repo.get("users", elder_id) if elder_id else turn.user
+        child_user = await self._repo.get("users", child_id) if child_id else None
+        elder_name = (elder_user or {}).get("name") or turn.user.get("name", "张桂芳")
+        child_name = (child_user or {}).get("name") or ("李明" if binding else None)
+
+        # 关系角色铁律防倒置：
+        # 对老人（长辈端）：若有绑定称 "您儿子李明"（或配置的具体称谓），未绑定称 "家人"
+        # 对子女（家人端）：称 "母亲张桂芳"
+        if binding:
+            relation_for_elder = f"您{relation}{child_name}" if child_name else f"您{relation}"
+        else:
+            relation_for_elder = "家人"
+        elder_title_for_child = f"母亲{elder_name}"
 
         summary_text = (
             tool.child_summary(args) if tool.child_summary
-            else f"长辈想执行 {tool.name}：{args}"
+            else f"{elder_title_for_child}想执行 {tool.name}：{args}"
         )
-        elder_user = await self._repo.get("users", elder_id) if elder_id else turn.user
-        elder_name = (elder_user or {}).get("name") or turn.user.get("name", "长辈")
         card = {
-            "title": f"{elder_name}想进行一项需要确认的操作",
+            "title": f"{elder_title_for_child}想进行一项需要确认的操作",
             "summary": summary_text,
             "reason": guard_result.reason or "涉及资金/重要事项",
             "risk_level": guard_result.risk_level,
@@ -94,9 +106,14 @@ class ConfirmationService:
             "child_id": child_id,
             "tool_name": tool.name,
             "tool_args": args,
+            "arguments": args,
             "risk_level": guard_result.risk_level,
             "amount": guard_result.amount,
             "summary_for_child": card,
+            "relation_for_elder": relation_for_elder,
+            "elder_title_for_child": elder_title_for_child,
+            "elder_name": elder_name,
+            "child_name": child_name,
             "status": "pending",
             "expires_at": (now + self._timeout).isoformat(),
         })
@@ -138,14 +155,15 @@ class ConfirmationService:
             "summary": summary_text,
             "amount": guard_result.amount,
             "expires_at": task["expires_at"],
-            "message": f"这步要先过您{relation}的确认。已经发过去了，"
+            "relation": relation_for_elder,
+            "message": f"这步要先过{relation_for_elder}的确认。已经发过去了，"
                        f"他点一下同意，我马上帮您办好。",
         })
         return {
             "ok": False,
             "suspended": True,
             "confirmation_id": task["id"],
-            "summary": f"已发起{relation}确认，等待通过后自动执行。",
+            "summary": f"已发起{relation_for_elder}确认，等待通过后自动执行。",
         }
 
     # ------------------------------------------------------------- 放行凭证校验
@@ -206,23 +224,36 @@ class ConfirmationService:
         return await _execute()
 
     async def reject(self, task_id: str, ctx: AppContext,
-                     child_id: str | None = None) -> dict:
+                     child_id: str | None = None,
+                     reason: str = "") -> dict:
         task = await self._get_valid_pending(task_id)
-        await self._repo.update("confirmation_tasks", task_id, {
+        update_data = {
             "status": "rejected", "resolved_at": _now_iso(),
-        })
+        }
+        if reason:
+            update_data["reject_reason"] = reason
+        await self._repo.update("confirmation_tasks", task_id, update_data)
+        detail = {"tool": task["tool_name"]}
+        if reason:
+            detail["reason"] = reason
         await self._repo.insert("audit_log", {
             "actor_id": child_id or task.get("child_id"),
             "action": "confirmation_rejected",
             "target": task_id,
-            "detail": {"tool": task["tool_name"]},
+            "detail": detail,
         })
         # 老人是这条播报的归属人：拿真人记账，别拿 {}。否则"家人没同意"这条
         # 事件在日志里没有 user_id，和"家人同意了"那条对不上，按人查审计会漏。
         elder = await self._repo.get("users", task["elder_id"])
+        announce_text = (
+            f"家人觉得这次先不办（理由：{reason}）。您要是有疑问，给他打个电话商量商量。"
+            if reason
+            else "家人觉得这次先不办。您要是有疑问，给他打个电话商量商量。"
+        )
         await self._announce(ctx, task, elder or {}, {
             "ok": False,
-            "announce": "家人觉得这次先不办。您要是有疑问，给他打个电话商量商量。",
+            "announce": announce_text,
+            "reason": reason,
         }, status="rejected")
         return {"ok": True, "status": "rejected"}
 

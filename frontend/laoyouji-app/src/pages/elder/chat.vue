@@ -974,29 +974,29 @@ export default {
      */
     _resolveCard(id, status, ok, tool = '') {
       let card = id
-        ? this.messages.find((m) => m.kind === 'suspend' && m.confirmationId === id)
+        ? this.messages.slice().reverse().find((m) => m.kind === 'suspend' && m.confirmationId === id)
         : null
       if (!card && tool) {
-        card = this.messages.find(
+        card = this.messages.slice().reverse().find(
           (m) => m.kind === 'suspend' && m.tool === tool && m.status === 'pending',
         )
         if (!card) {
           if (tool === 'register_appointment' || tool.includes('appoint')) {
-            card = this.messages.find(
+            card = this.messages.slice().reverse().find(
               (m) =>
                 m.kind === 'suspend' &&
                 m.status === 'pending' &&
                 ((m.summary && (m.summary.includes('挂号') || m.summary.includes('医院'))) || m.amount === 100),
             )
           } else if (tool === 'book_ticket' || tool.includes('ticket')) {
-            card = this.messages.find(
+            card = this.messages.slice().reverse().find(
               (m) =>
                 m.kind === 'suspend' &&
                 m.status === 'pending' &&
                 ((m.summary && (m.summary.includes('车票') || m.summary.includes('高铁'))) || m.amount === 443.5),
             )
           } else if (tool === 'book_hotel' || tool.includes('hotel')) {
-            card = this.messages.find(
+            card = this.messages.slice().reverse().find(
               (m) =>
                 m.kind === 'suspend' &&
                 m.status === 'pending' &&
@@ -1006,7 +1006,7 @@ export default {
         }
       }
       if (!card && !id && !tool) {
-        card = this.messages.find((m) => m.kind === 'suspend' && m.status === 'pending')
+        card = this.messages.slice().reverse().find((m) => m.kind === 'suspend' && m.status === 'pending')
       }
       if (!card) return false
       const next = status || (ok ? 'executed' : 'rejected')

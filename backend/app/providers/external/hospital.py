@@ -34,7 +34,9 @@ class MockHospitalProvider(HospitalProvider):
                 continue
             for dep in h["departments"]:
                 d_name = dep["name"]
-                if not department or department in d_name or d_name in department or (dep_clean and dep_clean in d_name):
+                if (not department or department in d_name or d_name in department
+                        or (dep_clean and dep_clean in d_name)
+                        or ("心血管" in department and "心内" in d_name)):
                     out.append({
                         "hospital": h["name"], "level": h["level"],
                         "specialty": h["specialty"], "address": h["address"],
@@ -71,7 +73,8 @@ class MockHospitalProvider(HospitalProvider):
             if h["name"] != hospital and hospital not in h["name"] and h["name"] not in hospital:
                 continue
             for dep in h["departments"]:
-                if department not in dep["name"] and dep["name"] not in department:
+                if (department not in dep["name"] and dep["name"] not in department
+                        and not ("心血管" in department and "心内" in dep["name"])):
                     continue
                 for d in dep["doctors"]:
                     if d["name"] == doctor or not doctor:

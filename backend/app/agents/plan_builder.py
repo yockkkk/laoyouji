@@ -47,6 +47,14 @@ BASE_CHECKLIST = [
     "常备药（按平时的量多带两天）",
 ]
 
+BASE_TOURISM_CHECKLIST = [
+    "身份证及老年人优待证（进站、住店、景区优惠都要用）",
+    "医保卡 / 电子医保码（随身备用）",
+    "老花镜 / 放大镜",
+    "常备药与急救盒（按平时的量多带两天）",
+    "保温水杯与轻便遮阳帽",
+]
+
 DISCLAIMER = ("本计划书由老友记根据查询结果自动生成，仅供出行参考。"
               "医疗相关内容不构成诊断意见，请以医生面诊结论为准。")
 MOCK_NOTE = "（竞赛原型：车次、号源、酒店数据来自模拟接口，正式落地对接官方开放 API）"
@@ -303,23 +311,31 @@ def _label_service(row: Row) -> Row:
 def build_medical_trip_plan(elder: dict, reports: Iterable[AgentReport], *,
                             city: str = "", today: str | None = None,
                             kind: str = "trip_plan") -> dict:
-    """《XX老人·XX就医出行计划书》—— 五页，页序写死，缺字段渲染"待补"。"""
+    """《XX老人·XX出行计划书》—— 五页，页序写死，缺字段渲染"待补"。"""
     data = _enrich(merge_reports(reports))
     missing: list[str] = []
     name = elder.get("name") or "老人"
     city = city or _dig(data, "appointment.city") or _guess_city(data) or "外地"
 
+    has_appointment = bool(_dig(data, "appointment.hospital") or _dig(data, "appointment.department"))
+    is_tourism = (kind in ("tourism_plan", "travel_plan")) or (
+        not has_appointment and any(k in f"{city} {data}" for k in ("西湖", "旅游", "文旅", "游玩", "杭州"))
+    )
+    is_medical = not is_tourism
+    title_suffix = "就医出行计划书" if is_medical else "文旅出行计划书"
+    page1 = _page_appointment(data, missing) if is_medical else _page_tourism(data, missing, city)
+
     pages = [
-        _page_appointment(data, missing),
+        page1,
         _page_ticket(data, missing),
         _page_hotel(data, missing),
-        _page_checklist(data),
+        _page_checklist(data, is_medical=is_medical),
         _page_weather(data, missing, city),
     ]
 
     return {
         "type": kind,
-        "title": f"{name} · {city}就医出行计划书",
+        "title": f"{name} · {city}{title_suffix}",
         "subtitle": f"共 {len(pages)} 页，可以直接打印带着走",
         "city": city,
         "destination": city,
@@ -332,6 +348,27 @@ def build_medical_trip_plan(elder: dict, reports: Iterable[AgentReport], *,
         "disclaimer": DISCLAIMER,
         "footnote": MOCK_NOTE,
     }
+
+
+def _page_tourism(data: dict, missing: list[str], city: str) -> Page:
+    page = Page(no=1, title=f"第一页 · {city}出行与游玩概况")
+    destination = city
+    hotel_name = str(_dig(data, "hotel.hotel") or _dig(data, "hotel.name") or "")
+    landmark = "西湖" if ("西湖" in hotel_name or "杭州" in city) else city
+    page.rows = [
+        Row(label="目的地", value=f"{destination}（{landmark}游玩）"),
+        Row(label="行程主题", value="休闲漫游 · 适老文旅"),
+        Row(label="出行方式", value="高铁动车"),
+        _row("推荐下榻", data, ("hotel.hotel", "hotel.name"), missing_list=missing),
+        _row("适老保障", data, ("hotel.accessible_note", "hotel.barrier_free"), missing_list=missing),
+        Row(label="游玩建议", value=f"适老慢游，游览{landmark}，劳逸结合，多坐休息"),
+        _status_row(data, "ticket", missing),
+    ]
+    page.notes = [
+        "带好老年人优待证及身份证，多数景区享受免票或半价优惠。",
+        f"游览{landmark}建议慢走慢看，景区内乘坐无障碍摆渡车或电瓶车代步，避免长途徒步疲累。",
+    ]
+    return page
 
 
 def _page_appointment(data: dict, missing: list[str]) -> Page:
@@ -416,10 +453,10 @@ def _price_row(data: dict, missing: list[str]) -> Row:
     return Row(label="房费", value=MISSING, missing=True)
 
 
-def _page_checklist(data: dict) -> Page:
+def _page_checklist(data: dict, *, is_medical: bool = True) -> Page:
     """行李清单：政策模板 + 按天气追加。不涉及查询字段，所以永不"待补"。"""
     page = Page(no=4, title="第四页 · 随身清单（出门前一样一样对）")
-    items = list(BASE_CHECKLIST)
+    items = list(BASE_CHECKLIST if is_medical else BASE_TOURISM_CHECKLIST)
     if _dig(data, "weather.umbrella"):
         items.append("一把伞（当地那几天有雨）")
     low = _dig(data, "weather.temp_low")

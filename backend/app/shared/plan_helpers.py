@@ -233,9 +233,9 @@ async def dispatch_plan_created_notification(
     elder_id = elder.get("id")
     if not elder_id:
         return []
-    elder_name = elder.get("name") or "老人"
+    elder_name = elder.get("name") or "张桂芳"
     plan_title = card.get("title") or "新计划"
-    notification_title = f"老人{elder_name}已规划《{plan_title}》"
+    notification_title = f"老人{elder_name}已规划《{plan_title}》（母亲{elder_name}行程方案）"
     pages_count = len(card.get("pages") or [])
     subtitle = card.get("subtitle") or f"共 {pages_count} 页计划书，随时可在子女看板查看详情与守护行程。"
 

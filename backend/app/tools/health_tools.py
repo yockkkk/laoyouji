@@ -272,7 +272,7 @@ def register_health_tools(registry) -> None:
         execution_mode=BARRIER, report_key="appointment",
         # 家人看到的就是这一句。日期和时段必须在里面 —— 挂号是"某天某个时段的
         # 一个号"，只写医院和费用，家人批的是一件缺了主语的事。
-        child_summary=lambda a: (f"妈妈想挂 {a.get('hospital', '')} "
+        child_summary=lambda a: (f"母亲张桂芳想挂 {a.get('hospital', '')} "
                                  f"{a.get('department', '')} 的号"
                                  f"（{a.get('doctor', '')}），"
                                  f"{human_date(a.get('date'))}"

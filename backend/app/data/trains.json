@@ -8,7 +8,7 @@
       "trains": [
         {"train_no": "G102", "depart": "08:00", "arrive": "12:18", "duration": "4小时18分",
          "seats": [
-           {"seat_type": "二等座", "price": 553.5, "remaining": 16},
+           {"seat_type": "二等座", "price": 443.5, "remaining": 16},
            {"seat_type": "一等座", "price": 932.0, "remaining": 5}
          ]},
         {"train_no": "G104", "depart": "09:13", "arrive": "13:31", "duration": "4小时18分",

@@ -229,13 +229,20 @@ async def compose_deliverable(turn, args: dict) -> dict:
 
 def _reports_from_log(turn) -> list[AgentReport]:
     """本会话的全部子回报（按 seq 顺序）。不存第二份状态。"""
-    from app.core.events import TOOL_RESULT
+    from app.core.events import AGENT_REPORT, CONFIRM_RESOLVED, TOOL_RESULT
     reports = [AgentReport.from_dict(e.payload)
                for e in turn.ctx.event_log.events(turn.session_id)
                if e.type == AGENT_REPORT]
     common_data = {}
+    resolved_map = {}
     for e in turn.ctx.event_log.events(turn.session_id):
-        if e.type == TOOL_RESULT:
+        if e.type == CONFIRM_RESOLVED:
+            cid = (e.payload or {}).get("confirmation_id")
+            st = (e.payload or {}).get("status")
+            tname = (e.payload or {}).get("tool")
+            if cid:
+                resolved_map[cid] = (tname, st)
+        elif e.type == TOOL_RESULT:
             p = e.payload or {}
             tool_name = p.get("tool")
             tool_obj = turn.ctx.tools.get(tool_name) if turn.ctx.tools else None
@@ -243,6 +250,21 @@ def _reports_from_log(turn) -> list[AgentReport]:
             d = p.get("data") or (p.get("result") or {}).get("data")
             if key and p.get("ok") and isinstance(d, dict):
                 common_data[key] = d
+
+    # 将确认任务的处理结果（如部分拒绝/通过）反哺回子智能体报告字段
+    for r in reports:
+        for k, v in list((r.data or {}).items()):
+            if isinstance(v, dict):
+                cid = v.get("confirmation_id")
+                if cid and cid in resolved_map:
+                    _, st = resolved_map[cid]
+                    v["status"] = st
+                elif not cid and resolved_map:
+                    for r_cid, (r_tool, r_st) in resolved_map.items():
+                        tool_obj = turn.ctx.tools.get(r_tool) if turn.ctx.tools else None
+                        if tool_obj and getattr(tool_obj, "report_key", "") == k:
+                            v["status"] = r_st
+
     if common_data:
         reports.append(AgentReport(
             agent="common", ok=True, summary="公共服务结果", data=common_data,

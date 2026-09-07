@@ -17,9 +17,11 @@ from app.core.events import (
     ARTIFACT_CARD,
     ASSISTANT_FINAL,
     ASSISTANT_MESSAGE,
+    CONFIRM_RESOLVED,
     CONFIRM_SUSPENDED,
     MAIN_SCOPE,
     TODO_WRITE,
+    TOOL_CALL,
     TOOL_RESULT,
     USER_MESSAGE,
 )
@@ -346,6 +348,10 @@ async def get_chat_history(
         elif event.type == TODO_WRITE:
             todos = payload.get("todos", [])
             progress = payload.get("progress", {})
+            if not progress and todos:
+                done = sum(1 for t in todos if (isinstance(t, dict) and t.get("status") == "completed"))
+                total = len(todos)
+                progress = {"done": done, "total": total, "ratio": round(done / total, 2) if total else 0.0}
             if messages and messages[-1].get("kind") == "todo":
                 messages[-1]["todos"] = todos
                 messages[-1]["progress"] = progress
@@ -354,6 +360,39 @@ async def get_chat_history(
                     "kind": "todo",
                     "todos": todos,
                     "progress": progress,
+                })
+        elif event.type == TOOL_CALL:
+            cid = payload.get("call_id")
+            messages.append({
+                "kind": "tool",
+                "callId": cid,
+                "tool": payload.get("tool", ""),
+                "agent": payload.get("agent", event.agent_id or ""),
+                "args": payload.get("args", {}),
+                "status": "running",
+                "summary": payload.get("summary", payload.get("tool", "")),
+            })
+        elif event.type == TOOL_RESULT:
+            cid = payload.get("call_id")
+            bubble = next((m for m in reversed(messages)
+                           if m.get("kind") == "tool" and m.get("callId") == cid), None)
+            if bubble:
+                bubble["status"] = "suspended" if payload.get("suspended") else ("completed" if payload.get("ok") is not False else "failed")
+                bubble["result"] = payload.get("data") or payload.get("summary")
+                bubble["ok"] = payload.get("ok") is not False
+                if payload.get("summary"):
+                    bubble["summary"] = payload["summary"]
+                if payload.get("denied"):
+                    bubble["blocked"] = True
+            else:
+                messages.append({
+                    "kind": "tool",
+                    "callId": cid,
+                    "tool": payload.get("tool", ""),
+                    "agent": payload.get("agent", event.agent_id or ""),
+                    "status": "suspended" if payload.get("suspended") else ("completed" if payload.get("ok") is not False else "failed"),
+                    "summary": payload.get("summary", ""),
+                    "ok": payload.get("ok") is not False,
                 })
         elif event.type == ARTIFACT_CARD:
             messages.append({
@@ -372,11 +411,11 @@ async def get_chat_history(
                 "amount": payload.get("amount", 0),
                 "expiresAt": payload.get("expires_at", ""),
             })
-        elif event.type == "confirmation/resolved":
+        elif event.type == CONFIRM_RESOLVED:
             cid = payload.get("id") or payload.get("confirmation_id")
             status = payload.get("status") or ("executed" if payload.get("ok") else "rejected")
             for m in messages:
-                if m.get("kind") == "suspend" and m.get("confirmationId") == cid:
+                if m.get("kind") == "suspend" and (m.get("confirmationId") == cid or (cid and str(m.get("confirmationId")) == str(cid))):
                     m["status"] = status
         elif event.type == TOOL_RESULT:
             # 结算：按 call_id 回写到上面那条声明上。状态词与 SSE 实时链路

@@ -62,7 +62,7 @@ class MockLLMProvider(LLMProvider):
         if "delegate" in tool_names:                 # 总智能体
             return self._main(user_text, transcript)
         if "search_train" in tool_names:             # 银发导航
-            return self._travel(transcript)
+            return self._travel(user_text, transcript)
         if "register_appointment" in tool_names:     # 安康助手
             return self._health(user_text, transcript)
         if "canteen_order" in tool_names:            # 邻里帮
@@ -88,9 +88,123 @@ class MockLLMProvider(LLMProvider):
     # ---------------------------------------------------------------- 总智能体
 
     def _main(self, text: str, transcript: str) -> LLMResponse:
-        """旗舰场景：两波并行派发 → 确定性交付物。"""
+        """旗舰场景与多类别场景调度：多波并行派发 → 确定性交付物。"""
         waves = self._ran(transcript, "delegate")
 
+        # 场景 D：复合跨领域协同（本地就医挂号 + 医院陪诊服务）
+        if _wants_complex_escort(text):
+            if waves == 0:
+                return LLMResponse(
+                    content="好嘞，心脏不舒服马虎不得。我帮您预约南京鼓楼医院心内科专家号，并安排下午的陪诊护士全程陪您。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": "预约南京鼓楼医院心内科专家号", "status": "in_progress"},
+                                {"content": "预约下午医院陪诊服务", "status": "in_progress"},
+                                {"content": "安排就医与陪诊衔接", "status": "pending"},
+                            ]}),
+                        ToolCallReq(id=self._cid(), name="delegate", arguments={
+                            "tasks": [
+                                {"agent": "health", "label": "心内科挂号",
+                                 "instruction": "老人心脏不舒服，想去南京鼓楼医院看心血管内科。请查号源并预约专家号。"},
+                                {"agent": "community", "label": "医院陪诊",
+                                 "instruction": "老人一个人去鼓楼医院看病腿脚不便，需要预约今天下午的医院陪诊服务。"},
+                            ]}),
+                    ],
+                )
+            return LLMResponse(
+                content="鼓楼医院心内科专家号与下午的医院陪诊服务都帮您预约好啦！"
+                        "挂号和陪诊订单已提交给家人确认，陪诊人员去医院前会提前电话联系您，您安心等候即可。")
+
+        # 场景 C：邻里社区与家政服务（厨房打扫保洁 + 社区食堂清淡晚餐）
+        if _wants_community_mix(text):
+            if waves == 0:
+                return LLMResponse(
+                    content="好的，厨房油烟机脏了帮您找家政师傅打扫，今晚社区食堂的清淡晚餐也一并帮您订好送到家。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": "预约厨房抽油烟机保洁上门", "status": "in_progress"},
+                                {"content": "预订社区食堂少油清淡晚餐", "status": "in_progress"},
+                            ]}),
+                        ToolCallReq(id=self._cid(), name="delegate", arguments={
+                            "tasks": [
+                                {"agent": "community", "label": "保洁与配餐",
+                                 "instruction": "老人厨房油烟机脏了想找人打扫保洁，顺便订一份今晚社区食堂的少油清淡晚餐送到家。"},
+                            ]}),
+                    ],
+                )
+            if not self._ran(transcript, "compose_deliverable"):
+                return LLMResponse(
+                    content="保洁和晚餐都安排上了，我给您整理一份社区服务预约单。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": "预约厨房抽油烟机保洁上门", "status": "completed"},
+                                {"content": "预订社区食堂少油清淡晚餐", "status": "completed"},
+                            ]}),
+                        ToolCallReq(id=self._cid(), name="compose_deliverable",
+                                    arguments={"kind": "community_card"}),
+                    ],
+                )
+            return LLMResponse(
+                content="保洁师傅和今晚的清淡晚餐都帮您安排好啦！家政师傅已派单，傍晚热乎的晚餐也会准时送到家。")
+
+        # 场景 B：跨城文旅出行闭环（南京到杭州看西湖，高铁+西湖附近酒店+天气+文旅出行计划书）
+        if _wants_tourism(text):
+            if waves == 0:
+                return LLMResponse(
+                    content="好嘞，去杭州看西湖风景散心真不错。我这就帮您查高铁票并物色西湖附近的无障碍酒店。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": "查去杭州的高铁票", "status": "in_progress"},
+                                {"content": "订西湖附近的无障碍酒店", "status": "pending"},
+                                {"content": "查杭州天气并出文旅计划书", "status": "pending"},
+                            ]}),
+                        ToolCallReq(id=self._cid(), name="delegate", arguments={
+                            "tasks": [
+                                {"agent": "travel", "label": "高铁车票",
+                                 "instruction": "老人想从南京去杭州看西湖。请查南京去杭州的高铁并订上午二等座车票。"},
+                            ]}),
+                    ],
+                )
+            if waves == 1:
+                return LLMResponse(
+                    content="去杭州的高铁票已选好。我再给您订西湖附近的无障碍酒店并查查杭州天气。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": "查去杭州的高铁票", "status": "completed"},
+                                {"content": "订西湖附近的无障碍酒店", "status": "in_progress"},
+                                {"content": "查杭州天气并出文旅计划书", "status": "pending"},
+                            ]}),
+                        ToolCallReq(id=self._cid(), name="delegate", arguments={
+                            "tasks": [
+                                {"agent": "travel", "label": "西湖酒店与天气",
+                                 "instruction": "请查杭州西湖附近有无障碍设施的酒店并订2晚，同时查一下杭州这几天的天气。"},
+                            ]}),
+                    ],
+                )
+            if not self._ran(transcript, "compose_deliverable"):
+                return LLMResponse(
+                    content="杭州的车票、酒店和天气都备齐了。我把整个文旅行程给您做成一份文旅出行计划书，一共五页。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": "查去杭州的高铁票", "status": "completed"},
+                                {"content": "订西湖附近的无障碍酒店", "status": "completed"},
+                                {"content": "查杭州天气并出文旅计划书", "status": "in_progress"},
+                            ]}),
+                        ToolCallReq(id=self._cid(), name="compose_deliverable",
+                                    arguments={"kind": "trip_plan", "city": "杭州"}),
+                    ],
+                )
+            return LLMResponse(
+                content="杭州文旅出行计划书给您做好啦，一共五页。去程车票、西湖边的无障碍酒店和天气都给您列好啦，"
+                        "等家人在手机上确认后就能安心出发！")
+
+        # 场景 A：异地就医全流程闭环（去北京积水潭看骨科，号源+高铁+酒店+天气+就医出行计划书）
         if _wants_medical_trip(text):
             if waves == 0:
                 # 第一波：挂号和车票同时派（两支并发，这才是"调度"）
@@ -204,19 +318,31 @@ class MockLLMProvider(LLMProvider):
 
     # ---------------------------------------------------------------- 银发导航
 
-    def _travel(self, transcript: str) -> LLMResponse:
-        """两条支线：车票（查→订）和酒店（查→订→天气）。按指令里的关键词分。"""
-        if "酒店" in transcript:
+    def _travel(self, instruction: str, transcript: str) -> LLMResponse:
+        """银发导航：支持车票、酒店、天气。根据上下文自动识别城市与地标。"""
+        full_text = f"{instruction}\n{transcript}"
+        is_hangzhou = "杭州" in full_text or "西湖" in full_text
+        city = "杭州" if is_hangzhou else "北京"
+        station_to = "杭州东" if is_hangzhou else "北京南"
+        train_no = "G7615" if is_hangzhou else _TRAIN
+        train_price = 117.5 if is_hangzhou else 443.5
+        depart_time = "08:30" if is_hangzhou else "08:00"
+        arrive_time = "09:58" if is_hangzhou else "12:18"
+        hotel_landmark = "西湖" if is_hangzhou else _HOSPITAL
+
+        wants_hotel = any(k in instruction for k in ("酒店", "住", "天气"))
+        wants_ticket = any(k in instruction for k in ("车票", "买票", "高铁", "火车", "车次"))
+
+        if wants_hotel and not wants_ticket:
             if not self._ran(transcript, "search_hotel"):
                 return LLMResponse(
-                    content="我先看看医院附近有哪些方便老人住的酒店。",
+                    content=f"我先看看{city}{hotel_landmark}附近有哪些方便老人住的无障碍酒店。",
                     tool_calls=[ToolCallReq(id=self._cid(), name="search_hotel",
-                                            arguments={"city": "北京",
-                                                       "near_hospital": _HOSPITAL})],
+                                            arguments={"city": city,
+                                                       "near_hospital": hotel_landmark})],
                 )
             if not self._ran(transcript, "book_hotel"):
                 hotel, price = _hotel_choice_from(transcript)
-                # 房价照抄查询结果 —— 少了它，家人手机上那张卡的金额就是 0
                 args: dict = {"hotel": hotel, "checkin": "tomorrow", "nights": 2}
                 if price is not None:
                     args["price"] = price
@@ -227,34 +353,59 @@ class MockLLMProvider(LLMProvider):
                 )
             if not self._ran(transcript, "get_weather"):
                 return LLMResponse(
-                    content="我再看看北京这几天的天气。",
+                    content=f"我再看看{city}这几天的天气。",
                     tool_calls=[ToolCallReq(id=self._cid(), name="get_weather",
-                                            arguments={"city": "北京",
+                                            arguments={"city": city,
                                                        "date": "tomorrow"})],
                 )
             return LLMResponse(content="酒店和天气都看好啦，我记在计划里了。")
 
         if not self._ran(transcript, "search_train"):
             return LLMResponse(
-                content="我先查一下明天去北京的车次。",
+                content=f"我先查一下明天去{city}的车次。",
                 tool_calls=[ToolCallReq(id=self._cid(), name="search_train",
                                         arguments={"from_city": "南京",
-                                                   "to_city": "北京",
+                                                   "to_city": city,
                                                    "date": "tomorrow"})],
             )
         if not self._ran(transcript, "book_ticket"):
-            # 参数照抄查询结果：这份参数会被冻结给家人确认，也会印上计划书第二页
             return LLMResponse(
-                content=f"查到了。我帮您订早上八点的 {_TRAIN}，二等座。",
+                content=f"查到了。我帮您订早上{depart_time}的 {train_no}，二等座。",
                 tool_calls=[ToolCallReq(id=self._cid(), name="book_ticket",
                                         arguments={
-                                            "train_no": _TRAIN, "date": "tomorrow",
+                                            "train_no": train_no, "date": "tomorrow",
                                             "from_station": "南京南",
-                                            "to_station": "北京南",
-                                            "depart": "08:00", "arrive": "12:18",
+                                            "to_station": station_to,
+                                            "depart": depart_time, "arrive": arrive_time,
                                             "seat_type": "二等座",
-                                            "price": 553.5})],
+                                            "price": train_price})],
             )
+        if wants_hotel:
+            if not self._ran(transcript, "search_hotel"):
+                return LLMResponse(
+                    content=f"我先看看{city}{hotel_landmark}附近有哪些方便老人住的无障碍酒店。",
+                    tool_calls=[ToolCallReq(id=self._cid(), name="search_hotel",
+                                            arguments={"city": city,
+                                                       "near_hospital": hotel_landmark})],
+                )
+            if not self._ran(transcript, "book_hotel"):
+                hotel, price = _hotel_choice_from(transcript)
+                args: dict = {"hotel": hotel, "checkin": "tomorrow", "nights": 2}
+                if price is not None:
+                    args["price"] = price
+                return LLMResponse(
+                    content=f"就订{hotel}，走过去几分钟，有无障碍设施。",
+                    tool_calls=[ToolCallReq(id=self._cid(), name="book_hotel",
+                                            arguments=args)],
+                )
+            if not self._ran(transcript, "get_weather"):
+                return LLMResponse(
+                    content=f"我再看看{city}这几天的天气。",
+                    tool_calls=[ToolCallReq(id=self._cid(), name="get_weather",
+                                            arguments={"city": city,
+                                                       "date": "tomorrow"})],
+                )
+
         if '"suspended": true' in transcript:
             return LLMResponse(content="票已经发给家人确认了。他点一下同意，马上就出票。")
         return LLMResponse(content="车票的事办好啦。")
@@ -262,15 +413,7 @@ class MockLLMProvider(LLMProvider):
     # ---------------------------------------------------------------- 安康助手
 
     def _health(self, instruction: str, transcript: str) -> LLMResponse:
-        """两条支线：挂号（查医院 → 挂号）和反诈（念一遍 → 判定）。
-
-        反诈这一支原来不存在，于是 ``check_scam`` 这个工具在离线剧本里**根本
-        到不了** —— 而断网兜底和 ``scripts/demo_smoke.py`` 走的都是离线剧本。
-        加分项不能只在联网时成立。
-
-        分支看的是 ``instruction``（派过来的那句原话）而不是整段 transcript：
-        判定结果本身含"骗"字，拿 transcript 分支会在第二步自己认错支线。
-        """
+        """两条支线：挂号（查医院 → 挂号）和反诈（念一遍 → 判定）。"""
         if _wants_scam_check(instruction):
             if not self._ran(transcript, "check_scam"):
                 return LLMResponse(
@@ -281,24 +424,36 @@ class MockLLMProvider(LLMProvider):
             return LLMResponse(content="这种事您别自己做决定。我已经记在您的档案里了，"
                                        "也跟家里说一声。")
 
+        is_nanjing = any(k in instruction for k in ("南京", "鼓楼", "心", "心脏", "心内科", "心血管"))
+        hospital = "南京鼓楼医院" if is_nanjing else _HOSPITAL
+        city = "南京" if is_nanjing else "北京"
+        symptom = "心脏" if is_nanjing else "腿疼"
+        dept = "心内科" if is_nanjing else "骨科"
+        doctor = "王振华" if is_nanjing else "田伟"
+        fee = 70 if is_nanjing else 100
+        slot_date = "+1" if is_nanjing else "+3"
+        slot_time = "上午 08:30" if is_nanjing else "上午"
+
         if not self._ran(transcript, "search_hospital"):
+            hint = "心脏不舒服要看心内科。我帮您找南京看心内科最好的医院。" if is_nanjing else "腿疼要看骨科。我帮您找北京看骨科最好的医院。"
             return LLMResponse(
-                content="腿疼要看骨科。我帮您找北京看骨科最好的医院。",
+                content=hint,
                 tool_calls=[ToolCallReq(id=self._cid(), name="search_hospital",
-                                        arguments={"city": "北京",
-                                                   "symptom": "腿疼"})],
+                                        arguments={"city": city,
+                                                   "symptom": symptom})],
             )
         if not self._ran(transcript, "register_appointment"):
+            hint = f"给您挂{hospital}{dept}的专家号。"
             return LLMResponse(
-                content="给您挂积水潭医院骨科的专家号。",
+                content=hint,
                 tool_calls=[ToolCallReq(id=self._cid(),
                                         name="register_appointment",
-                                        arguments={"hospital": _HOSPITAL,
-                                                   "department": "骨科",
-                                                   "doctor": "田伟",
-                                                   "date": "+3",
-                                                   "time": "上午",
-                                                   "fee": 100})],
+                                        arguments={"hospital": hospital,
+                                                   "department": dept,
+                                                   "doctor": doctor,
+                                                   "date": slot_date,
+                                                   "time": slot_time,
+                                                   "fee": fee})],
             )
         if '"suspended": true' in transcript:
             return LLMResponse(content="挂号的事已经发给家人确认了。他同意了号就锁上。")
@@ -307,21 +462,70 @@ class MockLLMProvider(LLMProvider):
     # ---------------------------------------------------------------- 邻里帮
 
     def _community(self, transcript: str) -> LLMResponse:
-        if not self._ran(transcript, "canteen_order"):
+        wants_cleaning = any(k in transcript for k in ("保洁", "打扫", "油烟机", "家政"))
+        wants_accompany = any(k in transcript for k in ("陪诊", "陪护"))
+        wants_canteen = any(k in transcript for k in ("食堂", "饭", "餐", "吃", "晚餐", "午餐"))
+
+        if wants_cleaning and not self._ran(transcript, "order_service"):
             return LLMResponse(
-                content="好的，帮您订今天的软食套餐。",
+                content="好的，我帮您预约家政保洁上门服务。",
+                tool_calls=[ToolCallReq(id=self._cid(), name="order_service",
+                                        arguments={"service_type": "cleaning",
+                                                   "date": "今天下午",
+                                                   "hours": 2})],
+            )
+
+        if wants_accompany and not self._ran(transcript, "order_service"):
+            return LLMResponse(
+                content="好的，我帮您预约医院陪诊服务。",
+                tool_calls=[ToolCallReq(id=self._cid(), name="order_service",
+                                        arguments={"service_type": "accompany",
+                                                   "date": "今天下午",
+                                                   "hours": 4})],
+            )
+
+        if (wants_canteen or not (wants_cleaning or wants_accompany)) and not self._ran(transcript, "canteen_order"):
+            return LLMResponse(
+                content="好的，帮您订今天的软食清淡套餐。",
                 tool_calls=[ToolCallReq(id=self._cid(), name="canteen_order",
                                         arguments={"menu_item": "软食套餐A",
                                                    "count": 1,
-                                                   "deliver_time": "11:30"})],
+                                                   "deliver_time": "18:00"})],
             )
-        return LLMResponse(content="饭订好啦。11点半送到家，您记得开门。")
+
+        return LLMResponse(content="社区的事办好啦，您放心。")
 
 
 # ---------------------------------------------------------------------- 意图词
 
+def _wants_complex_escort(text: str) -> bool:
+    """复合跨领域协同：本地就医挂号 + 医院陪诊服务"""
+    has_escort = any(k in text for k in ("陪诊", "陪护"))
+    has_med = any(k in text for k in ("医院", "挂号", "看病", "心血管", "鼓楼", "心内科", "心脏", "门诊"))
+    return has_escort and has_med
+
+
+def _wants_community_mix(text: str) -> bool:
+    """社区家政与餐饮：打扫保洁 + 社区食堂"""
+    has_clean = any(k in text for k in ("保洁", "打扫", "家政", "抽油烟机", "油烟机", "打扫厨房"))
+    has_food = any(k in text for k in ("食堂", "晚餐", "午餐", "清淡", "软食", "送餐", "吃饭", "订餐", "订饭"))
+    return has_clean and has_food
+
+
+def _wants_tourism(text: str) -> bool:
+    """跨城文旅出行：高铁 + 酒店 + 天气 + 文旅计划书（无医院/看病/挂号）"""
+    if any(k in text for k in ("看病", "就医", "挂号", "医院", "医生", "专家号", "骨科")):
+        return False
+    has_travel_target = any(k in text for k in ("杭州", "西湖", "旅游", "文旅", "游玩"))
+    has_trip_intent = any(k in text for k in ("高铁", "火车", "车票", "酒店", "计划书", "出行"))
+    return has_travel_target and has_trip_intent
+
+
 def _wants_medical_trip(text: str) -> bool:
-    return any(k in text for k in ("北京", "上海", "医院", "看病", "就医", "腿", "挂号"))
+    """异地跨城就医出行：去外地医院看病"""
+    if _wants_complex_escort(text) or _wants_community_mix(text) or _wants_tourism(text):
+        return False
+    return any(k in text for k in ("北京", "上海", "积水潭", "骨科", "看病", "就医", "腿", "膝盖", "挂号", "医院"))
 
 
 def _wants_travel(text: str) -> bool:

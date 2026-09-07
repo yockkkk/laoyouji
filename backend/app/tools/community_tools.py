@@ -134,7 +134,7 @@ def register_community_tools(registry) -> None:
         # 下单即写库、即产生金额 → 独占执行（小额由 PaymentRiskRule 放行，
         # 但"两笔订单并发发出"这种事在任何金额下都不该发生）
         execution_mode=BARRIER, report_key="canteen",
-        child_summary=lambda a: f"妈妈想在社区食堂订餐（{a.get('menu_item', '')}）",
+        child_summary=lambda a: f"母亲张桂芳想在社区食堂订餐（{a.get('menu_item', '')}）",
     ))
     registry.register(make_tool(
         "order_service", "预约保洁或陪诊服务（费用需家人确认后派单）。",
@@ -146,7 +146,7 @@ def register_community_tools(registry) -> None:
         },
         order_service, agent="community",
         execution_mode=BARRIER, report_key="service_order",
-        child_summary=lambda a: (f"妈妈想预约{'保洁' if a.get('service_type') == 'cleaning' else '陪诊'}服务"
+        child_summary=lambda a: (f"母亲张桂芳想预约{'保洁' if a.get('service_type') == 'cleaning' else '陪诊'}服务"
                                  f"（{human_date(a.get('date'))}）"),
     ))
     registry.register(make_tool(
