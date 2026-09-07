@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_ctx, get_current_principal
 from app.auth.security import Principal
 from app.core.context import AppContext
+from app.core.turn_gate import TurnBusy
 from app.safety.confirmation import ConfirmationError
 
 router = APIRouter(prefix="/api", tags=["confirmation"])
@@ -57,6 +58,10 @@ async def approve(
         return await ctx.confirmation.approve_and_execute(task_id, ctx, actor_id)
     except ConfirmationError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
+    except TurnBusy as exc:
+        # 会话闸门被老人新一轮对话占着：TurnBusy 不是 ConfirmationError，
+        # 不接住就逃成 500。409 + 一句能直接给子女看的话。
+        raise HTTPException(409, exc.message) from exc
 
 
 @router.post("/confirmations/{task_id}/reject")

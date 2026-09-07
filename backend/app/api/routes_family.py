@@ -119,15 +119,16 @@ async def accept_bind_request(binding_id: str, principal: Principal = Depends(ge
     row = await ctx.repos.update("family_bindings", binding_id, {
         "status": "active", "approved_at": _now(),
     })
-    # 初始化默认隐私权限：活跃家庭绑定默认全透明（realtime, full）
+    # 初始化默认隐私权限：没明说就只给粗粒度（city / summary），
+    # 老人之后可在"我的位置/我的健康"里自己调高 —— 默认全开等于替他做决定。
     perm = await ctx.repos.find_one("privacy_permissions", {
         "elder_id": binding["elder_id"], "child_id": binding["child_id"],
     })
     if not perm:
         await ctx.repos.insert("privacy_permissions", {
             "elder_id": binding["elder_id"], "child_id": binding["child_id"],
-            "location_level": "realtime",
-            "health_level": "full",
+            "location_level": DEFAULT_LOCATION_LEVEL,
+            "health_level": DEFAULT_HEALTH_LEVEL,
         })
     await ctx.repos.insert("audit_log", {
         "actor_id": me["id"], "action": "family_bind_accept", "target": binding_id,

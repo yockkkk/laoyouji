@@ -59,13 +59,16 @@ class ConfirmationService:
             if not binding:
                 binding = await self._repo.find_one("family_bindings", {"child_id": user_id})
 
-        # 全局单家庭关联兜底：若只有一个绑定，避免未传或错传导致孤立
-        if not binding:
-            all_bindings = await self._repo.list("family_bindings", where={"status": "active"}, limit=1)
-            if all_bindings:
-                binding = all_bindings[0]
-
-        child_id = binding["child_id"] if binding else None
+        # 没有"全局兜底"：查不到属于此人的绑定就是查不到。child_id=None 不是
+        # 要兜住的 bug，而是 R5 的正确结局 —— 宁可这张卡谁都领不走，也不许
+        # 从库里随便挑一个陌生家庭的子女来审批别人家的老人。
+        active_binding = (
+            binding if (binding and binding.get("status") in (None, "active"))
+            else None
+        )
+        child_id = active_binding["child_id"] if active_binding else None
+        # 只有子女本人发起的挂起，才采用他名下绑定里的 elder_id；
+        # binding 是按 child_id == user_id 查出来的，归属已经成立。
         elder_id = binding["elder_id"] if (binding and user_role == "child") else user_id
         relation = (binding or {}).get("relation") or "家人"
 
@@ -105,23 +108,25 @@ class ConfirmationService:
         })
 
         # 写入通知中心 (notifications 表)，确保子女端在看板与通知中心第一时间收到提醒！
+        # 行形状以 schema.sql 的 notifications 定义为准（summary/is_read/data），
+        # 与 plan_helpers.dispatch_plan_created_notification 保持一致 —— 单表
+        # JSON 存储不报错，但前端靠 is_read 判未读，写两套字段就是永久"未读"。
         if child_id:
             try:
                 await self._repo.insert("notifications", {
-                    "family_id": (binding or {}).get("family_id") or (binding or {}).get("id"),
                     "user_id": child_id,
+                    "elder_id": elder_id,
                     "type": "confirmation_request",
                     "title": f"【待您审批】{card['title']}",
-                    "content": card["summary"],
-                    "payload": {
+                    "summary": card["summary"],
+                    "is_read": False,
+                    "data": {
                         "task_id": task["id"],
                         "tool": tool.name,
                         "amount": guard_result.amount,
-                        "elder_id": elder_id,
                         "elder_name": elder_name,
                         "reason": guard_result.reason,
                     },
-                    "status": "unread",
                     "created_at": now.isoformat(),
                 })
             except Exception as e:
@@ -193,7 +198,10 @@ class ConfirmationService:
             return {"ok": bool(result.get("ok")), "status": status, "result": _jsonable(result)}
 
         if session_id and getattr(ctx, "turn_gate", None) is not None:
-            async with ctx.turn_gate.hold(session_id):
+            # 审批是 HTTP 请求：闸门等 105 秒默认对一个点击太长。老人在等审批期间
+            # 又说了一句话时闸门被占，此时等一小段时间就该认输 —— TurnBusy 由
+            # 路由层翻译成 409，而不是逃成 500。
+            async with ctx.turn_gate.hold(session_id, max_wait_s=15.0):
                 return await _execute()
         return await _execute()
 
@@ -220,21 +228,33 @@ class ConfirmationService:
 
     async def list_for_child(self, child_id: str, status: str | None = None) -> list[dict]:
         await self._expire_stale(child_id=child_id)
-        # 获取该子女绑定的老人列表（双向关联，杜绝孤儿任务）
-        bindings = await self._repo.list("family_bindings", where={"child_id": child_id})
+        # 只认 active 绑定：revoked 的子女连列表都看不到（approve 那路有
+        # _ensure_task_in_family 挡着，列表这路也不能漏 —— 摘要里有医院和金额）。
+        bindings = await self._repo.list(
+            "family_bindings", where={"child_id": child_id, "status": "active"})
         elder_ids = [b["elder_id"] for b in bindings if b.get("elder_id")]
 
-        all_tasks = await self._repo.list(
-            "confirmation_tasks", order="-created_at", limit=100
-        )
-        matched = []
-        for t in all_tasks:
-            # 命中条件：child_id 匹配，或者任务归属于绑定的老人
-            if t.get("child_id") == child_id or (elder_ids and t.get("elder_id") in elder_ids):
-                if status and t.get("status") != status:
-                    continue
-                matched.append(t)
-        return matched[:50]
+        # 不拉全表再内存过滤：历史任务一多，pending 就被挤出 100 行窗口，
+        # 老人那一轮永远挂着没人能批。按条件分查（status 下推给库），按 id 合并。
+        matched: dict[str, dict] = {}
+        status_where = {"status": status} if status else {}
+
+        own = await self._repo.list(
+            "confirmation_tasks", where={"child_id": child_id, **status_where},
+            order="-created_at", limit=50)
+        for t in own:
+            # child_id 直接匹配也要落在 active 绑定内，否则 revoked 后仍泄露
+            if t.get("elder_id") in elder_ids:
+                matched[t["id"]] = t
+        for eid in elder_ids:
+            rows = await self._repo.list(
+                "confirmation_tasks", where={"elder_id": eid, **status_where},
+                order="-created_at", limit=50)
+            for t in rows:
+                matched[t["id"]] = t
+
+        return sorted(matched.values(),
+                      key=lambda t: t.get("created_at") or "", reverse=True)[:50]
 
     # ------------------------------------------------------------- 内部
 

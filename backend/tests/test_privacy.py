@@ -225,6 +225,48 @@ async def test_a_junk_level_in_the_database_degrades_instead_of_crashing(
     assert grant.allows_location("realtime") is False
 
 
+async def test_the_dashboard_hands_out_exactly_the_grades_the_elder_set(
+        ctx, elder, child):
+    """看板是隐私分级的**主要出口**：老人存了 (city, summary)，看板就得给
+    (city, summary)，用药字段也确实被裁 —— 后端不许替他改答案。
+
+    这条测的是出口而不是 filter_* 本身：旧实现把 bound 家庭的等级强制抬到
+    realtime/full，老人在"我的位置/我的健康"里的选择被无声忽略，而
+    filter 层的测试全绿 —— 因为被架空的是看板这一步。
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+    from app.main import app
+
+    row = await ctx.repos.find_one(
+        "privacy_permissions", {"elder_id": elder["id"], "child_id": child["id"]})
+    await ctx.repos.update("privacy_permissions", row["id"],
+                           {"location_level": "city", "health_level": "summary"})
+
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        token = create_access_token(child, ctx.settings)
+        headers = {"Authorization": f"Bearer {token}"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport,
+                               base_url="http://test") as ac:
+            res = await ac.get(f"/api/child/{child['id']}/dashboard",
+                               headers=headers)
+            assert res.status_code == 200
+            data = res.json()
+            assert data["privacy"]["location_level"] == "city"
+            assert data["privacy"]["health_level"] == "summary"
+            assert data["medications"], "种子数据里有用药计划"
+            for med in data["medications"]:
+                assert med["drug"] == MASKED, \
+                    "summary 档给药名就是越级 —— 老人的选择被架空了"
+                assert med["dose"] == ""
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ------------------------------------------------------------------- 地名粗化
 
 

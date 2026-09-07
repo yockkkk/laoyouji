@@ -217,6 +217,142 @@ async def test_an_elder_with_nobody_bound_can_never_complete_a_risky_call(
         "解绑之后这张卡片不该出现在任何人的待办里"
 
 
+async def test_a_stranger_family_is_never_picked_as_approver(ctx, elder, child):
+    """库里存在**别家**的 active 绑定时，未绑定老人的任务也不许挂到陌生人头上。
+
+    这是上一个测试缺的那半个世界：测试库删光绑定后一个 active 都不剩，
+    旧代码的"全局兜底"拿不到东西，R5 看着成立；生产库里随便有一家别人，
+    同一条不变量立刻破 —— 陌生人的子女会收到别人家老人的医院和金额。
+    """
+    # 别家：一个和 elder 毫无关系的 active 家庭
+    other_elder = await ctx.repos.insert("users", {
+        "username": "otherelder", "role": "elder", "name": "别人家的老人",
+        "status": "active"})
+    other_child = await ctx.repos.insert("users", {
+        "username": "otherchild", "role": "child", "name": "别人家的子女",
+        "status": "active"})
+    await ctx.repos.insert("family_bindings", {
+        "elder_id": other_elder["id"], "child_id": other_child["id"],
+        "relation": "女儿", "status": "active"})
+    # 当前老人彻底无绑定
+    binding = await ctx.repos.find_one("family_bindings",
+                                       {"elder_id": elder["id"]})
+    assert await ctx.repos.delete("family_bindings", binding["id"]) is True
+
+    turn = TurnContext(ctx=ctx, session_id="s-stranger", user=elder)
+    result = await ctx.dispatcher.execute(turn, "book_ticket", dict(_FROZEN))
+    assert result["suspended"] is True
+
+    rows = await ctx.repos.list("confirmation_tasks",
+                                where={"session_id": "s-stranger"})
+    assert len(rows) == 1
+    assert rows[0]["child_id"] is None, \
+        "不许从库里随便挑一个 active 绑定来审批别人家的老人"
+    assert await ctx.confirmation.list_for_child(other_child["id"]) == [], \
+        "陌生人的待办里不能出现这张卡"
+    assert await ctx.repos.list(
+        "notifications", where={"user_id": other_child["id"]}) == [], \
+        "陌生人也不许收到含医院和金额的通知"
+
+
+async def test_a_revoked_binding_sees_no_pending_tasks(ctx, elder, child):
+    """绑定 revoked 之后，列表接口一条都不给 —— approve 那路有校验，列表也不能漏。"""
+    task_id = await _suspend_ticket(ctx, elder)
+    binding = await ctx.repos.find_one(
+        "family_bindings", {"elder_id": elder["id"], "child_id": child["id"]})
+    await ctx.repos.update("family_bindings", binding["id"],
+                           {"status": "revoked"})
+
+    assert await ctx.confirmation.list_for_child(child["id"]) == []
+    assert await ctx.confirmation.list_for_child(
+        child["id"], status="pending") == []
+    task = await ctx.repos.get("confirmation_tasks", task_id)
+    assert task["status"] == "pending", "任务还在，只是谁都不该看见"
+
+
+async def test_pending_tasks_survive_a_long_history(ctx, elder, child):
+    """1 条 pending + 120 条 executed：pending 必须看得见。
+
+    旧实现拉全表最新 100 行再内存过滤，历史一多 pending 就被挤出窗口 ——
+    老人那一轮永远挂着，没人能批。这不是显示问题，是功能性死锁。
+    """
+    task_id = await _suspend_ticket(ctx, elder)
+    for i in range(120):
+        # 日期取将来值：让 executed 全部比 pending 新，旧实现的全表 100 行
+        # 窗口才会把 pending 挤出去（这正是生产里的情形：审批永远在催，
+        # 历史任务不断堆在它头上）。
+        await ctx.repos.insert("confirmation_tasks", {
+            "session_id": "s-hist", "elder_id": elder["id"],
+            "child_id": child["id"], "tool_name": "book_ticket",
+            "tool_args": dict(_FROZEN), "status": "executed",
+            "created_at": f"2027-06-{(i % 28) + 1:02d}T{i % 24:02d}:00:00+00:00",
+        })
+
+    rows = await ctx.confirmation.list_for_child(child["id"], status="pending")
+    assert [t["id"] for t in rows] == [task_id]
+
+
+async def test_the_notification_uses_the_same_shape_as_the_schema(
+        ctx, elder, child):
+    """通知表只有一套行形状（schema.sql：summary/is_read/data）。
+
+    旧写法塞 content/payload/status='unread' —— 单表 JSON 存储不报错，
+    但前端靠 is_read 判未读：confirmation_request 行没有 is_read，
+    永远显示"未读"，点了已读也不变。
+    """
+    await _suspend_ticket(ctx, elder)
+
+    rows = await ctx.repos.list(
+        "notifications", where={"user_id": child["id"]})
+    assert len(rows) == 1
+    notif = rows[0]
+    assert notif["type"] == "confirmation_request"
+    assert notif["is_read"] is False, "未读要靠 is_read，不是另一套 status 字段"
+    assert notif["summary"], "摘要放在 summary，不是 content"
+    assert notif["data"]["task_id"], "载荷放在 data，不是 payload"
+    assert notif["elder_id"] == elder["id"]
+    assert "content" not in notif and "payload" not in notif
+    assert "status" not in notif and "family_id" not in notif
+
+
+async def test_approve_while_the_gate_is_held_gets_a_409_not_a_500(
+        ctx, elder, child):
+    """会话闸门被老人新一轮对话占着时，审批返回 409，不是 500。
+
+    TurnBusy 不是 ConfirmationError 的子类，路由那个 except 接不住它 ——
+    不修的话，老人在等审批期间又说了一句话，子女点批准就撞上 500。
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.api.deps import get_ctx
+    from app.auth.security import create_access_token
+    from app.core.turn_gate import TurnBusy
+    from app.main import app
+
+    task_id = await _suspend_ticket(ctx, elder)
+
+    original = ctx.confirmation.approve_and_execute
+
+    async def _busy(*args, **kwargs):
+        raise TurnBusy("老人正在说下一件事，请稍后再点")
+
+    ctx.confirmation.approve_and_execute = _busy
+    app.dependency_overrides[get_ctx] = lambda: ctx
+    try:
+        token = create_access_token(child, ctx.settings)
+        headers = {"Authorization": f"Bearer {token}"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport,
+                               base_url="http://test") as ac:
+            res = await ac.post(f"/api/confirmations/{task_id}/approve",
+                                headers=headers)
+            assert res.status_code == 409
+            assert "稍后" in res.json()["detail"]
+    finally:
+        ctx.confirmation.approve_and_execute = original
+        app.dependency_overrides.clear()
+
+
 async def test_the_elder_is_told_that_the_family_was_asked(ctx, elder):
     """老人当场听到的那句话：说清"发给家人了、同意后我就办"，不含黑话。
 

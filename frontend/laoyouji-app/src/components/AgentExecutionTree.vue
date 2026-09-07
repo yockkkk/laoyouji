@@ -2383,35 +2383,48 @@ export default {
     },
 
     triggerApprove(confirmationId, toolName) {
-      if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
-        this.demoApprovals.appointment = true
-      } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
-        this.demoApprovals.ticket = true
-      } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
-        this.demoApprovals.hotel = true
+      // 本地"模拟通过"的状态只对演示卡片（conf_demo_）生效。
+      // 真实任务必须等服务端确认（由父组件 await 后才翻卡片），
+      // 否则这里先把界面翻绿、服务端却 403，界面就在替家人撒谎。
+      const isDemo = !confirmationId || confirmationId.startsWith('conf_demo_')
+      if (isDemo) {
+        if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
+          this.demoApprovals.appointment = true
+        } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
+          this.demoApprovals.ticket = true
+        } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
+          this.demoApprovals.hotel = true
+        }
       }
       this.$emit('resolve-confirmation', {
         confirmationId,
         tool: toolName,
         status: 'executed',
       })
-      uni.showToast({ title: '已模拟子女端审核同意！', icon: 'success' })
+      if (isDemo) {
+        uni.showToast({ title: '已模拟子女端审核同意！', icon: 'success' })
+      }
     },
 
     triggerReject(confirmationId, toolName) {
-      if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
-        this.demoApprovals.appointment = 'rejected'
-      } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
-        this.demoApprovals.ticket = 'rejected'
-      } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
-        this.demoApprovals.hotel = 'rejected'
+      const isDemo = !confirmationId || confirmationId.startsWith('conf_demo_')
+      if (isDemo) {
+        if ((confirmationId && (confirmationId.includes('appoint') || confirmationId.includes('health'))) || toolName === 'register_appointment') {
+          this.demoApprovals.appointment = 'rejected'
+        } else if ((confirmationId && confirmationId.includes('ticket')) || toolName === 'book_ticket') {
+          this.demoApprovals.ticket = 'rejected'
+        } else if ((confirmationId && confirmationId.includes('hotel')) || toolName === 'book_hotel') {
+          this.demoApprovals.hotel = 'rejected'
+        }
       }
       this.$emit('resolve-confirmation', {
         confirmationId,
         tool: toolName,
         status: 'rejected',
       })
-      uni.showToast({ title: '已模拟子女端拒绝该操作', icon: 'none' })
+      if (isDemo) {
+        uni.showToast({ title: '已模拟子女端拒绝该操作', icon: 'none' })
+      }
     },
 
     approveAllPending() {

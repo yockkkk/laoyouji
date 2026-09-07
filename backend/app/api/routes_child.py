@@ -12,8 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_ctx, get_current_principal
 from app.auth.security import Principal
 from app.core.context import AppContext
-from app.safety.privacy import PrivacyGrant, filter_alert, filter_medication
-from app.shared.plan_helpers import deduplicate_trips_for_elder, extract_destination
+from app.safety.privacy import filter_alert, filter_medication
+from app.shared.plan_helpers import extract_destination, list_trips_for_display
 
 router = APIRouter(prefix="/api/child", tags=["child"])
 
@@ -48,21 +48,10 @@ async def dashboard(
     elder = elders[0]
     elder_id = elder["id"]
 
-    # 隐私分级：先取授权
+    # 隐私分级：老人在"我的位置/我的健康"里调到哪一档，子女就看到哪一档。
+    # 后端不替他改答案 —— 存了不用的开关比没有开关更糟。子女看到
+    # "老人未开放此项"占位时，正确解法是引导老人授权，不是在看板出口架空分级。
     grant = await ctx.privacy.grant_for(elder_id, child_id)
-    # 针对已建立 active 关系的家庭成员，默认隐私为全透明（realtime, full），
-    # 避免默认 summary 导致的 "老人未开放此项" 占位遮蔽，使子女能够完整看到用药与行程。
-    if grant.bound:
-        loc_lvl = "realtime" if grant.location_level != "off" else grant.location_level
-        hlth_lvl = "full" if grant.health_level != "off" else grant.health_level
-        if loc_lvl != grant.location_level or hlth_lvl != grant.health_level:
-            grant = PrivacyGrant(
-                elder_id=grant.elder_id,
-                child_id=grant.child_id,
-                location_level=loc_lvl,
-                health_level=hlth_lvl,
-                bound=True,
-            )
     await ctx.privacy.audit(grant, "child_dashboard")
 
     pending = await ctx.confirmation.list_for_child(child_id, status="pending")
@@ -77,8 +66,9 @@ async def dashboard(
             where={"plan_id": m["id"], "scheduled_for": date.today().isoformat()})
         today_logs.extend(rows)
 
-    # 进行中/最近的行程与计划（清理并获取去重后的行程）
-    trips = await deduplicate_trips_for_elder(ctx.repos, elder_id)
+    # 进行中/最近的行程与计划（只读折叠展示，绝不在这个 GET 里删库：
+    # 前端每 5 秒轮询一次，删就是永久丢用户数据）
+    trips = await list_trips_for_display(ctx.repos, elder_id)
 
     # 最近守护告警（最近的异常 checkpoint）
     raw_alerts = []
@@ -160,7 +150,7 @@ async def get_plans(
     elder_ids = [b["elder_id"] for b in bindings]
     plans = []
     for eid in elder_ids:
-        trips = await deduplicate_trips_for_elder(ctx.repos, eid)
+        trips = await list_trips_for_display(ctx.repos, eid)
         for t in trips:
             plan_obj = t.get("plan")
             if plan_obj:

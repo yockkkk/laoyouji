@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.db.repositories import Repository, utcnow_iso
+
+# 通知保留窗口：超过这个天数的旧通知在新通知写入时顺手清掉
+_NOTIFICATION_KEEP_DAYS = 30
 
 
 def extract_destination(data: dict[str, Any] | None) -> str:
@@ -105,6 +109,18 @@ def extract_destination(data: dict[str, Any] | None) -> str:
     return ""
 
 
+def plan_kind(t: dict[str, Any], purpose: str = "") -> str:
+    """归一化计划类型：trip_plan 与 medical_plan 是同一个语义桶。
+
+    模型这一轮报 trip_plan、下一轮报 medical_plan（main_agent 的别名表正说明
+    它会飘）。按 kind 相等去重，同一份"去北京就医"的计划书就会存两条。
+    """
+    raw = (t.get("plan") or {}).get("type") or ("medical_plan" if "就医" in purpose else "trip_plan")
+    if raw in ("trip_plan", "medical_plan"):
+        return "travel_plan"
+    return raw
+
+
 def is_same_plan(t1: dict[str, Any], t2: dict[str, Any]) -> bool:
     """Determine if two trips or plans represent the same plan."""
     p1 = (t1.get("purpose") or (t1.get("plan") or {}).get("title") or "").strip()
@@ -114,9 +130,7 @@ def is_same_plan(t1: dict[str, Any], t2: dict[str, Any]) -> bool:
     d1 = extract_destination(t1)
     d2 = extract_destination(t2)
     if d1 and d2 and d1 == d2:
-        kind1 = (t1.get("plan") or {}).get("type") or ("medical_plan" if "就医" in p1 else "trip_plan")
-        kind2 = (t2.get("plan") or {}).get("type") or ("medical_plan" if "就医" in p2 else "trip_plan")
-        if kind1 == kind2:
+        if plan_kind(t1, p1) == plan_kind(t2, p2):
             return True
     return False
 
@@ -165,21 +179,45 @@ async def upsert_trip_plan(
         return inserted, True
 
 
-async def deduplicate_trips_for_elder(repos: Repository, elder_id: str) -> list[dict[str, Any]]:
-    """Clean up duplicate trips for elder_id in repository, returning unique trips."""
+def trip_dedup_key(t: dict[str, Any]) -> str:
+    """判重键：目的地 + 语义类型 + 标题三者一起才算重复。
+
+    旧判据只有"同城同类型"：北京·心内科 3/10 和北京·骨科 5/22 会被判成
+    重复删掉一条。同城的两趟不同行程不是重复 —— 宁可显示重复，也别删真数据。
+    """
+    dest = extract_destination(t)
+    p = (t.get("purpose") or (t.get("plan") or {}).get("title") or "").strip()
+    t_status = t.get("status") or "planned"
+    if t_status in ("planned", "ongoing"):
+        return f"active:{dest}:{plan_kind(t, p)}:{p}"
+    return f"terminal:{t.get('id')}"
+
+
+async def list_trips_for_display(repos: Repository, elder_id: str) -> list[dict[str, Any]]:
+    """读路径专用：在内存里折叠重复展示，**绝不删库**（GET 必须无副作用）。"""
     all_trips = await repos.list("trips", where={"elder_id": elder_id}, order="-created_at")
     unique_trips: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
     for t in all_trips:
-        dest = extract_destination(t)
-        p = t.get("purpose") or (t.get("plan") or {}).get("title") or ""
-        t_status = t.get("status") or "planned"
-        p_type = (t.get("plan") or {}).get("type") or ("medical_plan" if "就医" in p else "trip_plan")
-        if t_status in ("planned", "ongoing"):
-            key = f"active:{dest}:{p_type}" if dest else f"active:{p}"
-        else:
-            key = f"terminal:{t.get('id')}"
+        key = trip_dedup_key(t)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_trips.append(t)
+    return unique_trips
 
+
+async def deduplicate_trips_for_elder(repos: Repository, elder_id: str) -> list[dict[str, Any]]:
+    """Clean up duplicate trips for elder_id in repository, returning unique trips.
+
+    会真删行 —— 只允许 scripts/cleanup_trips.py 这条显式清理路径调用，
+    任何 GET 接口都不许用它（看板每 5 秒轮询一次，删就是永久丢数据）。
+    """
+    all_trips = await repos.list("trips", where={"elder_id": elder_id}, order="-created_at")
+    unique_trips: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for t in all_trips:
+        key = trip_dedup_key(t)
         if key in seen_keys:
             await repos.delete("trips", t["id"])
         else:
@@ -211,6 +249,21 @@ async def dispatch_plan_created_notification(
         if not child_id or child_id in seen_children:
             continue
         seen_children.add(child_id)
+        existing = await repos.list(
+            "notifications", where={"user_id": child_id}, order="-created_at")
+        # 幂等：同一份计划书重生成几次，trips 去重了，通知也不能跟着堆。
+        # (user_id, type, data.trip_id) 已存在就跳过。
+        if any(
+            n.get("type") == "plan_created"
+            and (n.get("data") or {}).get("trip_id") == trip_id
+            for n in existing
+        ):
+            continue
+        # 保留窗口：顺手清掉这个子女 30 天前的旧通知，表不会无限膨胀。
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=_NOTIFICATION_KEEP_DAYS)).isoformat()
+        for n in existing:
+            if (n.get("created_at") or "") < cutoff:
+                await repos.delete("notifications", n["id"])
         notif = await repos.insert(
             "notifications",
             {

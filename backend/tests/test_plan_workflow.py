@@ -371,4 +371,73 @@ async def test_extract_destination_scenic_and_hospitals():
     assert is_same_plan(t1, t2) is True
 
 
+async def test_is_same_plan_treats_trip_and_medical_as_one_bucket():
+    """trip_plan 与 medical_plan 是同一个语义桶。
+
+    模型这一轮报 trip_plan、下一轮报 medical_plan（别名表正说明它会飘），
+    按 kind 相等去重，同一份"去北京"的计划书就存了两条 —— 去重的本意是一条。
+    """
+    t1 = {"purpose": "张桂芳 · 北京出行计划书 v1", "plan": {"type": "trip_plan"}}
+    t2 = {"purpose": "张桂芳 · 北京就医出行计划书 v2", "plan": {"type": "medical_plan"}}
+    assert is_same_plan(t1, t2) is True
+
+
+async def test_same_city_different_trips_are_not_duplicates(ctx, elder):
+    """同城的两趟不同行程不是重复：北京·心内科 3/10 和北京·骨科 5/22 都得留着。
+
+    旧判据只有"目的地 + 类型"，挂在 GET 看板里每 5 秒跑一次 ——
+    骨科那趟会被永久删掉。收紧判据后，宁可显示重复也别删真数据。
+    """
+    elder_id = elder["id"]
+    t1 = await ctx.repos.insert("trips", {
+        "elder_id": elder_id,
+        "purpose": "北京 · 协和医院心内科复查 3月10日",
+        "plan": {"type": "medical_plan", "title": "北京 · 协和医院心内科复查 3月10日"},
+        "status": "planned",
+    })
+    t2 = await ctx.repos.insert("trips", {
+        "elder_id": elder_id,
+        "purpose": "北京 · 积水潭医院骨科就诊 5月22日",
+        "plan": {"type": "medical_plan", "title": "北京 · 积水潭医院骨科就诊 5月22日"},
+        "status": "planned",
+    })
+
+    cleaned = await deduplicate_trips_for_elder(ctx.repos, elder_id)
+    assert len(cleaned) == 2, "同城不同行程不许判重删除"
+    remaining = await ctx.repos.list("trips", where={"elder_id": elder_id})
+    assert len(remaining) == 2
+
+
+async def test_display_folding_never_deletes_rows(ctx, elder):
+    """看板读路径只在内存里折叠，绝不删库 —— GET 必须无副作用。"""
+    from app.shared.plan_helpers import list_trips_for_display
+
+    elder_id = elder["id"]
+    card = {"title": f"{elder['name']} · 北京就医出行计划书",
+            "city": "北京", "type": "medical_plan"}
+    for _ in range(2):  # 同一份计划书被重复落库两次
+        await ctx.repos.insert("trips", {
+            "elder_id": elder_id, "purpose": card["title"],
+            "plan": card, "status": "planned"})
+
+    shown = await list_trips_for_display(ctx.repos, elder_id)
+    assert len(shown) == 1, "展示时折叠成一条"
+    rows = await ctx.repos.list("trips", where={"elder_id": elder_id})
+    assert len(rows) == 2, "但库里一条都不许少"
+
+
+async def test_plan_notification_is_idempotent_per_trip(ctx, elder, child):
+    """同一份计划书重生成 3 次：trips 去重成 1 条，通知也只能是 1 条。"""
+    card = {"title": "张桂芳 · 北京就医出行计划书", "pages": []}
+    for _ in range(3):
+        await dispatch_plan_created_notification(
+            ctx.repos, elder, card, "trip-idem-1", "medical_plan")
+
+    notifs = await ctx.repos.list(
+        "notifications", where={"user_id": child["id"]})
+    plan_notifs = [n for n in notifs if n.get("type") == "plan_created"
+                   and (n.get("data") or {}).get("trip_id") == "trip-idem-1"]
+    assert len(plan_notifs) == 1
+
+
 

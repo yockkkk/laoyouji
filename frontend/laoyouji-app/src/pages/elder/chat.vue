@@ -499,17 +499,27 @@ export default {
     async onTreeResolveConfirmation({ confirmationId, status, tool }) {
       const nextStatus = status || 'executed'
       const isApproved = nextStatus === 'executed'
-      this._resolveCard(confirmationId, nextStatus, isApproved, tool)
+      // 真实确认任务：必须先等服务端真的办了，才能翻卡片。
+      // 服务端只认子女角色，老人自己的 token 必然 403 —— 旧写法是先翻成
+      // "已出票"再静默吞掉 403，卡片在撒谎。现在失败就照实说，卡片不动。
       if (confirmationId && !confirmationId.startsWith('conf_demo_')) {
         try {
           const endpoint = isApproved
             ? `/api/confirmations/${confirmationId}/approve`
             : `/api/confirmations/${confirmationId}/reject`
           await post(endpoint, {})
+          this._resolveCard(confirmationId, nextStatus, isApproved, tool)
         } catch (e) {
-          // Fallback for role or test network
+          uni.showToast({
+            title: '这步要家人在他自己手机上点才算数，这里代点不了',
+            icon: 'none',
+            duration: 3000,
+          })
         }
+        return
       }
+      // 演示卡片（conf_demo_ 前缀）：没有对应的真实任务，本地翻牌即可
+      this._resolveCard(confirmationId, nextStatus, isApproved, tool)
     },
     async initSessionHistory() {
       try {
