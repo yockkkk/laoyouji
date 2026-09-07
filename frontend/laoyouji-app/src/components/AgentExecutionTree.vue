@@ -429,25 +429,29 @@
                   <text class="monologue-text">{{ agentThoughts.health }}</text>
                 </view>
 
-                <!-- 工具节点列表 -->
+                <!-- 工具节点列表：节点、入参、状态全部来自该智能体真实发出的 tool_call / tool_result -->
                 <view class="tools-flow">
-                  <!-- 工具节点: search_hospital -->
-                  <view class="tool-node" :class="'node-' + healthTools.searchHospital.status">
-                    <view class="node-connector-dot"></view>
+                  <view
+                    v-for="tool in healthTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="[tool.isHighRisk ? 'high-risk-node' : '', 'node-' + tool.status]"
+                  >
+                    <view class="node-connector-dot" :class="{ 'risk-dot': tool.isHighRisk }"></view>
                     <view class="node-card-inner">
                       <view class="node-top-row">
                         <view class="node-name-box">
-                          <text class="tool-fn-name">search_hospital</text>
-                          <text class="tool-cn-name">权威医院专家号源检索</text>
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
+                          <text v-if="tool.isHighRisk" class="risk-badge">🛡️ 家人确认保护</text>
                         </view>
                         <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.searchHospital }}</text>
-                          <view class="node-status-tag" :class="healthTools.searchHospital.status">
-                            {{ formatToolStatus(healthTools.searchHospital.status, 'searchHospital') }}
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
                           </view>
                         </view>
                       </view>
-                      <!-- 参数 JSON 高亮 (R3) -->
+                      <!-- 参数 JSON 高亮：解析大模型真实入参，不再有写死的样例参数 -->
                       <view class="mono-params-box">
                         <view class="params-header-row">
                           <text class="params-lang-label">JSON ARGS</text>
@@ -455,7 +459,7 @@
                         </view>
                         <view class="mono-code-tokens">
                           <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(healthTools.searchHospital.params, 'searchHospital')" :key="tIdx" class="token-item">
+                          <view v-for="(tok, tokIdx) in parseParamsTokens(tool.args)" :key="tokIdx" class="token-item">
                             <text class="tok-key">"{{ tok.k }}"</text>
                             <text class="tok-colon">: </text>
                             <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
@@ -464,95 +468,45 @@
                           <text class="token-brace">}</text>
                         </view>
                       </view>
-                      <!-- 返回摘要与展开详情 (R3) -->
-                      <view v-if="healthTools.searchHospital.result" class="result-box">
-                        <view class="result-summary-row">
-                          <text class="result-text">🎯 匹配号源：{{ healthTools.searchHospital.result }}</text>
-                          <button class="toggle-detail-btn" @tap="toggleToolResultExpand('searchHospital')">
-                            {{ isToolResultExpanded('searchHospital') ? '收起详情 ▴' : '展开完整结果 ▾' }}
-                          </button>
-                        </view>
-                        <view v-if="isToolResultExpanded('searchHospital')" class="expanded-tool-detail">
-                          <view class="detail-row"><text class="detail-k">执行状态:</text><text class="detail-v text-ok">200 OK (成功返回)</text></view>
-                          <view class="detail-row"><text class="detail-k">响应耗时:</text><text class="detail-v tabular-num">{{ toolLatencies.searchHospital }}</text></view>
-                          <view class="detail-row"><text class="detail-k">安全合规:</text><text class="detail-v text-ok">经 HealthDisclaimerGuard 免责审查</text></view>
-                          <view class="detail-row"><text class="detail-k">返回载荷:</text><text class="detail-v code-block">{"doctor": "田伟", "title": "主任医师", "dept": "关节外科", "hospital": "北京积水潭医院", "slot": "08:30-09:30", "fee": 100.0}</text></view>
-                        </view>
-                      </view>
-                    </view>
-                  </view>
-
-                  <!-- 工具节点: register_appointment (高危资金/挂起) -->
-                  <view class="tool-node high-risk-node" :class="'node-' + healthTools.registerAppointment.status">
-                    <view class="node-connector-dot risk-dot"></view>
-                    <view class="node-card-inner">
-                      <view class="node-top-row">
-                        <view class="node-name-box">
-                          <text class="tool-fn-name">register_appointment</text>
-                          <text class="tool-cn-name">门诊挂号 (高危医疗)</text>
-                          <text class="risk-badge">🛡️ 家人确认保护</text>
-                        </view>
-                        <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.registerAppointment }}</text>
-                          <view class="node-status-tag" :class="healthTools.registerAppointment.status">
-                            {{ formatToolStatus(healthTools.registerAppointment.status, 'registerAppointment') }}
-                          </view>
-                        </view>
-                      </view>
-                      <view class="mono-params-box">
-                        <view class="params-header-row">
-                          <text class="params-lang-label">JSON ARGS</text>
-                          <text class="params-copy-hint">入参载荷</text>
-                        </view>
-                        <view class="mono-code-tokens">
-                          <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(healthTools.registerAppointment.params, 'registerAppointment')" :key="tIdx" class="token-item">
-                            <text class="tok-key">"{{ tok.k }}"</text>
-                            <text class="tok-colon">: </text>
-                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
-                            <text v-if="!tok.isLast" class="tok-comma">,</text>
-                          </view>
-                          <text class="token-brace">}</text>
-                        </view>
-                      </view>
-                      <!-- 挂起等待子女确认状态卡片 (R2) -->
-                      <view v-if="healthTools.registerAppointment.status === 'suspended'" class="suspended-alert-card">
+                      <!-- 高危挂起：等家人确权 -->
+                      <view v-if="tool.status === 'suspended'" class="suspended-alert-card">
                         <view class="suspend-header">
                           <text class="suspend-icon">⏸️</text>
-                          <text class="suspend-title">等待子女确认 (¥{{ healthTools.registerAppointment.amount ? Number(healthTools.registerAppointment.amount).toFixed(2) : '100.00' }})</text>
+                          <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
                         </view>
-                        <text class="suspend-desc">{{ healthTools.registerAppointment.desc || '已安全拦截高危挂号请求，需子女手机端核准后方可放行挂号' }}</text>
+                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，需子女手机端核准后方可放行' }}</text>
                         <view class="suspend-actions-row">
-                          <button
-                            class="quick-approve-btn"
-                            @tap="triggerApprove(healthTools.registerAppointment.confirmationId || 'conf_demo_appoint', 'register_appointment')"
-                          >
-                            ⚡ 模拟子女审批通过 (Loopback)
+                          <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
+                            ⚡ 模拟子女审批通过
                           </button>
-                          <button
-                            class="quick-reject-btn"
-                            @tap="triggerReject(healthTools.registerAppointment.confirmationId || 'conf_demo_appoint', 'register_appointment')"
-                          >
+                          <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
                             🛑 模拟子女拒绝
                           </button>
                         </view>
                       </view>
-                      <!-- 已执行卡片 -->
-                      <view v-else-if="healthTools.registerAppointment.status === 'executed'" class="executed-alert-card">
+                      <!-- 家人已放行 -->
+                      <view v-else-if="tool.status === 'completed' && tool.isHighRisk" class="executed-alert-card">
                         <text class="executed-icon">✅</text>
-                        <text class="executed-text">子女已审批同意 · 积水潭骨科田伟主任号挂号成功</text>
+                        <text class="executed-text">子女已审批同意 · 操作已放行</text>
                       </view>
-                      <!-- 已拒绝卡片 -->
-                      <view v-else-if="healthTools.registerAppointment.status === 'rejected'" class="rejected-alert-card">
+                      <!-- 家人已拒绝 -->
+                      <view v-else-if="tool.status === 'rejected'" class="rejected-alert-card">
                         <view class="reject-header">
                           <text class="reject-icon">🛑</text>
-                          <text class="reject-title">子女已拒绝挂号申请</text>
+                          <text class="reject-title">子女已拒绝该操作</text>
                         </view>
-                        <text class="reject-desc">已安全拦截并终止高危挂号请求，未扣除挂号费用，就诊预约已取消。</text>
+                        <text class="reject-desc">已安全拦截并终止本次高危请求，未产生任何扣费。</text>
+                      </view>
+                      <!-- 工具返回摘要 -->
+                      <view v-if="tool.result" class="result-box">
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 {{ tool.result }}</text>
+                        </view>
                       </view>
                     </view>
                   </view>
                 </view>
+
               </view>
             </view>
           </view>
@@ -592,23 +546,29 @@
                   <text class="monologue-text">{{ agentThoughts.travel }}</text>
                 </view>
 
+                <!-- 工具节点列表：节点、入参、状态全部来自该智能体真实发出的 tool_call / tool_result -->
                 <view class="tools-flow">
-                  <!-- 工具节点: search_train -->
-                  <view class="tool-node" :class="'node-' + travelTools.searchTrain.status">
-                    <view class="node-connector-dot"></view>
+                  <view
+                    v-for="tool in travelTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="[tool.isHighRisk ? 'high-risk-node' : '', 'node-' + tool.status]"
+                  >
+                    <view class="node-connector-dot" :class="{ 'risk-dot': tool.isHighRisk }"></view>
                     <view class="node-card-inner">
                       <view class="node-top-row">
                         <view class="node-name-box">
-                          <text class="tool-fn-name">search_train</text>
-                          <text class="tool-cn-name">高铁车次检索</text>
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
+                          <text v-if="tool.isHighRisk" class="risk-badge">🛡️ 家人确认保护</text>
                         </view>
                         <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.searchTrain }}</text>
-                          <view class="node-status-tag" :class="travelTools.searchTrain.status">
-                            {{ formatToolStatus(travelTools.searchTrain.status, 'searchTrain') }}
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
                           </view>
                         </view>
                       </view>
+                      <!-- 参数 JSON 高亮：解析大模型真实入参，不再有写死的样例参数 -->
                       <view class="mono-params-box">
                         <view class="params-header-row">
                           <text class="params-lang-label">JSON ARGS</text>
@@ -616,7 +576,7 @@
                         </view>
                         <view class="mono-code-tokens">
                           <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.searchTrain.params, 'searchTrain')" :key="tIdx" class="token-item">
+                          <view v-for="(tok, tokIdx) in parseParamsTokens(tool.args)" :key="tokIdx" class="token-item">
                             <text class="tok-key">"{{ tok.k }}"</text>
                             <text class="tok-colon">: </text>
                             <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
@@ -625,230 +585,45 @@
                           <text class="token-brace">}</text>
                         </view>
                       </view>
-                      <view v-if="travelTools.searchTrain.result" class="result-box">
-                        <text class="result-text">🚅 {{ travelTools.searchTrain.result }}</text>
-                      </view>
-                    </view>
-                  </view>
-
-                  <!-- 工具节点: book_ticket (高危资金/挂起) -->
-                  <view class="tool-node high-risk-node" :class="'node-' + travelTools.bookTicket.status">
-                    <view class="node-connector-dot risk-dot"></view>
-                    <view class="node-card-inner">
-                      <view class="node-top-row">
-                        <view class="node-name-box">
-                          <text class="tool-fn-name">book_ticket</text>
-                          <text class="tool-cn-name">高铁订票出票 (高危支付)</text>
-                          <text class="risk-badge">🛡️ 家人确认保护</text>
-                        </view>
-                        <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.bookTicket }}</text>
-                          <view class="node-status-tag" :class="travelTools.bookTicket.status">
-                            {{ formatToolStatus(travelTools.bookTicket.status, 'bookTicket') }}
-                          </view>
-                        </view>
-                      </view>
-                      <view class="mono-params-box">
-                        <view class="params-header-row">
-                          <text class="params-lang-label">JSON ARGS</text>
-                          <text class="params-copy-hint">入参载荷</text>
-                        </view>
-                        <view class="mono-code-tokens">
-                          <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.bookTicket.params, 'bookTicket')" :key="tIdx" class="token-item">
-                            <text class="tok-key">"{{ tok.k }}"</text>
-                            <text class="tok-colon">: </text>
-                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
-                            <text v-if="!tok.isLast" class="tok-comma">,</text>
-                          </view>
-                          <text class="token-brace">}</text>
-                        </view>
-                      </view>
-                      <!-- 挂起卡片 -->
-                      <view v-if="travelTools.bookTicket.status === 'suspended'" class="suspended-alert-card">
+                      <!-- 高危挂起：等家人确权 -->
+                      <view v-if="tool.status === 'suspended'" class="suspended-alert-card">
                         <view class="suspend-header">
                           <text class="suspend-icon">⏸️</text>
-                          <text class="suspend-title">等待子女确认 (¥{{ travelTools.bookTicket.amount ? Number(travelTools.bookTicket.amount).toFixed(2) : '443.50' }})</text>
+                          <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
                         </view>
-                        <text class="suspend-desc">{{ travelTools.bookTicket.desc || '高铁票订购款项，已推送子女端审核放行' }}</text>
+                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，需子女手机端核准后方可放行' }}</text>
                         <view class="suspend-actions-row">
-                          <button
-                            class="quick-approve-btn"
-                            @tap="triggerApprove(travelTools.bookTicket.confirmationId || 'conf_demo_ticket', 'book_ticket')"
-                          >
-                            ⚡ 模拟子女审批通过 (Loopback)
+                          <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
+                            ⚡ 模拟子女审批通过
                           </button>
-                          <button
-                            class="quick-reject-btn"
-                            @tap="triggerReject(travelTools.bookTicket.confirmationId || 'conf_demo_ticket', 'book_ticket')"
-                          >
+                          <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
                             🛑 模拟子女拒绝
                           </button>
                         </view>
                       </view>
-                      <!-- 已执行卡片 -->
-                      <view v-else-if="travelTools.bookTicket.status === 'executed'" class="executed-alert-card">
+                      <!-- 家人已放行 -->
+                      <view v-else-if="tool.status === 'completed' && tool.isHighRisk" class="executed-alert-card">
                         <text class="executed-icon">✅</text>
-                        <text class="executed-text">子女已审批同意 · G102二等座已出票，凭身份证直接进站</text>
+                        <text class="executed-text">子女已审批同意 · 操作已放行</text>
                       </view>
-                      <!-- 已拒绝卡片 -->
-                      <view v-else-if="travelTools.bookTicket.status === 'rejected'" class="rejected-alert-card">
+                      <!-- 家人已拒绝 -->
+                      <view v-else-if="tool.status === 'rejected'" class="rejected-alert-card">
                         <view class="reject-header">
                           <text class="reject-icon">🛑</text>
-                          <text class="reject-title">子女已拒绝购票申请</text>
+                          <text class="reject-title">子女已拒绝该操作</text>
                         </view>
-                        <text class="reject-desc">已安全终止高铁订票出票操作，未产生 ¥443.50 扣费，资金已保护。</text>
+                        <text class="reject-desc">已安全拦截并终止本次高危请求，未产生任何扣费。</text>
                       </view>
-                    </view>
-                  </view>
-
-                  <!-- 工具节点: search_hotel -->
-                  <view class="tool-node" :class="'node-' + travelTools.searchHotel.status">
-                    <view class="node-connector-dot"></view>
-                    <view class="node-card-inner">
-                      <view class="node-top-row">
-                        <view class="node-name-box">
-                          <text class="tool-fn-name">search_hotel</text>
-                          <text class="tool-cn-name">适老无障碍酒店检索</text>
+                      <!-- 工具返回摘要 -->
+                      <view v-if="tool.result" class="result-box">
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 {{ tool.result }}</text>
                         </view>
-                        <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.searchHotel }}</text>
-                          <view class="node-status-tag" :class="travelTools.searchHotel.status">
-                            {{ formatToolStatus(travelTools.searchHotel.status, 'searchHotel') }}
-                          </view>
-                        </view>
-                      </view>
-                      <view class="mono-params-box">
-                        <view class="params-header-row">
-                          <text class="params-lang-label">JSON ARGS</text>
-                          <text class="params-copy-hint">入参载荷</text>
-                        </view>
-                        <view class="mono-code-tokens">
-                          <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.searchHotel.params, 'searchHotel')" :key="tIdx" class="token-item">
-                            <text class="tok-key">"{{ tok.k }}"</text>
-                            <text class="tok-colon">: </text>
-                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
-                            <text v-if="!tok.isLast" class="tok-comma">,</text>
-                          </view>
-                          <text class="token-brace">}</text>
-                        </view>
-                      </view>
-                      <view v-if="travelTools.searchHotel.result" class="result-box">
-                        <text class="result-text">🏨 {{ travelTools.searchHotel.result }}</text>
-                      </view>
-                    </view>
-                  </view>
-
-                  <!-- 工具节点: book_hotel (高危资金/挂起) -->
-                  <view class="tool-node high-risk-node" :class="'node-' + travelTools.bookHotel.status">
-                    <view class="node-connector-dot risk-dot"></view>
-                    <view class="node-card-inner">
-                      <view class="node-top-row">
-                        <view class="node-name-box">
-                          <text class="tool-fn-name">book_hotel</text>
-                          <text class="tool-cn-name">适老酒店预订 (高危支付)</text>
-                          <text class="risk-badge">🛡️ 家人确认保护</text>
-                        </view>
-                        <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.bookHotel }}</text>
-                          <view class="node-status-tag" :class="travelTools.bookHotel.status">
-                            {{ formatToolStatus(travelTools.bookHotel.status, 'bookHotel') }}
-                          </view>
-                        </view>
-                      </view>
-                      <view class="mono-params-box">
-                        <view class="params-header-row">
-                          <text class="params-lang-label">JSON ARGS</text>
-                          <text class="params-copy-hint">入参载荷</text>
-                        </view>
-                        <view class="mono-code-tokens">
-                          <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.bookHotel.params, 'bookHotel')" :key="tIdx" class="token-item">
-                            <text class="tok-key">"{{ tok.k }}"</text>
-                            <text class="tok-colon">: </text>
-                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
-                            <text v-if="!tok.isLast" class="tok-comma">,</text>
-                          </view>
-                          <text class="token-brace">}</text>
-                        </view>
-                      </view>
-                      <!-- 挂起卡片 -->
-                      <view v-if="travelTools.bookHotel.status === 'suspended'" class="suspended-alert-card">
-                        <view class="suspend-header">
-                          <text class="suspend-icon">⏸️</text>
-                          <text class="suspend-title">等待子女确认 (¥{{ travelTools.bookHotel.amount ? Number(travelTools.bookHotel.amount).toFixed(2) : '680.00' }})</text>
-                        </view>
-                        <text class="suspend-desc">{{ travelTools.bookHotel.desc || '酒店预订2晚费用，已报送子女端确认' }}</text>
-                        <view class="suspend-actions-row">
-                          <button
-                            class="quick-approve-btn"
-                            @tap="triggerApprove(travelTools.bookHotel.confirmationId || 'conf_demo_hotel', 'book_hotel')"
-                          >
-                            ⚡ 模拟子女审批通过 (Loopback)
-                          </button>
-                          <button
-                            class="quick-reject-btn"
-                            @tap="triggerReject(travelTools.bookHotel.confirmationId || 'conf_demo_hotel', 'book_hotel')"
-                          >
-                            🛑 模拟子女拒绝
-                          </button>
-                        </view>
-                      </view>
-                      <!-- 已执行卡片 -->
-                      <view v-else-if="travelTools.bookHotel.status === 'executed'" class="executed-alert-card">
-                        <text class="executed-icon">✅</text>
-                        <text class="executed-text">子女已审批同意 · 漫心酒店无障碍双床房已保留成功</text>
-                      </view>
-                      <!-- 已拒绝卡片 -->
-                      <view v-else-if="travelTools.bookHotel.status === 'rejected'" class="rejected-alert-card">
-                        <view class="reject-header">
-                          <text class="reject-icon">🛑</text>
-                          <text class="reject-title">子女已拒绝预订申请</text>
-                        </view>
-                        <text class="reject-desc">已安全终止酒店预订操作，未产生 ¥680.00 扣费，资金已保护。</text>
-                      </view>
-                    </view>
-                  </view>
-
-                  <!-- 工具节点: get_weather -->
-                  <view class="tool-node" :class="'node-' + travelTools.getWeather.status">
-                    <view class="node-connector-dot"></view>
-                    <view class="node-card-inner">
-                      <view class="node-top-row">
-                        <view class="node-name-box">
-                          <text class="tool-fn-name">get_weather</text>
-                          <text class="tool-cn-name">目的地出行天气感知</text>
-                        </view>
-                        <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.getWeather }}</text>
-                          <view class="node-status-tag" :class="travelTools.getWeather.status">
-                            {{ formatToolStatus(travelTools.getWeather.status, 'getWeather') }}
-                          </view>
-                        </view>
-                      </view>
-                      <view class="mono-params-box">
-                        <view class="params-header-row">
-                          <text class="params-lang-label">JSON ARGS</text>
-                          <text class="params-copy-hint">入参载荷</text>
-                        </view>
-                        <view class="mono-code-tokens">
-                          <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(travelTools.getWeather.params, 'getWeather')" :key="tIdx" class="token-item">
-                            <text class="tok-key">"{{ tok.k }}"</text>
-                            <text class="tok-colon">: </text>
-                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
-                            <text v-if="!tok.isLast" class="tok-comma">,</text>
-                          </view>
-                          <text class="token-brace">}</text>
-                        </view>
-                      </view>
-                      <view v-if="travelTools.getWeather.result" class="result-box">
-                        <text class="result-text">🌤️ {{ travelTools.getWeather.result }}</text>
                       </view>
                     </view>
                   </view>
                 </view>
+
               </view>
             </view>
           </view>
@@ -888,22 +663,29 @@
                   <text class="monologue-text">{{ agentThoughts.community }}</text>
                 </view>
 
+                <!-- 工具节点列表：节点、入参、状态全部来自该智能体真实发出的 tool_call / tool_result -->
                 <view class="tools-flow">
-                  <view class="tool-node" :class="'node-' + communityTools.orderService.status">
-                    <view class="node-connector-dot"></view>
+                  <view
+                    v-for="tool in communityTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="[tool.isHighRisk ? 'high-risk-node' : '', 'node-' + tool.status]"
+                  >
+                    <view class="node-connector-dot" :class="{ 'risk-dot': tool.isHighRisk }"></view>
                     <view class="node-card-inner">
                       <view class="node-top-row">
                         <view class="node-name-box">
-                          <text class="tool-fn-name">order_service / escort</text>
-                          <text class="tool-cn-name">就医全程陪诊服务推荐</text>
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
+                          <text v-if="tool.isHighRisk" class="risk-badge">🛡️ 家人确认保护</text>
                         </view>
                         <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.orderService }}</text>
-                          <view class="node-status-tag" :class="communityTools.orderService.status">
-                            {{ formatToolStatus(communityTools.orderService.status, 'orderService') }}
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
                           </view>
                         </view>
                       </view>
+                      <!-- 参数 JSON 高亮：解析大模型真实入参，不再有写死的样例参数 -->
                       <view class="mono-params-box">
                         <view class="params-header-row">
                           <text class="params-lang-label">JSON ARGS</text>
@@ -911,7 +693,7 @@
                         </view>
                         <view class="mono-code-tokens">
                           <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(communityTools.orderService.params, 'orderService')" :key="tIdx" class="token-item">
+                          <view v-for="(tok, tokIdx) in parseParamsTokens(tool.args)" :key="tokIdx" class="token-item">
                             <text class="tok-key">"{{ tok.k }}"</text>
                             <text class="tok-colon">: </text>
                             <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
@@ -920,12 +702,45 @@
                           <text class="token-brace">}</text>
                         </view>
                       </view>
-                      <view class="result-box">
-                        <text class="result-text">🤝 匹配三甲护士级持证陪诊员，随时待命协助老人就医跑腿</text>
+                      <!-- 高危挂起：等家人确权 -->
+                      <view v-if="tool.status === 'suspended'" class="suspended-alert-card">
+                        <view class="suspend-header">
+                          <text class="suspend-icon">⏸️</text>
+                          <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                        </view>
+                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，需子女手机端核准后方可放行' }}</text>
+                        <view class="suspend-actions-row">
+                          <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
+                            ⚡ 模拟子女审批通过
+                          </button>
+                          <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
+                            🛑 模拟子女拒绝
+                          </button>
+                        </view>
+                      </view>
+                      <!-- 家人已放行 -->
+                      <view v-else-if="tool.status === 'completed' && tool.isHighRisk" class="executed-alert-card">
+                        <text class="executed-icon">✅</text>
+                        <text class="executed-text">子女已审批同意 · 操作已放行</text>
+                      </view>
+                      <!-- 家人已拒绝 -->
+                      <view v-else-if="tool.status === 'rejected'" class="rejected-alert-card">
+                        <view class="reject-header">
+                          <text class="reject-icon">🛑</text>
+                          <text class="reject-title">子女已拒绝该操作</text>
+                        </view>
+                        <text class="reject-desc">已安全拦截并终止本次高危请求，未产生任何扣费。</text>
+                      </view>
+                      <!-- 工具返回摘要 -->
+                      <view v-if="tool.result" class="result-box">
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 {{ tool.result }}</text>
+                        </view>
                       </view>
                     </view>
                   </view>
                 </view>
+
               </view>
             </view>
           </view>
@@ -977,44 +792,30 @@
                       ⚡ 模拟子女一键全批通过
                     </button>
                   </view>
+                  <!-- 清单按真实挂起/高危调用渲染，条目数与金额都来自事件流 -->
                   <view class="safety-items-list">
-                    <view class="safety-item-row">
-                      <text class="item-icon">🏥</text>
+                    <view v-for="task in highRiskTools" :key="task.key" class="safety-item-row">
+                      <text class="item-icon">{{ toolIcon(task.name) }}</text>
                       <view class="item-meta">
-                        <text class="item-name">北京积水潭医院田伟主任门诊号</text>
-                        <text class="item-sub">高危医疗就诊 · 专家号源预约</text>
+                        <text class="item-name">{{ task.summary }}</text>
+                        <text class="item-sub">{{ task.name }}</text>
                       </view>
-                      <text class="item-amount tabular-num">¥100.00</text>
-                      <view class="item-status" :class="healthTools.registerAppointment.status">
-                        {{ formatToolStatus(healthTools.registerAppointment.status, 'registerAppointment') }}
+                      <text v-if="task.amount" class="item-amount tabular-num">¥{{ task.amount }}</text>
+                      <view class="item-status" :class="task.status">
+                        {{ formatToolStatus(task.status, task.name) }}
                       </view>
                     </view>
-                    <view class="safety-item-row">
-                      <text class="item-icon">🧭</text>
+                    <view v-if="highRiskTools.length === 0" class="safety-item-row">
+                      <text class="item-icon">🛡️</text>
                       <view class="item-meta">
-                        <text class="item-name">G102 次高铁二等座车票 (南京南-北京南)</text>
-                        <text class="item-sub">跨城大额资金支付</text>
-                      </view>
-                      <text class="item-amount tabular-num">¥443.50</text>
-                      <view class="item-status" :class="travelTools.bookTicket.status">
-                        {{ formatToolStatus(travelTools.bookTicket.status, 'bookTicket') }}
-                      </view>
-                    </view>
-                    <view class="safety-item-row">
-                      <text class="item-icon">🏨</text>
-                      <view class="item-meta">
-                        <text class="item-name">漫心适老酒店无障碍房 (2晚)</text>
-                        <text class="item-sub">大额住宿保证金预授权</text>
-                      </view>
-                      <text class="item-amount tabular-num">¥680.00</text>
-                      <view class="item-status" :class="travelTools.bookHotel.status">
-                        {{ formatToolStatus(travelTools.bookHotel.status, 'bookHotel') }}
+                        <text class="item-name">本轮暂无高危拦截</text>
+                        <text class="item-sub">未触发双向审批回路</text>
                       </view>
                     </view>
                   </view>
                   <view class="safety-pool-summary">
                     <text class="pool-label">资金拦截池受控总额：</text>
-                    <text class="pool-val tabular-num">¥1,223.50</text>
+                    <text class="pool-val tabular-num">¥{{ highRiskAmountTotal }}</text>
                     <text class="pool-shield-tag">已通过加密长连接推送子女端</text>
                   </view>
                 </view>
@@ -1068,7 +869,6 @@
                           <text class="tool-cn-name">方案聚合装配</text>
                         </view>
                         <view class="node-tags-group">
-                          <text class="latency-badge tabular-num">{{ toolLatencies.composeDeliverable }}</text>
                           <view class="node-status-tag" :class="planBuilderTools.composeDeliverable.status">
                             {{ formatToolStatus(planBuilderTools.composeDeliverable.status, 'composeDeliverable') }}
                           </view>
@@ -1081,7 +881,7 @@
                         </view>
                         <view class="mono-code-tokens">
                           <text class="token-brace">{</text>
-                          <view v-for="(tok, tIdx) in parseParamsTokens(planBuilderTools.composeDeliverable.params, 'composeDeliverable')" :key="tIdx" class="token-item">
+                          <view v-for="(tok, tIdx) in parseParamsTokens(planBuilderTools.composeDeliverable.args)" :key="tIdx" class="token-item">
                             <text class="tok-key">"{{ tok.k }}"</text>
                             <text class="tok-colon">: </text>
                             <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
@@ -1268,6 +1068,7 @@ export default {
       ) {
         return true
       }
+      if (this.allTools.some((t) => t.status === 'rejected')) return true
       return (this.messages || []).some(
         (m) => m.kind === 'suspend' && m.status === 'rejected',
       )
@@ -1278,11 +1079,8 @@ export default {
         if (this.replay.step === 3) return 3
         return 0
       }
-      let count = 0
-      if (this.healthTools.registerAppointment.status === 'suspended') count++
-      if (this.travelTools.bookTicket.status === 'suspended') count++
-      if (this.travelTools.bookHotel.status === 'suspended') count++
-      return count
+      // 数真实挂起的调用：有几个就是几项待批，不再写死 3 个工具名
+      return this.allTools.filter((t) => t.status === 'suspended').length
     },
 
     activeAgentsCount() {
@@ -1425,19 +1223,7 @@ export default {
       }
     },
 
-    toolLatencies() {
-      return {
-        searchHospital: '⚡ 240ms',
-        registerAppointment: '⚡ 380ms',
-        searchTrain: '⚡ 190ms',
-        bookTicket: '⚡ 420ms',
-        searchHotel: '⚡ 210ms',
-        bookHotel: '⚡ 350ms',
-        getWeather: '⚡ 120ms',
-        orderService: '⚡ 160ms',
-        composeDeliverable: '⚡ 310ms',
-      }
-    },
+
 
     // DAG 前沿活跃判断 (R3)
     isRootFrontier() {
@@ -1561,24 +1347,23 @@ export default {
           const isStage4 = idx === 3 || name.includes('计划书') || name.includes('装配') || name.includes('聚合') || name.includes('出行方案')
 
           if (isStage1) {
-            if (this.healthTools.registerAppointment.status === 'executed') st = 'completed'
-            else if (this.healthTools.registerAppointment.status === 'rejected') st = 'rejected'
-            else if (this.healthTools.registerAppointment.status === 'suspended') st = 'suspended'
-            else if (this.healthTools.searchHospital.status === 'completed' && !this.thinking) st = 'completed'
+            if (this.statusOf('register_appointment') === 'completed') st = 'completed'
+            else if (this.statusOf('register_appointment') === 'rejected') st = 'rejected'
+            else if (this.statusOf('register_appointment') === 'suspended') st = 'suspended'
+            else if (this.statusOf('search_hospital') === 'completed' && !this.thinking) st = 'completed'
           } else if (isStage2) {
-            if (this.travelTools.bookTicket.status === 'executed') st = 'completed'
-            else if (this.travelTools.bookTicket.status === 'rejected') st = 'rejected'
-            else if (this.travelTools.bookTicket.status === 'suspended') st = 'suspended'
-            else if (this.travelTools.searchTrain.status === 'completed' && this.travelTools.bookTicket.status !== 'suspended' && !this.thinking) st = 'completed'
+            if (this.statusOf('book_ticket') === 'completed') st = 'completed'
+            else if (this.statusOf('book_ticket') === 'rejected') st = 'rejected'
+            else if (this.statusOf('book_ticket') === 'suspended') st = 'suspended'
+            else if (this.statusOf('search_train') === 'completed' && !this.thinking) st = 'completed'
           } else if (isStage3) {
-            if (this.travelTools.bookHotel.status === 'executed') st = 'completed'
-            else if (this.travelTools.bookHotel.status === 'rejected') st = 'rejected'
-            else if (this.travelTools.bookHotel.status === 'suspended') st = 'suspended'
-            else if (this.travelTools.searchHotel.status === 'completed' && this.travelTools.bookHotel.status !== 'suspended' && !this.thinking) st = 'completed'
+            if (this.statusOf('book_hotel') === 'completed') st = 'completed'
+            else if (this.statusOf('book_hotel') === 'rejected') st = 'rejected'
+            else if (this.statusOf('book_hotel') === 'suspended') st = 'suspended'
+            else if (this.statusOf('search_hotel') === 'completed' && !this.thinking) st = 'completed'
           } else if (isStage4) {
             if (this.isArtifactReady) st = 'completed'
             else if (this.hasAnyRejected) st = 'rejected'
-            else if (this.healthTools.registerAppointment.status === 'executed' && this.travelTools.bookTicket.status === 'executed' && this.travelTools.bookHotel.status === 'executed') st = 'completed'
           }
 
           return {
@@ -1623,30 +1408,10 @@ export default {
         ]
       }
 
-      // 5. 任务进行中动态推导
-      const step1Status = this.healthTools.registerAppointment.status === 'executed'
-        ? 'completed'
-        : (this.healthTools.registerAppointment.status === 'rejected'
-          ? 'rejected'
-          : (this.healthTools.registerAppointment.status === 'suspended'
-            ? 'suspended'
-            : (this.thinking ? 'in_progress' : (this.healthTools.searchHospital.status === 'completed' ? 'completed' : 'in_progress'))))
-
-      const step2Status = this.travelTools.bookTicket.status === 'executed'
-        ? 'completed'
-        : (this.travelTools.bookTicket.status === 'rejected'
-          ? 'rejected'
-          : (this.travelTools.bookTicket.status === 'suspended'
-            ? 'suspended'
-            : (this.thinking ? 'in_progress' : (this.travelTools.searchTrain.status === 'completed' ? 'completed' : 'in_progress'))))
-
-      const step3Status = this.travelTools.bookHotel.status === 'executed'
-        ? 'completed'
-        : (this.travelTools.bookHotel.status === 'rejected'
-          ? 'rejected'
-          : (this.travelTools.bookHotel.status === 'suspended'
-            ? 'suspended'
-            : (this.thinking ? 'pending' : (this.travelTools.searchHotel.status === 'completed' ? 'completed' : 'pending'))))
+      // 5. 任务进行中：按各阶段真实工具调用推导，工具没出来就一律 in_progress/pending
+      const step1Status = this.stageStatus('register_appointment', 'search_hospital', 'in_progress')
+      const step2Status = this.stageStatus('book_ticket', 'search_train', 'in_progress')
+      const step3Status = this.stageStatus('book_hotel', 'search_hotel', 'pending')
 
       const step4Status = (this.isArtifactReady || (step1Status === 'completed' && step2Status === 'completed' && step3Status === 'completed'))
         ? 'completed'
@@ -1670,101 +1435,113 @@ export default {
       return this.displaySteps.length
     },
 
-    // 健康助手工具状态响应
-    healthTools() {
-      if (this.replay.active) {
-        const step = this.replay.step
-        let sStatus = step >= 1 ? 'completed' : (step === 0 ? 'running' : 'pending')
-        let aStatus = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step >= 1 ? 'running' : 'pending'))
-        return {
-          searchHospital: {
-            status: sStatus,
-            params: 'hospital: "北京积水潭医院", symptom: "骨科/腿疼", grade: "三甲专科"',
-            result: '北京积水潭医院骨科 · 田伟主任医师（国家骨科医学中心）',
-          },
-          registerAppointment: {
-            status: aStatus,
-            confirmationId: 'conf_demo_appoint',
-            params: 'doctor: "田伟主任医师", dept: "骨科", fee: 100.0, time: "08:30-09:30"',
-            amount: 100.0,
-            desc: '已安全拦截高危挂号请求，需子女手机端核准后方可放行挂号',
-          },
-        }
-      }
-
-      const msgs = this.messages || []
-      const suspends = msgs.filter((m) => m.kind === 'suspend')
-      const appointSuspend = suspends.slice().reverse().find(
-        (m) =>
-          m.tool === 'register_appointment' ||
-          (m.summary && (m.summary.includes('挂号') || m.summary.includes('医院'))) ||
-          m.amount === 100,
-      )
-
-      const searchHospTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'search_hospital' || (m.summary && m.summary.includes('医院'))),
-      )
-      const appointTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'register_appointment' || (m.summary && m.summary.includes('挂号'))),
-      )
-
-      let searchStatus = 'pending'
-      let searchParams = searchHospTool && searchHospTool.args ? this.formatParams(searchHospTool.args) : ''
-      let searchResult = ''
-
-      if (searchHospTool) {
-        searchStatus = searchHospTool.status === 'running' ? 'running' : 'completed'
-        searchResult = searchHospTool.result || searchHospTool.summary || '北京积水潭医院骨科 · 田伟主任医师'
-      } else if (this.demoModeActive) {
-        searchStatus = 'completed'
-        searchResult = '北京积水潭医院骨科 · 田伟主任医师（国家骨科医学中心）'
-      } else if (this.thinking && (this.currentAgent === '安康助手' || this.currentAgent === 'health')) {
-        searchStatus = 'running'
-      } else if (this.hasTaskStarted && !this.thinking) {
-        searchStatus = 'completed'
-        searchResult = '北京积水潭医院骨科 · 田伟主任医师（国家骨科医学中心）'
-      }
-
-      let appointStatus = 'pending'
-      let confId = appointSuspend ? appointSuspend.confirmationId : ''
-      let appointParams = appointTool && appointTool.args ? this.formatParams(appointTool.args) : ''
-      let appointAmount = appointSuspend ? appointSuspend.amount : 100.0
-      let appointDesc = appointSuspend && appointSuspend.message ? appointSuspend.message : ''
-
-      if (appointSuspend) {
-        appointStatus = appointSuspend.status || 'pending'
-        if (appointStatus === 'pending') {
-          if (this.demoApprovals.appointment === true) appointStatus = 'executed'
-          else if (this.demoApprovals.appointment === 'rejected') appointStatus = 'rejected'
-          else appointStatus = 'suspended'
-        }
-      } else if (this.demoApprovals.appointment === true) {
-        appointStatus = 'executed'
-      } else if (this.demoApprovals.appointment === 'rejected') {
-        appointStatus = 'rejected'
-      } else if (this.demoModeActive) {
-        appointStatus = 'suspended'
-        confId = 'conf_demo_appoint'
-      } else if (this.thinking && (this.currentAgent === '安康助手' || this.currentAgent === 'health')) {
-        appointStatus = 'running'
-      }
-
-      return {
-        searchHospital: {
-          status: searchStatus,
-          params: searchParams,
-          result: searchResult,
-        },
-        registerAppointment: {
-          status: appointStatus,
-          confirmationId: confId,
-          params: appointParams,
-          amount: appointAmount,
-          desc: appointDesc,
-        },
-      }
+    // ------------------------------------------------------------ 工具节点
+    /**
+     * 高危工具集合：这些工具命中内核的高危拦截（app/safety/risk_rules.py），
+     * 走"挂起 → 子女确权 → 放行 / 拒绝"的双向审批回路。
+     */
+    highRiskToolNames() {
+      return ['register_appointment', 'book_ticket', 'book_hotel', 'order_service', 'pay_deposit']
     },
 
+    /**
+     * 把消息队列里的工具调用收敛成渲染用的节点 —— 这是执行树唯一的工具事实来源。
+     *
+     * 两条链路必须等价，所以都在这里收敛：
+     * ① SSE 实时：chat.vue 把 tool_call / tool_result 推成 kind:'tool'；
+     * ② 历史回放：后端 /api/chat/history 由 assistant/message.tool_calls +
+     *   tool/result 还原出同构消息。
+     * 两边状态词不同（completed/failed vs executed/error），统一交给 toolStatus 归一。
+     */
+    parseTools(agentPrefixes) {
+      const msgs = this.messages || []
+      const suspends = msgs.filter((m) => m.kind === 'suspend')
+      return msgs
+        .filter(
+          (m) =>
+            m.kind === 'tool' &&
+            agentPrefixes.some((p) => String(m.agent || '').indexOf(p) === 0),
+        )
+        .map((m, idx) => {
+          // 挂起卡片（kind:'suspend'）带金额、话术和 confirmationId，按工具名配对；
+          // 配不上也照样渲染，只是没有"待确认"那块。
+          const suspend =
+            suspends.find((s) => s.tool === m.tool) ||
+            (m.confirmationId ? suspends.find((s) => s.confirmationId === m.confirmationId) : null)
+          const args = m.args || {}
+          const rawAmount =
+            args.fee || args.price || args.total_amount || args.amount ||
+            (suspend ? suspend.amount : null)
+          const amount = Number(rawAmount)
+          return {
+            key: m.callId || `${m.tool || 'tool'}#${idx}`,
+            name: m.tool || 'tool',
+            summary: m.summary || m.tool || '',
+            status: this.toolStatus(m),
+            args,
+            result: this.toolResultText(m),
+            isHighRisk: this.highRiskToolNames.indexOf(m.tool) !== -1 || !!suspend,
+            amount: rawAmount != null && rawAmount !== '' && !isNaN(amount) ? amount.toFixed(2) : null,
+            desc: (suspend && (suspend.message || suspend.summary)) || '',
+            confirmationId: (suspend && suspend.confirmationId) || m.confirmationId || '',
+          }
+        })
+    },
+
+    healthTools() {
+      return this.parseTools(['health', '安康助手'])
+    },
+
+    travelTools() {
+      return this.parseTools(['travel', '银发导航'])
+    },
+
+    communityTools() {
+      return this.parseTools(['community', '邻里帮'])
+    },
+
+    // 三个子智能体的全部真实调用，供流水线与安全网做全局判定
+    allTools() {
+      return this.healthTools.concat(this.travelTools, this.communityTools)
+    },
+
+    // 真正走双向审批回路的那些（安全网面板按它渲染，不再写死三行）
+    highRiskTools() {
+      return this.allTools.filter((t) => t.isHighRisk)
+    },
+
+    highRiskAmountTotal() {
+      const sum = this.highRiskTools.reduce(
+        (acc, t) => acc + (t.amount ? Number(t.amount) : 0), 0)
+      return sum.toFixed(2)
+    },
+
+    /**
+     * 分支徽标：不看任何写死的阶段，只看这个智能体自己的工具状态。
+     * 优先级：挂起 > 被拒 > 执行中 > 该智能体正在说话 > 全部结算 > 待命。
+     */
+    branchStatus(tools, agentId, displayName) {
+      if (tools.some((t) => t.status === 'suspended')) return 'status-suspended'
+      if (tools.some((t) => t.status === 'rejected')) return 'status-rejected'
+      if (tools.some((t) => t.status === 'running')) return 'status-thinking'
+      if (this.thinking && (this.currentAgent === agentId || this.currentAgent === displayName)) {
+        return 'status-thinking'
+      }
+      if (tools.length > 0 && tools.every((t) => t.status === 'completed' || t.status === 'failed')) {
+        return 'status-completed'
+      }
+      return 'status-ready'
+    },
+
+    branchIcon(statusClass, idleIcon) {
+      if (statusClass === 'status-suspended') return '⏸️'
+      if (statusClass === 'status-rejected') return '🛑'
+      if (statusClass === 'status-thinking') return '⚡'
+      if (statusClass === 'status-completed') return '✅'
+      return idleIcon
+    },
+
+    // 健康助手
     healthStatusClass() {
       if (this.replay.active) {
         if (this.replay.step === 1) return 'status-thinking'
@@ -1772,12 +1549,7 @@ export default {
         if (this.replay.step >= 4) return 'status-completed'
         return 'status-ready'
       }
-      if (this.healthTools.registerAppointment.status === 'suspended') return 'status-suspended'
-      if (this.healthTools.registerAppointment.status === 'rejected') return 'status-rejected'
-      if (this.healthTools.registerAppointment.status === 'executed') return 'status-completed'
-      if (this.healthTools.searchHospital.status === 'running' || this.healthTools.registerAppointment.status === 'running') return 'status-thinking'
-      if (this.healthTools.searchHospital.status === 'completed') return 'status-completed'
-      return 'status-ready'
+      return this.branchStatus(this.healthTools, 'health', '安康助手')
     },
 
     healthStatusIcon() {
@@ -1787,11 +1559,7 @@ export default {
         if (this.replay.step >= 4) return '✅'
         return '🏥'
       }
-      if (this.healthTools.registerAppointment.status === 'suspended') return '⏸️'
-      if (this.healthTools.registerAppointment.status === 'rejected') return '🛑'
-      if (this.healthTools.registerAppointment.status === 'executed' || this.healthTools.searchHospital.status === 'completed') return '✅'
-      if (this.healthTools.searchHospital.status === 'running') return '⚡'
-      return '🏥'
+      return this.branchIcon(this.healthStatusClass, '🏥')
     },
 
     healthStatusText() {
@@ -1801,200 +1569,15 @@ export default {
         if (this.replay.step >= 4) return '挂号成功 · 已确认'
         return '安康助手待命'
       }
-      if (this.healthTools.registerAppointment.status === 'suspended') return '待子女确认挂号'
-      if (this.healthTools.registerAppointment.status === 'rejected') return '子女已拒绝挂号'
-      if (this.healthTools.registerAppointment.status === 'executed') return '挂号成功 · 已确认'
-      if (this.healthTools.searchHospital.status === 'running') return '检索号源中'
-      if (this.healthTools.searchHospital.status === 'completed') return '号源检索完成'
+      const cls = this.healthStatusClass
+      if (cls === 'status-suspended') return '待子女确认健康操作'
+      if (cls === 'status-rejected') return '子女已拒绝该操作'
+      if (cls === 'status-thinking') return '正在调用健康工具'
+      if (cls === 'status-completed') return '健康任务已办结'
       return '健康守护待命'
     },
 
-    // 银发导航工具状态响应
-    travelTools() {
-      if (this.replay.active) {
-        const step = this.replay.step
-        let tSearch = step >= 2 ? 'completed' : 'pending'
-        let hSearch = step >= 2 ? 'completed' : 'pending'
-        let tBook = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step === 2 ? 'running' : 'pending'))
-        let hBook = step >= 4 ? 'executed' : (step === 3 ? 'suspended' : (step === 2 ? 'running' : 'pending'))
-        return {
-          searchTrain: {
-            status: tSearch,
-            params: 'from: "南京南", to: "北京南", date: "明天", seat: "二等座"',
-            result: '优选 G102 次 (08:15 - 12:30, 历时4时15分, 余票充裕)',
-          },
-          bookTicket: {
-            status: tBook,
-            confirmationId: 'conf_demo_ticket',
-            params: 'train: "G102", from: "南京南", to: "北京南", price: 443.50',
-            amount: 443.50,
-            desc: '高铁票订购款项，已推送子女端审核放行',
-          },
-          searchHotel: {
-            status: hSearch,
-            params: 'poi: "北京积水潭医院周边0.5km", barrier_free: true',
-            result: '匹配：漫心酒店积水潭店 · 适老无障碍标间 (配备浴室扶手/电梯)',
-          },
-          bookHotel: {
-            status: hBook,
-            confirmationId: 'conf_demo_hotel',
-            params: 'hotel: "漫心酒店积水潭店", nights: 2, total_amount: 680.0',
-            amount: 680.0,
-            desc: '酒店预订2晚费用，已报送子女端确认',
-          },
-          getWeather: {
-            status: 'completed',
-            params: 'city: "北京", days: 3, elder_comfort_index: true',
-            result: '北京晴转多云，18℃~26℃，舒适度优，早晚温差大建议备外套',
-          },
-        }
-      }
-
-      const msgs = this.messages || []
-      const suspends = msgs.filter((m) => m.kind === 'suspend')
-      const ticketSuspend = suspends.slice().reverse().find(
-        (m) =>
-          m.tool === 'book_ticket' ||
-          (m.summary && (m.summary.includes('车票') || m.summary.includes('高铁') || m.summary.includes('票'))) ||
-          m.amount === 443.5,
-      )
-      const hotelSuspend = suspends.slice().reverse().find(
-        (m) =>
-          m.tool === 'book_hotel' ||
-          (m.summary && (m.summary.includes('酒店') || m.summary.includes('房'))) ||
-          m.amount === 680,
-      )
-
-      const searchTrainTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'search_train' || (m.summary && m.summary.includes('车次'))),
-      )
-      const bookTicketTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'book_ticket' || (m.summary && m.summary.includes('订票'))),
-      )
-      const searchHotelTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'search_hotel' || (m.summary && m.summary.includes('酒店'))),
-      )
-      const bookHotelTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'book_hotel' || (m.summary && m.summary.includes('预订'))),
-      )
-      const weatherTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'get_weather' || (m.summary && m.summary.includes('天气'))),
-      )
-
-      let trainStatus = 'pending'
-      let trainParams = searchTrainTool && searchTrainTool.args ? this.formatParams(searchTrainTool.args) : ''
-      let trainResult = ''
-      if (searchTrainTool) {
-        trainStatus = searchTrainTool.status === 'running' ? 'running' : 'completed'
-        trainResult = searchTrainTool.result || searchTrainTool.summary || '优选 G102 次 (08:15 - 12:30)'
-      } else if (this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
-        trainStatus = 'completed'
-        trainResult = '优选 G102 次 (08:15 - 12:30, 历时4时15分, 余票充裕)'
-      } else if (this.thinking && (this.currentAgent === '银发导航' || this.currentAgent === 'travel')) {
-        trainStatus = 'running'
-      }
-
-      let ticketStatus = 'pending'
-      let ticketConfId = ticketSuspend ? ticketSuspend.confirmationId : ''
-      let ticketParams = bookTicketTool && bookTicketTool.args ? this.formatParams(bookTicketTool.args) : ''
-      let ticketAmount = ticketSuspend ? ticketSuspend.amount : 443.5
-      let ticketDesc = ticketSuspend && ticketSuspend.message ? ticketSuspend.message : ''
-
-      if (ticketSuspend) {
-        ticketStatus = ticketSuspend.status || 'pending'
-        if (ticketStatus === 'pending') {
-          if (this.demoApprovals.ticket === true) ticketStatus = 'executed'
-          else if (this.demoApprovals.ticket === 'rejected') ticketStatus = 'rejected'
-          else ticketStatus = 'suspended'
-        }
-      } else if (this.demoApprovals.ticket === true) {
-        ticketStatus = 'executed'
-      } else if (this.demoApprovals.ticket === 'rejected') {
-        ticketStatus = 'rejected'
-      } else if (this.demoModeActive) {
-        ticketStatus = 'suspended'
-        ticketConfId = 'conf_demo_ticket'
-      } else if (this.thinking && (this.currentAgent === '银发导航' || this.currentAgent === 'travel')) {
-        ticketStatus = 'running'
-      }
-
-      let hotelSearchStatus = 'pending'
-      let hotelSearchParams = searchHotelTool && searchHotelTool.args ? this.formatParams(searchHotelTool.args) : ''
-      let hotelSearchResult = ''
-      if (searchHotelTool) {
-        hotelSearchStatus = searchHotelTool.status === 'running' ? 'running' : 'completed'
-        hotelSearchResult = searchHotelTool.result || searchHotelTool.summary || '匹配漫心酒店积水潭店'
-      } else if (this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
-        hotelSearchStatus = 'completed'
-        hotelSearchResult = '匹配：漫心酒店积水潭店 · 适老无障碍标间 (配备浴室扶手/电梯)'
-      }
-
-      let hotelStatus = 'pending'
-      let hotelConfId = hotelSuspend ? hotelSuspend.confirmationId : ''
-      let hotelParams = bookHotelTool && bookHotelTool.args ? this.formatParams(bookHotelTool.args) : ''
-      let hotelAmount = hotelSuspend ? hotelSuspend.amount : 680.0
-      let hotelDesc = hotelSuspend && hotelSuspend.message ? hotelSuspend.message : ''
-
-      if (hotelSuspend) {
-        hotelStatus = hotelSuspend.status || 'pending'
-        if (hotelStatus === 'pending') {
-          if (this.demoApprovals.hotel === true) hotelStatus = 'executed'
-          else if (this.demoApprovals.hotel === 'rejected') hotelStatus = 'rejected'
-          else hotelStatus = 'suspended'
-        }
-      } else if (this.demoApprovals.hotel === true) {
-        hotelStatus = 'executed'
-      } else if (this.demoApprovals.hotel === 'rejected') {
-        hotelStatus = 'rejected'
-      } else if (this.demoModeActive) {
-        hotelStatus = 'suspended'
-        hotelConfId = 'conf_demo_hotel'
-      }
-
-      let weatherStatus = 'pending'
-      let weatherParams = weatherTool && weatherTool.args ? this.formatParams(weatherTool.args) : ''
-      let weatherResult = ''
-      if (weatherTool) {
-        weatherStatus = 'completed'
-        weatherResult = weatherTool.result || weatherTool.summary || '北京天气晴好，18~26℃'
-      } else if (this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
-        weatherStatus = 'completed'
-        weatherResult = '北京晴间多云，气温 18℃~26℃，适老出行指数：优秀'
-      }
-
-      return {
-        searchTrain: {
-          status: trainStatus,
-          params: trainParams,
-          result: trainResult,
-        },
-        bookTicket: {
-          status: ticketStatus,
-          confirmationId: ticketConfId,
-          params: ticketParams,
-          amount: ticketAmount,
-          desc: ticketDesc,
-        },
-        searchHotel: {
-          status: hotelSearchStatus,
-          params: hotelSearchParams,
-          result: hotelSearchResult,
-        },
-        bookHotel: {
-          status: hotelStatus,
-          confirmationId: hotelConfId,
-          params: hotelParams,
-          amount: hotelAmount,
-          desc: hotelDesc,
-        },
-        getWeather: {
-          status: weatherStatus,
-          params: weatherParams,
-          result: weatherResult,
-        },
-      }
-    },
-
+    // 银发导航
     travelStatusClass() {
       if (this.replay.active) {
         if (this.replay.step === 2) return 'status-thinking'
@@ -2002,22 +1585,7 @@ export default {
         if (this.replay.step >= 4) return 'status-completed'
         return 'status-ready'
       }
-      if (this.travelTools.bookTicket.status === 'suspended' || this.travelTools.bookHotel.status === 'suspended') {
-        return 'status-suspended'
-      }
-      if (this.travelTools.bookTicket.status === 'rejected' || this.travelTools.bookHotel.status === 'rejected') {
-        return 'status-rejected'
-      }
-      if (this.travelTools.bookTicket.status === 'executed' && this.travelTools.bookHotel.status === 'executed') {
-        return 'status-completed'
-      }
-      if (this.thinking && (this.currentAgent === '银发导航' || this.currentAgent === 'travel')) {
-        return 'status-thinking'
-      }
-      if (this.travelTools.searchTrain.status === 'completed') {
-        return 'status-completed'
-      }
-      return 'status-ready'
+      return this.branchStatus(this.travelTools, 'travel', '银发导航')
     },
 
     travelStatusIcon() {
@@ -2027,17 +1595,7 @@ export default {
         if (this.replay.step >= 4) return '✅'
         return '🧭'
       }
-      if (this.travelTools.bookTicket.status === 'suspended' || this.travelTools.bookHotel.status === 'suspended') {
-        return '⏸️'
-      }
-      if (this.travelTools.bookTicket.status === 'rejected' || this.travelTools.bookHotel.status === 'rejected') {
-        return '🛑'
-      }
-      if (this.travelTools.bookTicket.status === 'executed' || this.travelTools.searchTrain.status === 'completed') {
-        return '✅'
-      }
-      if (this.thinking) return '⚡'
-      return '🧭'
+      return this.branchIcon(this.travelStatusClass, '🧭')
     },
 
     travelStatusText() {
@@ -2047,50 +1605,29 @@ export default {
         if (this.replay.step >= 4) return '车次与酒店均已出票'
         return '银发导航待命'
       }
-      if (this.travelTools.bookTicket.status === 'suspended' || this.travelTools.bookHotel.status === 'suspended') {
-        return '待子女确认票务酒店'
-      }
-      if (this.travelTools.bookTicket.status === 'rejected' || this.travelTools.bookHotel.status === 'rejected') {
-        return '子女已拒绝出票'
-      }
-      if (this.travelTools.bookTicket.status === 'executed' && this.travelTools.bookHotel.status === 'executed') {
-        return '车次与酒店均已出票'
-      }
-      if (this.thinking) return '规划路线与车次中'
-      if (this.travelTools.searchTrain.status === 'completed') return '行程车次已规划'
+      const cls = this.travelStatusClass
+      if (cls === 'status-suspended') return '待子女确认票务/住宿'
+      if (cls === 'status-rejected') return '子女已拒绝出行操作'
+      if (cls === 'status-thinking') return '正在调用出行工具'
+      if (cls === 'status-completed') return '出行任务已办结'
       return '银发导航待命'
     },
 
     // 邻里帮
-    communityTools() {
-      const msgs = this.messages || []
-      const orderTool = msgs.slice().reverse().find(
-        (m) => m.kind === 'tool' && (m.tool === 'order_service' || (m.summary && m.summary.includes('陪诊'))),
-      )
-      let status = 'pending'
-      let params = orderTool && orderTool.args ? this.formatParams(orderTool.args) : ''
-      if (orderTool) {
-        status = orderTool.status === 'running' ? 'running' : 'completed'
-      } else if (this.replay.active || this.demoModeActive || (this.hasTaskStarted && !this.thinking)) {
-        status = 'completed'
-      }
-      return {
-        orderService: { status, params, result: true },
-      }
+    communityStatusClass() {
+      return this.branchStatus(this.communityTools, 'community', '邻里帮')
     },
 
-    communityStatusClass() {
-      if (this.communityTools.orderService.status === 'completed') return 'status-completed'
-      if (this.communityTools.orderService.status === 'running') return 'status-thinking'
-      return 'status-ready'
-    },
     communityStatusIcon() {
-      if (this.communityTools.orderService.status === 'completed') return '✅'
-      if (this.communityTools.orderService.status === 'running') return '⚡'
-      return '🏘️'
+      return this.branchIcon(this.communityStatusClass, '🏘️')
     },
+
     communityStatusText() {
-      if (this.communityTools.orderService.status === 'completed') return '陪诊服务已待命'
+      const cls = this.communityStatusClass
+      if (cls === 'status-suspended') return '待子女确认社区服务'
+      if (cls === 'status-rejected') return '子女已拒绝该服务'
+      if (cls === 'status-thinking') return '正在安排社区服务'
+      if (cls === 'status-completed') return '社区服务已安排'
       return '邻里帮待命'
     },
 
@@ -2100,14 +1637,14 @@ export default {
         const step = this.replay.step
         let status = step >= 5 ? 'completed' : (step === 4 ? 'running' : 'pending')
         return {
-          composeDeliverable: { status, params: 'kind: "trip_plan", sources: ["health", "travel", "community"]', result: status === 'completed' },
+          composeDeliverable: { status, args: {}, result: status === 'completed' },
         }
       }
 
       const msgs = this.messages || []
       const hasCard = msgs.some((m) => m.kind === 'card')
       const composeTool = msgs.slice().reverse().find((m) => m.kind === 'tool' && m.tool === 'compose_deliverable')
-      let params = composeTool && composeTool.args ? this.formatParams(composeTool.args) : ''
+      const args = (composeTool && composeTool.args) || {}
 
       let status = 'pending'
       if (this.hasAnyRejected) {
@@ -2126,7 +1663,7 @@ export default {
       }
 
       return {
-        composeDeliverable: { status, params, result: status === 'completed' },
+        composeDeliverable: { status, args, result: status === 'completed' },
       }
     },
 
@@ -2185,9 +1722,9 @@ export default {
       if (suspends.length > 0 && suspends.every((m) => m.status === 'executed') && !this.hasAnyRejected && !this.thinking) {
         return true
       }
-      if (this.healthTools.registerAppointment.status === 'executed' &&
-          this.travelTools.bookTicket.status === 'executed' &&
-          this.travelTools.bookHotel.status === 'executed') {
+      // 高危操作全部放行（且没有一个被拒）→ 可以装计划书
+      const risk = this.highRiskTools
+      if (risk.length > 0 && risk.every((t) => t.status === 'completed') && !this.hasAnyRejected) {
         return true
       }
       return false
@@ -2264,30 +1801,11 @@ export default {
     },
   },
   methods: {
-    formatParams(args, fallback) {
-      if (args && typeof args === 'object' && Object.keys(args).length > 0) {
-        return Object.entries(args)
-          .map(([k, v]) => `${k}: ${typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v)}`)
-          .join(', ')
-      }
-      return fallback || ''
-    },
-
-    parseParamsTokens(params, defaultKey) {
-      const DEFAULT_TOOL_PARAMS = {
-        searchHospital: 'hospital: "北京积水潭医院", symptom: "骨科/腿疼", grade: "三甲专科"',
-        registerAppointment: 'doctor: "田伟主任医师", dept: "骨科", fee: 100.0, time: "08:30-09:30"',
-        searchTrain: 'from: "南京南", to: "北京南", date: "明天", seat: "二等座"',
-        bookTicket: 'train: "G102", from: "南京南", to: "北京南", price: 443.50',
-        searchHotel: 'poi: "北京积水潭医院周边0.5km", barrier_free: true',
-        bookHotel: 'hotel: "漫心酒店积水潭店", nights: 2, total_amount: 680.0',
-        getWeather: 'city: "北京", days: 3, elder_comfort_index: true',
-        orderService: 'service: "异地就医火车站接站+医院全程陪诊", city: "北京"',
-        composeDeliverable: 'kind: "trip_plan", sources: ["health", "travel", "community"]',
-      }
-      if (!params && defaultKey && DEFAULT_TOOL_PARAMS[defaultKey]) {
-        params = DEFAULT_TOOL_PARAMS[defaultKey]
-      }
+    /**
+     * 入参高亮：直接吃大模型真实下发的 args 对象。
+     * 没调用就没有入参，不再拿写死的样例参数填充面板。
+     */
+    parseParamsTokens(params) {
       if (!params) return []
       if (typeof params === 'object') {
         return Object.entries(params).map(([k, v], idx, arr) => ({
@@ -2375,11 +1893,70 @@ export default {
           return '执行中 ⚡'
         case 'pending':
           return '待调度 ⏳'
+        case 'failed':
+          return '执行失败 ⚠️'
         case 'rejected':
           return '已拦截 🛑'
         default:
           return status
       }
+    },
+
+    /**
+     * 状态归一：实时链路给 completed/failed，历史回放给 executed/error，
+     * 两边都收敛到 pending / running / completed / suspended / rejected / failed。
+     */
+    toolStatus(m) {
+      if (m.status === 'suspended') return 'suspended'
+      if (m.status === 'rejected' || m.blocked) return 'rejected'
+      if (m.status === 'running') return 'running'
+      if (m.status === 'executed' || m.status === 'completed') return 'completed'
+      if (m.status === 'failed' || m.status === 'error') return 'failed'
+      if (m.status === 'pending') return 'pending'
+      if (m.result !== undefined || m.ok !== undefined) return m.ok === false ? 'failed' : 'completed'
+      return 'running'
+    },
+
+    toolResultText(m) {
+      if (m.result === undefined || m.result === null || m.result === '') return ''
+      let text = m.result
+      if (typeof text === 'object') {
+        try {
+          text = JSON.stringify(text)
+        } catch (e) {
+          text = ''
+        }
+      }
+      text = String(text)
+      return text.length > 240 ? `${text.slice(0, 240)}…` : text
+    },
+
+    // 按工具名取状态：没调用过就是 pending，调用方无需知道它在哪个分支
+    statusOf(name) {
+      const hit = this.allTools.filter((t) => t.name === name).pop()
+      return hit ? hit.status : 'pending'
+    },
+
+    // 一个流水线阶段 = 高危工具（有则听它的）+ 检索工具（兜底）
+    stageStatus(riskTool, searchTool, idleStatus) {
+      const risk = this.statusOf(riskTool)
+      if (risk === 'completed') return 'completed'
+      if (risk === 'rejected') return 'rejected'
+      if (risk === 'suspended') return 'suspended'
+      if (risk === 'running') return 'in_progress'
+      if (this.statusOf(searchTool) === 'completed') return this.thinking ? 'in_progress' : 'completed'
+      return this.thinking ? 'in_progress' : idleStatus
+    },
+
+    toolIcon(name) {
+      const n = String(name || '')
+      if (n.indexOf('appoint') !== -1 || n.indexOf('hospital') !== -1 || n.indexOf('register') !== -1) return '🏥'
+      if (n.indexOf('ticket') !== -1 || n.indexOf('train') !== -1) return '🚅'
+      if (n.indexOf('hotel') !== -1) return '🏨'
+      if (n.indexOf('weather') !== -1) return '🌤️'
+      if (n.indexOf('order') !== -1 || n.indexOf('escort') !== -1 || n.indexOf('canteen') !== -1) return '🤝'
+      if (n.indexOf('deposit') !== -1 || n.indexOf('pay') !== -1) return '💰'
+      return '🛡️'
     },
 
     triggerApprove(confirmationId, toolName) {
@@ -2431,10 +2008,14 @@ export default {
       if (this.replay.active) {
         this.seekReplay(4)
       }
-      this.triggerApprove(this.healthTools.registerAppointment.confirmationId || 'conf_demo_appoint', 'register_appointment')
-      this.triggerApprove(this.travelTools.bookTicket.confirmationId || 'conf_demo_ticket', 'book_ticket')
-      this.triggerApprove(this.travelTools.bookHotel.confirmationId || 'conf_demo_hotel', 'book_hotel')
-      uni.showToast({ title: '已模拟子女端一键核准全部 3 项操作！', icon: 'success' })
+      // 只批真正挂起的那几项：数量与工具名都来自实时链路
+      const pending = this.highRiskTools.filter((t) => t.status === 'suspended')
+      if (pending.length === 0) {
+        uni.showToast({ title: '当前没有待子女确认的高危操作', icon: 'none' })
+        return
+      }
+      pending.forEach((t) => this.triggerApprove(t.confirmationId, t.name))
+      uni.showToast({ title: `已模拟子女端一键核准 ${pending.length} 项操作！`, icon: 'success' })
     },
 
     // 动态演播全链路机制 (R3)
@@ -3648,6 +3229,14 @@ export default {
   border-left: 6rpx solid #3b82f6;
 }
 
+.tool-node.node-failed {
+  border-left: 6rpx solid #f97316;
+}
+
+.tool-node.node-pending {
+  border-left: 6rpx solid #cbd5e1;
+}
+
 .node-top-row {
   display: flex;
   align-items: center;
@@ -3725,6 +3314,16 @@ export default {
 .node-status-tag.running {
   background: #dbeafe;
   color: #1d4ed8;
+}
+
+.node-status-tag.failed {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.node-status-tag.pending {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 /* 参数 JSON 高亮 (R3) */

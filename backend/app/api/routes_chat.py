@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -20,6 +21,7 @@ from app.core.events import (
     CONFIRM_SUSPENDED,
     MAIN_SCOPE,
     TODO_WRITE,
+    TOOL_RESULT,
     USER_MESSAGE,
 )
 from app.core.session import TURN_FAILED_REPLY
@@ -27,6 +29,13 @@ from app.core.turn_gate import QUEUED_HINT, TurnBusy
 
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
+
+# 会话保留窗口（天）。列表接口在这里过滤，scripts/cleanup_sessions.py 负责物理
+# 清理 —— 两边必须用同一个数，否则清理周期之间会露出过期会话。
+SESSION_KEEP_DAYS = 7
+# 时间过滤只能在 Python 里做（仓库层没有范围查询），所以先多取几倍再裁，
+# 否则取回的一页全是旧会话时，过滤完会一个不剩。
+SESSION_FETCH_OVERFETCH = 3
 
 # 断线后仍在跑的轮次。**必须留强引用** —— asyncio 只弱引用 task，
 # 没人持有的话事件循环可能在它落库之前就把它回收了，
@@ -198,12 +207,20 @@ async def list_chat_sessions(
     ctx: AppContext = Depends(get_ctx),
 ):
     user = await _resolve_user(ctx, principal, user_id)
-    sessions = await ctx.repos.list(
+    page = max(1, min(limit, 100))
+
+    # 7 日保留窗口。仓库层只能按 JSON 字段等值过滤，时间比较只能取回 Python 做，
+    # 所以先多取几倍再裁：否则一个攒了几百条旧会话的老人，取回的 100 条全是
+    # 过期数据、过滤完一个不剩 —— 他最近 7 天的对话会"凭空消失"。
+    rows = await ctx.repos.list(
         "sessions",
         where={"user_id": user["id"]},
         order="-created_at",
-        limit=max(1, min(limit, 100)),
+        limit=page * SESSION_FETCH_OVERFETCH,
     )
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=SESSION_KEEP_DAYS)).isoformat()
+    sessions = [s for s in rows if s.get("created_at", "") >= cutoff][:page]
+
     # 标题只是第一句话的前 20 字，重名会话（演示期尤其多）靠它根本分不出
     # 谁是谁。给每行补"最后说的话"和"最后活跃时间"，老人按内容和时间找回
     # 想接着聊的那一段。并发查：串行是 N 次隧道往返，列表会卡一秒以上。
@@ -212,6 +229,24 @@ async def list_chat_sessions(
         "items": items,
         "latest_session": items[0] if items else None,
     }
+
+
+def _as_args(raw: object) -> dict:
+    """工具入参收敛成 dict。
+
+    有的 provider 把 ``arguments`` 给成 JSON 字符串（OpenAI 风格），有的直接给
+    对象（本机 MockLLMProvider）。前端按对象渲染，这里统一成对象，字符串解析
+    失败就退回空字典 —— 宁可参数面板空着，也别把一坨原文塞进 JSON 高亮里。
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 async def _enrich_session(ctx: AppContext, session: dict) -> dict:
@@ -289,6 +324,17 @@ async def get_chat_history(
                     "isUser": False,
                     "agent": event.agent_id,
                 })
+            # 模型"我要调这些"的声明。tool/call 事件只走 SSE 不单独展开，
+            # 否则同一笔调用会在这里和下面各渲染一次、执行树上出现双份节点。
+            for tc in (payload.get("tool_calls") or []):
+                messages.append({
+                    "kind": "tool",
+                    "tool": tc.get("name"),
+                    "args": _as_args(tc.get("arguments")),
+                    "callId": tc.get("id"),
+                    "agent": event.agent_id,
+                    "status": "running",
+                })
         elif event.type == ASSISTANT_FINAL:
             text = (payload.get("text") or "").strip()
             if text:
@@ -343,6 +389,26 @@ async def get_chat_history(
             for m in messages:
                 if m.get("kind") == "suspend" and m.get("confirmationId") == cid:
                     m["status"] = status
+        elif event.type == TOOL_RESULT:
+            # 结算：按 call_id 回写到上面那条声明上。状态词与 SSE 实时链路
+            # 保持一致（前端两条链路共用同一套渲染），因此统一成
+            # executed / suspended / rejected / failed。
+            cid = payload.get("call_id")
+            for m in messages:
+                if m.get("kind") == "tool" and m.get("callId") == cid:
+                    ok = bool(payload.get("ok"))
+                    m["status"] = "executed" if ok else "failed"
+                    m["ok"] = ok
+                    if payload.get("suspended"):
+                        m["status"] = "suspended"
+                        m["confirmationId"] = payload.get("confirmation_id")
+                    if payload.get("denied"):
+                        m["status"] = "rejected"
+                        m["blocked"] = True
+                    # 结果摘要优先取工具回执，取不到再退回入参侧的调用摘要
+                    m["summary"] = payload.get("summary") or m.get("summary") or ""
+                    m["result"] = payload.get("data")
+                    break
 
     latest_seq = max((e.seq for e in events), default=0)
     return {
