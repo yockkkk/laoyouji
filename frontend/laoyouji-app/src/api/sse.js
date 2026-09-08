@@ -20,8 +20,12 @@ const _DURABLE_TO_SSE = {
 }
 
 function rowToEvent(row) {
-  const name = _DURABLE_TO_SSE[row.type]
+  let name = _DURABLE_TO_SSE[row.type]
   if (!name) return null
+  // 若 assistant/message 包含 tool_calls，说明是中间思考规划，转为 agent_thought 不作为老人消息展示
+  if (name === 'agent_msg' && row.payload && Array.isArray(row.payload.tool_calls) && row.payload.tool_calls.length > 0) {
+    name = 'agent_thought'
+  }
   return { event: name, data: row.payload || {}, _row: row }
 }
 

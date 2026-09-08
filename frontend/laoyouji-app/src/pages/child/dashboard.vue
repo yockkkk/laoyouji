@@ -138,6 +138,7 @@
             :notes="selectedPlanCard.notes"
             :complete="selectedPlanCard.complete"
             :compact="false"
+            :trip-id="selectedPlan ? selectedPlan.id : ''"
           />
         </scroll-view>
       </view>

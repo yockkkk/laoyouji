@@ -31,6 +31,7 @@ from app.core.turn_gate import SessionTurnGate
 from app.db.client import build_repo
 from app.providers.external.community import MockCommunityProvider
 from app.providers.external.services import (
+    AmapMapProvider,
     MockHotelProvider,
     MockMapProvider,
     MockPaymentProvider,
@@ -130,7 +131,7 @@ def build_context(cfg: Settings | None = None) -> AppContext:
     registry.register(ServiceProvider("hospital", lambda _ctx: MockHospitalProvider()))
     registry.register(ServiceProvider("hotel", lambda _ctx: MockHotelProvider()))
     registry.register(ServiceProvider("weather", lambda _ctx: MockWeatherProvider()))
-    registry.register(ServiceProvider("map", lambda _ctx: MockMapProvider()))
+    registry.register(ServiceProvider("map", lambda _ctx: AmapMapProvider()))
     registry.register(ServiceProvider("ride", lambda _ctx: MockRideProvider()))
     registry.register(ServiceProvider("community", lambda _ctx: MockCommunityProvider()))
     registry.register(ServiceProvider("payment", lambda _ctx: MockPaymentProvider()))

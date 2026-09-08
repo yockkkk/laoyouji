@@ -182,6 +182,17 @@ class MockMapProvider(MapProvider):
         }
 
 
+class AmapMapProvider(MapProvider):
+    """高德开放平台地图服务：联动真实 Web API 2.0 规划路线，全场景降级兜底。"""
+
+    name = "amap_map"
+
+    async def plan_route(self, origin: str, destination: str) -> dict:
+        from app.providers.external.amap_service import amap_client
+        return await amap_client.plan_route(origin, destination)
+
+
+
 # ---------------------------------------------------------------- 叫车
 
 class RideProvider:

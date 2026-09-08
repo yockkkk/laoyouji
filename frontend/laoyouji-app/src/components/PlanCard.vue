@@ -34,6 +34,15 @@
       </view>
     </view>
 
+    <!-- 适老高德路线规划醒目大字入口 (靶区 >= 48px) -->
+    <view v-if="hasRouteAction" class="route-action-box" @tap.stop="goToRouteMap">
+      <button class="btn-route-action" hover-class="btn-route-action-active">
+        <text class="route-icon">🗺️</text>
+        <text class="route-text">查看高德路线规划</text>
+        <text class="route-badge">适老专线 ›</text>
+      </button>
+    </view>
+
     <!-- 可展开的完整计划书各页 -->
     <view v-show="isExpanded" class="card-body">
       <view v-for="(section, si) in sections" :key="si" class="section">
@@ -85,6 +94,7 @@ export default {
     // 朗读文本的**覆盖**位。留空则由 speech 从卡面内容自己拼。
     announce: { type: String, default: '' },
     defaultExpanded: { type: Boolean, default: false },
+    tripId: { type: String, default: '' },
   },
   data() {
     return {
@@ -92,6 +102,20 @@ export default {
     }
   },
   computed: {
+    hasRouteAction() {
+      if (this.compact) return false
+      const str = (this.title || '') + JSON.stringify(this.sections || [])
+      return (
+        str.includes('就医') ||
+        str.includes('出行') ||
+        str.includes('车票') ||
+        str.includes('路线') ||
+        str.includes('医院') ||
+        str.includes('北京') ||
+        str.includes('上海') ||
+        str.includes('南京')
+      )
+    },
     missingCount() {
       return this.sections.reduce(
         (n, s) => n + (s.rows || []).filter((r) => r.missing).length,
@@ -119,6 +143,51 @@ export default {
     replay() {
       const ok = speak(this.speech)
       if (!ok) uni.showToast({ title: '当前设备不支持语音播报', icon: 'none' })
+    },
+    goToRouteMap() {
+      let origin = '家（南京鼓楼区）'
+      let hospital = ''
+      let destination = ''
+
+      for (const s of this.sections || []) {
+        for (const r of s.rows || []) {
+          if ((r.label === '出发' || r.label === '出发站' || r.label === '起点') && r.value && !r.missing) {
+            origin = r.value
+          }
+          if ((r.label === '医院' || r.label === '就诊医院') && r.value && !r.missing) {
+            hospital = r.value
+          }
+          if ((r.label === '到达' || r.label === '目的地' || r.label === '到达站') && r.value && !r.missing) {
+            if (!destination) {
+              destination = r.value
+            }
+          }
+        }
+      }
+
+      if (hospital) {
+        destination = hospital
+      }
+
+      if (!destination) {
+        if (this.title) {
+          if (this.title.includes('协和')) destination = '北京协和医院'
+          else if (this.title.includes('积水潭')) destination = '北京积水潭医院'
+          else if (this.title.includes('鼓楼医院')) destination = '南京鼓楼医院'
+          else if (this.title.includes('第六人民')) destination = '上海市第六人民医院'
+          else if (this.title.includes('上海')) destination = '上海市第六人民医院'
+          else if (this.title.includes('杭州')) destination = '杭州市第一人民医院'
+          else if (this.title.includes('苏州')) destination = '苏州大学附属第一医院'
+          else if (this.title.includes('北京')) destination = '北京积水潭医院'
+        }
+      }
+      if (!destination) {
+        destination = '北京积水潭医院'
+      }
+
+      uni.navigateTo({
+        url: `/pages/elder/route-map?title=${encodeURIComponent(this.title || '就医出行路线规划')}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&trip_id=${encodeURIComponent(this.tripId || '')}`,
+      })
     },
   },
 }
@@ -283,5 +352,46 @@ export default {
   font-size: $lyj-font-md;
   color: $lyj-primary;
   font-weight: 700;
+}
+
+.route-action-box {
+  margin: $lyj-space-sm 0;
+}
+.btn-route-action {
+  width: 100%;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  background: linear-gradient(135deg, #e8541e 0%, #ff7836 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 48rpx;
+  box-shadow: 0 6rpx 16rpx rgba(232, 84, 30, 0.28);
+  cursor: pointer;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+}
+.btn-route-action-active {
+  transform: scale(0.98);
+  opacity: 0.92;
+}
+.route-icon {
+  font-size: 38rpx;
+}
+.route-text {
+  font-size: 34rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+  color: #ffffff;
+}
+.route-badge {
+  font-size: 24rpx;
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  font-weight: 600;
 }
 </style>

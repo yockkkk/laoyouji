@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # 显式写 DEBUG=false 关掉 —— 开着它等于把"重置全库"挂在公网上。
     debug: bool = True
 
+    # 高德开放平台
+    amap_web_key: str = "c260220fcc8a09359fa5ddd54f575cf1"
+    amap_js_key: str = "706804e5a0a33cdf140126d75bedd3ac"
+    amap_security_code: str = "6c6e8eddf72527878c4eb76d7273e380"
+
     # 智能体预算（三级止损：步数在 Agent 类上，token / 墙钟在这儿）
     budget_max_tokens: int = 60_000
     budget_wall_clock_s: float = 90.0

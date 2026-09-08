@@ -63,6 +63,7 @@
                 :notes="m.notes"
                 :complete="m.complete"
                 :compact="m.compact"
+                :trip-id="m.tripId || ''"
               />
               <ConfirmCard
                 v-else-if="m.kind === 'suspend'"
@@ -296,6 +297,16 @@ export default {
           result.push(m)
         } else if (m.kind === 'text' && !m.isUser) {
           turnAssistantTexts.push(m)
+        } else if (m.kind === 'card') {
+          // 卡片去重：同一会话若已存在相同计划书，只保留最新的一份
+          const existsIdx = result.findIndex(
+            (ex) => ex.kind === 'card' && (ex.title === m.title || (ex.title && m.title && ex.title.includes('计划书') && m.title.includes('计划书')))
+          )
+          if (existsIdx !== -1) {
+            result.splice(existsIdx, 1, m)
+          } else {
+            result.push(m)
+          }
         } else {
           result.push(m)
         }
@@ -908,7 +919,7 @@ export default {
         }
 
         case 'card':
-          this.messages.push(this._toCard(d))
+          this._upsertCard(d)
           this._scrollBottom()
           break
 
@@ -927,7 +938,6 @@ export default {
             status: 'pending',
           })
           this._scrollBottom()
-          this._watchConfirmations()
           break
 
         /**
@@ -1076,12 +1086,8 @@ export default {
      * 那张黄卡永远不会变绿。所以续表必须沿用已有的 _watchSeq。
      */
     async _watchConfirmations() {
-      // `_watchStarting` 是同步占位，不能只看 `_watchTimer`：下面那句
-      // `await this._latestSeq()` 会让出执行权，而旗舰流程里三条 suspended
-      // 几乎同时到达。只看 _watchTimer 的话三次调用都会在它仍是 null 时通过，
-      // 装上三个 setInterval，而 _stopWatch 只清得掉最后一个 —— 剩下两个会把
-      // 家人那句播报重复推给老人。
-      if (this._watchTimer || this._watchStarting || !this.sessionId) return
+      // 正在办事/流运行中绝不启动轮询，由 SSE 流实时接收事件，避免并发冲突和重复拉取
+      if (this.thinking || this._watchTimer || this._watchStarting || !this.sessionId) return
       if (!this._pendingCards().length) return
       this._watchStarting = true
       try {
@@ -1095,7 +1101,7 @@ export default {
       } finally {
         this._watchStarting = false
       }
-      if (this._watchTimer) return // 让出期间已被别的调用装上了
+      if (this.thinking || this._watchTimer) return // 让出期间已被别的调用装上或正在办事
       this._watchTimer = setInterval(() => this._pollResolutions(), 2500)
       this._pollResolutions()
     },
@@ -1119,6 +1125,7 @@ export default {
     },
 
     async _pollResolutions() {
+      if (this.thinking) return
       if (!this._pendingCards().length) return this._stopWatch()
       let rows = []
       try {
@@ -1132,6 +1139,16 @@ export default {
         if (ev.event === 'confirmation_resolved') {
           this._resolveCard(d.confirmation_id, d.status, d.ok)
         } else if (ev.event === 'agent_msg' && d.text) {
+          // 过滤带工具调用的中间思考独白
+          if (ev._row && ev._row.payload && Array.isArray(ev._row.payload.tool_calls) && ev._row.payload.tool_calls.length > 0) {
+            continue
+          }
+          // 去重：若当前已有相同助手文本，不重复追加
+          const hasSame = this.messages.slice(-5).some(
+            (m) => m && m.kind === 'text' && !m.isUser && m.text === d.text,
+          )
+          if (hasSame) continue
+
           // 家人点完那句播报。老人这时可能正看着别处，所以这条要自己成一个
           // 气泡并滚到底 —— 它是新消息，不是历史回放。
           this.messages.push({ kind: 'text', text: d.text, agent: d.agent || 'main' })
@@ -1140,11 +1157,29 @@ export default {
           } catch (e) {}
           this._scrollBottom()
         } else if (ev.event === 'card') {
-          this.messages.push(this._toCard(d))
+          this._upsertCard(d)
           this._scrollBottom()
         }
       }
       if (!this._pendingCards().length) this._stopWatch()
+    },
+
+    /**
+     * 卡片幂等更新：若已存在相同计划书/交付物，就地更新，不重复叠加
+     */
+    _upsertCard(d) {
+      const card = this._toCard(d)
+      const existingIdx = this.messages.findIndex(
+        (m) => m && m.kind === 'card' && (
+          (m.title && card.title && m.title === card.title) ||
+          (m.title && card.title && m.title.includes('计划书') && card.title.includes('计划书'))
+        ),
+      )
+      if (existingIdx !== -1) {
+        this.messages.splice(existingIdx, 1, card)
+      } else {
+        this.messages.push(card)
+      }
     },
 
     /**
@@ -1186,6 +1221,7 @@ export default {
         complete: d.complete !== false,
         // 只有五页计划书铺开；两张轻量卡片走紧凑模式
         compact: d.type !== 'trip_plan' && d.type !== 'medical_plan',
+        tripId: d.trip_id || d.tripId || (d.data && d.data.trip_id) || '',
       }
     },
 

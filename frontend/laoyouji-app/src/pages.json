@@ -25,6 +25,10 @@
       "style": { "navigationBarTitleText": "我的", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/elder/route-map",
+      "style": { "navigationBarTitleText": "高德路线规划", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/child/dashboard",
       "style": {
         "navigationBarTitleText": "家人看板",
