@@ -214,16 +214,24 @@
                       <view v-if="tool.status === 'suspended'" class="suspended-alert-card">
                         <view class="suspend-header">
                           <text class="suspend-icon">⏸️</text>
-                          <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                          <view class="suspend-title-group">
+                            <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                            <text class="suspend-channel-tag">🔒 已推至子女端待核准</text>
+                          </view>
                         </view>
-                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，需子女手机端核准后方可放行' }}</text>
-                        <view class="suspend-actions-row">
-                          <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
-                            ⚡ 模拟子女审批通过
-                          </button>
-                          <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
-                            🛑 模拟子女拒绝
-                          </button>
+                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，已推送子女手机端核准。' }}</text>
+                        <view class="demo-channel-block">
+                          <view class="demo-link-row" @tap="toggleDemoAction(tool.key)">
+                            <text class="demo-link-text">{{ showDemoActions[tool.key] ? '收起演示通道 ▲' : '🛠️ 演示通道快捷模拟 ▼' }}</text>
+                          </view>
+                          <view v-if="showDemoActions[tool.key]" class="suspend-actions-row">
+                            <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
+                              ⚡ 模拟子女审批通过
+                            </button>
+                            <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
+                              🛑 模拟子女拒绝
+                            </button>
+                          </view>
                         </view>
                       </view>
                       <!-- 家人已放行 -->
@@ -336,16 +344,24 @@
                       <view v-if="tool.status === 'suspended'" class="suspended-alert-card">
                         <view class="suspend-header">
                           <text class="suspend-icon">⏸️</text>
-                          <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                          <view class="suspend-title-group">
+                            <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                            <text class="suspend-channel-tag">🔒 已推至子女端待核准</text>
+                          </view>
                         </view>
-                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，需子女手机端核准后方可放行' }}</text>
-                        <view class="suspend-actions-row">
-                          <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
-                            ⚡ 模拟子女审批通过
-                          </button>
-                          <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
-                            🛑 模拟子女拒绝
-                          </button>
+                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，已推送子女手机端核准。' }}</text>
+                        <view class="demo-channel-block">
+                          <view class="demo-link-row" @tap="toggleDemoAction(tool.key)">
+                            <text class="demo-link-text">{{ showDemoActions[tool.key] ? '收起演示通道 ▲' : '🛠️ 演示通道快捷模拟 ▼' }}</text>
+                          </view>
+                          <view v-if="showDemoActions[tool.key]" class="suspend-actions-row">
+                            <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
+                              ⚡ 模拟子女审批通过
+                            </button>
+                            <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
+                              🛑 模拟子女拒绝
+                            </button>
+                          </view>
                         </view>
                       </view>
                       <!-- 家人已放行 -->
@@ -458,16 +474,24 @@
                       <view v-if="tool.status === 'suspended'" class="suspended-alert-card">
                         <view class="suspend-header">
                           <text class="suspend-icon">⏸️</text>
-                          <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                          <view class="suspend-title-group">
+                            <text class="suspend-title">等待子女确认<text v-if="tool.amount"> (¥{{ tool.amount }})</text></text>
+                            <text class="suspend-channel-tag">🔒 已推至子女端待核准</text>
+                          </view>
                         </view>
-                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，需子女手机端核准后方可放行' }}</text>
-                        <view class="suspend-actions-row">
-                          <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
-                            ⚡ 模拟子女审批通过
-                          </button>
-                          <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
-                            🛑 模拟子女拒绝
-                          </button>
+                        <text class="suspend-desc">{{ tool.desc || '高危操作已被安全拦截，已推送子女手机端核准。' }}</text>
+                        <view class="demo-channel-block">
+                          <view class="demo-link-row" @tap="toggleDemoAction(tool.key)">
+                            <text class="demo-link-text">{{ showDemoActions[tool.key] ? '收起演示通道 ▲' : '🛠️ 演示通道快捷模拟 ▼' }}</text>
+                          </view>
+                          <view v-if="showDemoActions[tool.key]" class="suspend-actions-row">
+                            <button class="quick-approve-btn" @tap="triggerApprove(tool.confirmationId, tool.name)">
+                              ⚡ 模拟子女审批通过
+                            </button>
+                            <button class="quick-reject-btn" @tap="triggerReject(tool.confirmationId, tool.name)">
+                              🛑 模拟子女拒绝
+                            </button>
+                          </view>
                         </view>
                       </view>
                       <!-- 家人已放行 -->
@@ -536,13 +560,18 @@
                 <view class="safety-dashboard-card">
                   <view class="safety-dash-header">
                     <text class="dash-title">🛡️ 受控高危操作清单 (双向审批回路)</text>
-                    <button
-                      v-if="pendingTasksCount > 0"
-                      class="batch-approve-btn"
-                      @tap="approveAllPending"
-                    >
-                      ⚡ 模拟子女一键全批通过
-                    </button>
+                    <view v-if="pendingTasksCount > 0" class="dash-actions-group">
+                      <text class="demo-channel-link" @tap="demoModeOpen = !demoModeOpen">
+                        {{ demoModeOpen ? '收起演示通道 ▲' : '🛠️ 演示通道 ▼' }}
+                      </text>
+                      <button
+                        v-if="demoModeOpen"
+                        class="batch-approve-btn"
+                        @tap="approveAllPending"
+                      >
+                        ⚡ 模拟一键全批
+                      </button>
+                    </view>
                   </view>
                   <!-- 清单按真实挂起/高危调用渲染，条目数与金额都来自事件流 -->
                   <view class="safety-items-list">
@@ -751,6 +780,8 @@ export default {
       showArtifactModal: false,
       expandedToolResults: {},
       _userChangedAllExpanded: false,
+      demoModeOpen: false,
+      showDemoActions: {},
     }
   },
   watch: {
@@ -1445,19 +1476,33 @@ export default {
     },
 
     highRiskTools() {
-      const tools = this.allTools.filter((t) => t.isHighRisk)
-      const existingCids = new Set(tools.map((t) => t.confirmationId).filter(Boolean))
-      const existingNames = new Set(tools.map((t) => t.name))
+      const tools = []
+      const seen = new Set()
 
+      // 1. 优先取自已严格去重好的 allTools
+      for (const t of this.allTools.filter((t) => t.isHighRisk)) {
+        const key = t.confirmationId || t.callId || t.key || `${t.name}:${JSON.stringify(t.args || {})}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          if (t.confirmationId) seen.add(t.confirmationId)
+          if (t.callId) seen.add(t.callId)
+          tools.push({ ...t })
+        }
+      }
+
+      // 2. 补充独立的 suspend 提示卡（若已有对应工具，则不重复追加）
       const suspends = this.safeMessages.filter((m) => m.kind === 'suspend')
       suspends.forEach((s, idx) => {
         const cid = s.confirmationId || ''
         const toolName = s.tool || 'high_risk_op'
-        if ((cid && existingCids.has(cid)) || (!cid && existingNames.has(toolName))) {
-          return
-        }
+        if (cid && seen.has(cid)) return
+        if (toolName && tools.some((t) => t.name === toolName && (!t.confirmationId || t.confirmationId === cid))) return
+
+        const k = cid || `suspend_${toolName}_${idx}`
+        seen.add(k)
+        if (cid) seen.add(cid)
         tools.push({
-          key: cid || `suspend_${toolName}_${idx}`,
+          key: k,
           name: toolName,
           summary: s.summary || s.message || toolName,
           status: s.status === 'executed' || s.status === 'completed' ? 'completed' : (s.status === 'rejected' ? 'rejected' : 'suspended'),
@@ -1877,6 +1922,7 @@ export default {
           const amount = Number(rawAmount)
           return {
             key: m.callId || `${toolName}#${idx}`,
+            callId: m.callId || '',
             name: toolName,
             summary: m.summary || toolName,
             status: this.toolStatus(m, suspend),
@@ -1889,6 +1935,37 @@ export default {
             confirmationId: (suspend && suspend.confirmationId) || m.confirmationId || '',
           }
         })
+
+      // 严格去重与状态融合：避免历史会话或多次事件流推送导致的重复工具卡片
+      const deduped = []
+      const seen = new Map()
+      for (const item of rawTools) {
+        let key = item.callId || ''
+        if (!key && item.confirmationId) key = item.confirmationId
+        if (!key) {
+          try {
+            key = `${item.name}:${JSON.stringify(item.args)}`
+          } catch (e) {
+            key = `${item.name}:${item.summary}`
+          }
+        }
+        if (seen.has(key)) {
+          const prev = seen.get(key)
+          // 状态优先级：rejected/completed/suspended > running
+          if (item.status && item.status !== 'running') prev.status = item.status
+          // 摘要优先级：详细中文说明 > 工具名
+          if (item.summary && item.summary !== item.name) prev.summary = item.summary
+          if (item.result) prev.result = item.result
+          if (item.resultText) prev.resultText = item.resultText
+          if (item.confirmationId && !prev.confirmationId) prev.confirmationId = item.confirmationId
+          if (item.amount && !prev.amount) prev.amount = item.amount
+          if (item.desc && !prev.desc) prev.desc = item.desc
+        } else {
+          seen.set(key, item)
+          deduped.push(item)
+        }
+      }
+      return deduped
     },
 
     branchStatus(tools, agentId, displayName) {
@@ -2127,6 +2204,16 @@ export default {
       }
       pending.forEach((t) => this.triggerApprove(t.confirmationId, t.name))
       uni.showToast({ title: `已模拟子女端一键核准 ${pending.length} 项操作！`, icon: 'success' })
+    },
+
+    toggleDemoAction(key) {
+      if (!key) return
+      const nextVal = !this.showDemoActions[key]
+      if (typeof this.$set === 'function') {
+        this.$set(this.showDemoActions, key, nextVal)
+      } else {
+        this.showDemoActions[key] = nextVal
+      }
     },
 
     scrollToSection(id) {
@@ -3146,8 +3233,51 @@ export default {
 
 .suspend-header {
   display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+}
+
+.suspend-title-group {
+  display: flex;
   align-items: center;
   gap: 8rpx;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.suspend-channel-tag {
+  font-size: 18rpx;
+  padding: 2rpx 10rpx;
+  background: #fef3c7;
+  color: #b45309;
+  border-radius: 999rpx;
+  font-weight: 600;
+  border: 1rpx solid #fde68a;
+}
+
+.demo-channel-block {
+  margin-top: 6rpx;
+  padding-top: 6rpx;
+  border-top: 1rpx dashed #fde68a;
+}
+
+.demo-link-row {
+  display: inline-flex;
+  cursor: pointer;
+  padding: 4rpx 0;
+}
+
+.demo-link-text, .demo-channel-link {
+  font-size: 20rpx;
+  color: #b45309;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.dash-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
 }
 
 .suspend-icon { font-size: 26rpx; }

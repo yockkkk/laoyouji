@@ -1,34 +1,39 @@
 <template>
   <!--
     挂起提示卡：高危操作已发家人确认。
-
-    挂起对老人是**一次进展**，不是一个错误 —— 文案与配色都不许读成报错
-    （所以用暖黄而不是红色，标题说"要家人点头"而不是"操作被拦截"）。
-
-    正文用的是后端的 message 字段，不是 summary。后端同时给两句话：
-    message 写给老人（已过黑话检查），summary 写给子女（含车次金额等事实）。
-    旧版把 summary 当老人正文渲染，等于让老人读子女那份工单。
-
-    这张卡会**就地变**：家人在手机上点完，chat.vue 按 confirmation_id 找回
-    这一张、改它的 status。原来它一直停在"等他点同意"，于是家人早就同意了，
-    老人屏幕上那张黄卡还在催 —— 老人会以为自己还得等，或者再说一遍。
+    主标题与状态常驻显现，具体内容默认折叠，提供清晰的展开/收起交互，避免冗余拉长对话排版。
   -->
-  <view class="suspend-card" :class="'s-' + status">
-    <view class="head">
-      <text class="icon">{{ head.icon }}</text>
-      <text class="title">{{ head.title }}</text>
-      <text class="status-tag" :class="status">{{ statusBadgeText }}</text>
+  <view class="suspend-card" :class="['s-' + status, { 'is-expanded': isExpanded }]">
+    <view class="head" @tap="toggleExpand">
+      <view class="head-left">
+        <text class="icon">{{ head.icon }}</text>
+        <view class="title-group">
+          <text class="title">{{ head.title }}</text>
+          <text v-if="summary && !isExpanded" class="brief-summary">{{ summary }}</text>
+        </view>
+        <text v-if="amount && !isExpanded" class="amount-badge">¥{{ amount }}</text>
+      </view>
+      <view class="head-right">
+        <text class="status-tag" :class="status">{{ statusBadgeText }}</text>
+        <view class="toggle-btn" :class="{ open: isExpanded }">
+          <text class="toggle-text">{{ isExpanded ? '收起' : '详情' }}</text>
+          <text class="toggle-arrow">{{ isExpanded ? '▲' : '▼' }}</text>
+        </view>
+      </view>
     </view>
 
-    <text class="desc">{{ message }}</text>
+    <!-- 可展开的具体内容 -->
+    <view v-show="isExpanded" class="card-body">
+      <text class="desc">{{ message }}</text>
 
-    <view class="meta">
-      <text v-if="summary" class="fact">{{ summary }}</text>
-      <text v-if="amount" class="amount">金额：{{ amount }} 元</text>
-      <text class="waiting">{{ head.foot }}</text>
-      <text v-if="status === 'pending' && validMinutes" class="expire">
-        {{ validMinutes }} 分钟内有效
-      </text>
+      <view class="meta">
+        <text v-if="summary" class="fact">{{ summary }}</text>
+        <text v-if="amount" class="amount">金额：{{ amount }} 元</text>
+        <text class="waiting">{{ head.foot }}</text>
+        <text v-if="status === 'pending' && validMinutes" class="expire">
+          {{ validMinutes }} 分钟内有效
+        </text>
+      </view>
     </view>
   </view>
 </template>
@@ -70,11 +75,15 @@ export default {
     summary: { type: String, default: '' }, // 事实摘要（车次/项目）
     amount: { type: Number, default: 0 },
     expiresAt: { type: String, default: '' }, // ISO 时间串
-    // 后端 confirmation_tasks.status 的同一套词，不另造一套
     status: { type: String, default: 'pending' },
+    defaultExpanded: { type: Boolean, default: false },
+  },
+  data() {
+    return {
+      isExpanded: this.defaultExpanded,
+    }
   },
   computed: {
-    /** 认不出的状态按"还在等"处理：宁可让老人多等，不可替家人宣布结果。 */
     head() {
       return HEADS[this.status] || HEADS.pending
     },
@@ -87,12 +96,16 @@ export default {
       }
       return map[this.status] || '待确认'
     },
-    /** 还剩多少分钟。算不出来就不显示 —— 不编一个数字给老人。 */
     validMinutes() {
       if (!this.expiresAt) return 0
       const left = new Date(this.expiresAt).getTime() - Date.now()
       if (!Number.isFinite(left) || left <= 0) return 0
       return Math.ceil(left / 60000)
+    },
+  },
+  methods: {
+    toggleExpand() {
+      this.isExpanded = !this.isExpanded
     },
   },
 }
@@ -106,14 +119,10 @@ export default {
   border: 3rpx solid $lyj-warn;
   border-radius: $lyj-radius;
   margin: $lyj-space-sm $lyj-space-md;
-  padding: $lyj-space-lg;
+  padding: $lyj-space-md $lyj-space-lg;
+  transition: all 0.2s ease;
 }
 
-/**
- * 结果三态换底色，等于把"还要不要等"画出来 —— 老人不必逐字读文案，
- * 一眼就知道这张卡还归自己管不管。黄 = 还在等，绿 = 妥了，
- * 灰 = 家人说先不办，红边 = 同意了但没办成（这一档才允许读成异常）。
- */
 .s-executed {
   background: $lyj-success-bg;
   border-color: $lyj-success;
@@ -137,22 +146,70 @@ export default {
     color: $lyj-danger;
   }
 }
+
 .head {
   display: flex;
   align-items: center;
-  gap: $lyj-space-xs;
-  margin-bottom: $lyj-space-sm;
+  justify-content: space-between;
+  min-height: 72rpx;
+  cursor: pointer;
 }
+
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-xs;
+  flex: 1;
+  min-width: 0;
+}
+
+.title-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .icon {
   font-size: $lyj-font-lg;
+  flex-shrink: 0;
 }
+
 .title {
   font-size: $lyj-font-md;
   font-weight: 700;
   color: $lyj-warn-text;
+  white-space: nowrap;
 }
+
+.brief-summary {
+  font-size: $lyj-font-xs;
+  color: $lyj-text-light;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320rpx;
+}
+
+.amount-badge {
+  font-size: $lyj-font-xs;
+  font-weight: 700;
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  margin-left: 8rpx;
+  flex-shrink: 0;
+}
+
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+
 .status-tag {
-  margin-left: auto;
   font-size: $lyj-font-xs;
   padding: 4rpx 16rpx;
   border-radius: $lyj-radius-pill;
@@ -174,32 +231,59 @@ export default {
   background: #fee2e2;
   color: #b91c1c;
 }
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 8rpx;
+  background: rgba(0, 0, 0, 0.04);
+  color: $lyj-text-light;
+  font-size: $lyj-font-xs;
+}
+
+.toggle-arrow {
+  font-size: 18rpx;
+}
+
+.card-body {
+  margin-top: $lyj-space-sm;
+  padding-top: $lyj-space-sm;
+  border-top: 1rpx dashed rgba(0, 0, 0, 0.08);
+}
+
 .desc {
   display: block;
   font-size: $lyj-font-md;
   color: $lyj-text;
   line-height: $lyj-line-height;
 }
+
 .meta {
   margin-top: $lyj-space-sm;
   display: flex;
   flex-direction: column;
   gap: $lyj-space-xs;
 }
+
 .fact {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
 }
+
 .amount {
   font-size: $lyj-font-md;
   color: $lyj-danger;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
 .waiting {
   font-size: $lyj-font-sm;
   color: $lyj-warn-text;
 }
+
 .expire {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;

@@ -307,25 +307,17 @@ async def get_chat_history(
                     "isUser": True,
                 })
         elif event.type == ASSISTANT_MESSAGE:
-            text = (payload.get("text") or "").strip()
-            if text:
-                messages.append({
-                    "kind": "text",
-                    "text": text,
-                    "isUser": False,
-                    "agent": event.agent_id,
-                })
-            # 模型"我要调这些"的声明。tool/call 事件只走 SSE 不单独展开，
-            # 否则同一笔调用会在这里和下面各渲染一次、执行树上出现双份节点。
-            for tc in (payload.get("tool_calls") or []):
-                messages.append({
-                    "kind": "tool",
-                    "tool": tc.get("name"),
-                    "args": _as_args(tc.get("arguments")),
-                    "callId": tc.get("id"),
-                    "agent": event.agent_id,
-                    "status": "running",
-                })
+            # 若带有 tool_calls，说明是中间规划/工具调用步骤，该文本属于中间独白，不作为聊天气泡展现在老人主界面
+            # 只有没有 tool_calls 的消息，才是真正针对老人的回答
+            if not payload.get("tool_calls"):
+                text = (payload.get("text") or "").strip()
+                if text:
+                    messages.append({
+                        "kind": "text",
+                        "text": text,
+                        "isUser": False,
+                        "agent": event.agent_id or MAIN_SCOPE,
+                    })
         elif event.type == ASSISTANT_FINAL:
             text = (payload.get("text") or "").strip()
             if text:
@@ -384,6 +376,8 @@ async def get_chat_history(
                     bubble["summary"] = payload["summary"]
                 if payload.get("denied"):
                     bubble["blocked"] = True
+                if payload.get("suspended"):
+                    bubble["confirmationId"] = payload.get("confirmation_id")
             else:
                 messages.append({
                     "kind": "tool",
@@ -393,6 +387,7 @@ async def get_chat_history(
                     "status": "suspended" if payload.get("suspended") else ("completed" if payload.get("ok") is not False else "failed"),
                     "summary": payload.get("summary", ""),
                     "ok": payload.get("ok") is not False,
+                    "confirmationId": payload.get("confirmation_id"),
                 })
         elif event.type == ARTIFACT_CARD:
             messages.append({
@@ -417,26 +412,9 @@ async def get_chat_history(
             for m in messages:
                 if m.get("kind") == "suspend" and (m.get("confirmationId") == cid or (cid and str(m.get("confirmationId")) == str(cid))):
                     m["status"] = status
-        elif event.type == TOOL_RESULT:
-            # 结算：按 call_id 回写到上面那条声明上。状态词与 SSE 实时链路
-            # 保持一致（前端两条链路共用同一套渲染），因此统一成
-            # executed / suspended / rejected / failed。
-            cid = payload.get("call_id")
-            for m in messages:
-                if m.get("kind") == "tool" and m.get("callId") == cid:
-                    ok = bool(payload.get("ok"))
-                    m["status"] = "executed" if ok else "failed"
-                    m["ok"] = ok
-                    if payload.get("suspended"):
-                        m["status"] = "suspended"
-                        m["confirmationId"] = payload.get("confirmation_id")
-                    if payload.get("denied"):
-                        m["status"] = "rejected"
-                        m["blocked"] = True
-                    # 结果摘要优先取工具回执，取不到再退回入参侧的调用摘要
-                    m["summary"] = payload.get("summary") or m.get("summary") or ""
-                    m["result"] = payload.get("data")
-                    break
+                if m.get("kind") == "tool" and (m.get("confirmationId") == cid or (cid and str(m.get("confirmationId")) == str(cid))):
+                    m["status"] = "completed" if (status in ("executed", "approved", "completed")) else ("rejected" if status == "rejected" else status)
+
 
     latest_seq = max((e.seq for e in events), default=0)
     return {

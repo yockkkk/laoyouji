@@ -331,9 +331,19 @@ class AgentDriver:
             ]
         self._append(ASSISTANT_MESSAGE, payload, step_id=step.id)
         if response.content:
-            await self.turn.emit("agent_msg", {"text": response.content,
-                                               "agent": payload["agent"]},
-                                 persist=False)
+            if response.tool_calls:
+                # 中间规划/工具调用的思考文本，推至链路独白通道，不推给老人主对话框
+                await self.turn.emit("agent_thought", {
+                    "thought": response.content,
+                    "agent": payload["agent"],
+                }, persist=False)
+            else:
+                # 最终定稿回复老人
+                await self.turn.emit("agent_msg", {
+                    "text": response.content,
+                    "agent": payload["agent"],
+                }, persist=False)
+
 
     # ------------------------------------------------------------------ 工具
     async def _run_tools(self, step: AgentStep, response: LLMResponse,

@@ -13,6 +13,55 @@
       <text class="precision-text">🔒 {{ precisionNote }}</text>
     </view>
 
+    <!-- 行程关联待审批事项（挂号、车票、酒店等高危操作） -->
+    <view v-if="pendingConfirmations && pendingConfirmations.length > 0" class="pending-section">
+      <view class="pending-section-head">
+        <text class="pending-section-title">✋ 行程关联待审批事项 ({{ pendingConfirmations.length }})</text>
+        <text class="pending-section-sub">长辈已发起申请，等待您确认核准</text>
+      </view>
+      <view v-for="t in pendingConfirmations" :key="t.id" class="pending-card" @tap="goDetail(t)">
+        <view class="pending-card-top">
+          <view class="pending-icon">{{ taskIcon(t) }}</view>
+          <view class="pending-main">
+            <view class="pending-summary-row">
+              <text class="pending-summary">{{ taskSummary(t) }}</text>
+              <text v-if="t.amount" class="pending-cost">¥{{ t.amount }}</text>
+            </view>
+            <text v-if="taskReason(t)" class="pending-reason">原因：{{ taskReason(t) }}</text>
+          </view>
+        </view>
+        <view class="pending-action-bar">
+          <text class="pending-go" @tap.stop="goDetail(t)">查看详情 ›</text>
+          <view v-if="t.status === 'executed' || t.status === 'approved'" class="inline-status success">
+            <text>✅ 已同意并办理</text>
+          </view>
+          <view v-else-if="t.status === 'rejected'" class="inline-status rejected">
+            <text>🚫 已拒绝</text>
+          </view>
+          <view v-else class="pending-btns">
+            <button
+              class="btn-approve"
+              size="mini"
+              :loading="actionLoading[t.id] === 'approve'"
+              :disabled="!!actionLoading[t.id]"
+              @tap.stop="approveTask(t)"
+            >
+              同意
+            </button>
+            <button
+              class="btn-reject"
+              size="mini"
+              :loading="actionLoading[t.id] === 'reject'"
+              :disabled="!!actionLoading[t.id]"
+              @tap.stop="rejectTask(t)"
+            >
+              拒绝
+            </button>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <view v-if="!trip" class="empty-card">
       <text class="empty-text">{{ emptyText }}</text>
     </view>
@@ -63,8 +112,9 @@
 
 <script>
 import LyjSegment from '../../components/LyjSegment.vue'
-import { get } from '../../api/client'
+import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
+import { publishPendingCount } from '../../store/pendingBadge'
 
 // 与后端 Mock 地图一致的演示途经点
 const EXPECTED = ['家（南京鼓楼区）', '南京南站', '济南西站', '北京南站', '北京积水潭医院']
@@ -84,6 +134,8 @@ export default {
       checkpoints: [],
       precision: '',
       loaded: false,
+      pendingConfirmations: [],
+      actionLoading: {},
     }
   },
   computed: {
@@ -135,20 +187,122 @@ export default {
     async load() {
       try {
         if (!this.tripId) this.tripId = await this._latestTripId()
-        if (!this.tripId) {
-          this.loaded = true
-          return
+        const promises = [
+          get(`/api/child/${this.user.id}/dashboard`).catch(() => null),
+        ]
+        if (this.tripId) {
+          promises.unshift(get(`/api/trips/${this.tripId}`, { child_id: this.user.id }))
         }
-        // child_id 必须带上：不带就是"老人看自己的行程"，后端会原样返回全量轨迹，
-        // 绕过隐私分级（routes_guardian.py:40）。子女端一律带。
-        const d = await get(`/api/trips/${this.tripId}`, { child_id: this.user.id })
-        this.trip = d.trip
-        this.checkpoints = d.checkpoints || []
-        this.precision = d.precision || ''
+        const results = await Promise.all(promises)
+        const tripRes = this.tripId ? results[0] : null
+        const dashRes = this.tripId ? results[1] : results[0]
+
+        if (tripRes) {
+          this.trip = tripRes.trip
+          this.checkpoints = tripRes.checkpoints || []
+          this.precision = tripRes.precision || ''
+        }
+        if (dashRes && Array.isArray(dashRes.pending_confirmations)) {
+          this.pendingConfirmations = dashRes.pending_confirmations
+          publishPendingCount(this.pendingConfirmations.filter((x) => !x.status || x.status === 'pending').length)
+        }
       } catch (e) {
         uni.showToast({ title: '加载失败：' + e.message, icon: 'none' })
       }
       this.loaded = true
+    },
+    taskIcon(t) {
+      const map = {
+        book_ticket: '🚄',
+        search_train: '🚄',
+        register_appointment: '🏥',
+        search_hospital: '🏥',
+        book_hotel: '🏨',
+        order_service: '🧹',
+        pay: '💸',
+      }
+      return map[t.tool_name] || '✋'
+    },
+    taskSummary(t) {
+      const card = t.summary_for_child || {}
+      return card.summary || t.tool_name || '需要您确认的事项'
+    },
+    taskReason(t) {
+      const card = t.summary_for_child || {}
+      return card.reason || ''
+    },
+    goDetail(t) {
+      uni.navigateTo({
+        url: `/pages/child/confirm-detail?id=${t.id}&child_id=${this.user.id}`,
+      })
+    },
+    async approveTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'approve')
+      } else {
+        this.actionLoading[t.id] = 'approve'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/approve?child_id=${this.user.id}`)
+        const nextStatus = res.status || (res.ok ? 'executed' : 'failed')
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        publishPendingCount(this.pendingConfirmations.filter((x) => !x.status || x.status === 'pending').length)
+        uni.showToast({ title: '已同意并办理', icon: 'success' })
+      } catch (err) {
+        uni.showToast({ title: err.message || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
+    },
+    async rejectTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      const confirmed = await new Promise((resolve) => {
+        uni.showModal({
+          title: '确认拒绝',
+          content: '确定要拒绝长辈的这项请求吗？',
+          confirmText: '拒绝',
+          confirmColor: '#ef4444',
+          cancelText: '再想想',
+          success: (r) => resolve(!!r.confirm),
+          fail: () => resolve(false),
+        })
+      })
+      if (!confirmed) return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'reject')
+      } else {
+        this.actionLoading[t.id] = 'reject'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/reject?child_id=${this.user.id}`)
+        const nextStatus = res.status || 'rejected'
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        publishPendingCount(this.pendingConfirmations.filter((x) => !x.status || x.status === 'pending').length)
+        uni.showToast({ title: '已拒绝', icon: 'none' })
+      } catch (err) {
+        uni.showToast({ title: err.message || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
     },
     async _latestTripId() {
       const d = await get(`/api/child/${this.user.id}/dashboard`)
@@ -371,5 +525,124 @@ export default {
 }
 .cp-note.off_route {
   color: $lyj-danger;
+}
+
+.pending-section {
+  margin: $lyj-space-sm $lyj-space-md;
+  background: #fffbeb;
+  border: 2rpx solid #fde68a;
+  border-radius: $lyj-radius;
+  padding: $lyj-space-md;
+}
+.pending-section-head {
+  margin-bottom: $lyj-space-sm;
+}
+.pending-section-title {
+  display: block;
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: #b45309;
+}
+.pending-section-sub {
+  display: block;
+  font-size: $lyj-font-xs;
+  color: #92400e;
+  margin-top: 4rpx;
+}
+.pending-card {
+  background: #ffffff;
+  border: 1rpx solid #fde68a;
+  border-radius: 12rpx;
+  padding: $lyj-space-md;
+  margin-bottom: $lyj-space-sm;
+  box-shadow: 0 2rpx 6rpx rgba(180, 83, 9, 0.06);
+}
+.pending-card:last-child {
+  margin-bottom: 0;
+}
+.pending-card-top {
+  display: flex;
+  gap: $lyj-space-sm;
+}
+.pending-icon {
+  font-size: 40rpx;
+  flex-shrink: 0;
+}
+.pending-main {
+  flex: 1;
+  min-width: 0;
+}
+.pending-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pending-summary {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: #1e293b;
+}
+.pending-cost {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: #dc2626;
+  font-variant-numeric: tabular-nums;
+}
+.pending-reason {
+  display: block;
+  font-size: $lyj-font-xs;
+  color: #64748b;
+  margin-top: 4rpx;
+}
+.pending-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: $lyj-space-sm;
+  padding-top: $lyj-space-xs;
+  border-top: 1rpx dashed #f1f5f9;
+}
+.pending-go {
+  font-size: $lyj-font-xs;
+  color: #3b82f6;
+  cursor: pointer;
+}
+.inline-status {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+}
+.inline-status.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+.inline-status.rejected {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.pending-btns {
+  display: flex;
+  gap: $lyj-space-xs;
+}
+.btn-approve {
+  background: #10b981;
+  color: #ffffff;
+  font-size: $lyj-font-xs;
+  font-weight: 700;
+  border: none;
+  border-radius: 8rpx;
+  padding: 0 20rpx;
+  min-height: 32px;
+}
+.btn-reject {
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: $lyj-font-xs;
+  font-weight: 700;
+  border: 1rpx solid #cbd5e1;
+  border-radius: 8rpx;
+  padding: 0 20rpx;
+  min-height: 32px;
 }
 </style>

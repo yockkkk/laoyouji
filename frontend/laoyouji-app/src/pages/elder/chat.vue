@@ -268,13 +268,40 @@ export default {
   },
   computed: {
     elderMessages() {
-      return (this.messages || []).filter((m) => {
+      const raw = (this.messages || []).filter((m) => {
         if (!m) return false
-        if (m.kind === 'text') return m.isUser || this.isMainAgent(m.agent) // 老人原话 + 主智能体定稿
+        if (m.kind === 'text') {
+          if (!m.text || !String(m.text).trim()) return false
+          return m.isUser || this.isMainAgent(m.agent) // 老人原话 + 主智能体定稿
+        }
         if (m.kind === 'card') return true // 交付物本来就是给老人看的
         if (m.kind === 'suspend') return true // 家人确认卡，老人必须看到
         return false // todo / tool / status 一律只进右侧链路
       })
+
+      // 轮次内精简收口：同一轮次（老人发言后）若有多段助手回复，只保留最后一段完整定稿，中间规划独白不进主框
+      const result = []
+      let turnAssistantTexts = []
+
+      const flushTurnAssistant = () => {
+        if (turnAssistantTexts.length > 0) {
+          result.push(turnAssistantTexts[turnAssistantTexts.length - 1])
+          turnAssistantTexts = []
+        }
+      }
+
+      for (const m of raw) {
+        if (m.kind === 'text' && m.isUser) {
+          flushTurnAssistant()
+          result.push(m)
+        } else if (m.kind === 'text' && !m.isUser) {
+          turnAssistantTexts.push(m)
+        } else {
+          result.push(m)
+        }
+      }
+      flushTurnAssistant()
+      return result
     },
     drawerPanelStyle() {
       if (this.drawerDragY > 0) {
@@ -837,7 +864,10 @@ export default {
         }
 
         case 'tool_call': {
-          // 流水提示，**不动步骤条**（步骤状态只由 todo 快照决定）
+          // 伴随了工具调用说明是中间规划步骤，清空打字预览文本，不作为气泡展示给老人
+          if (bubble && bubble.text) {
+            bubble.text = ''
+          }
           this.messages.push({
             kind: 'tool',
             callId: d.call_id,

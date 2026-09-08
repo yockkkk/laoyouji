@@ -371,6 +371,29 @@ export default {
           // silent
         }
       }
+      // 1. 若为待审批通知，直接跳转至详情页审批
+      let taskId = n.task_id || null
+      if (!taskId && n.data) {
+        if (typeof n.data === 'object' && n.data !== null) {
+          taskId = n.data.task_id || n.data.id
+        } else if (typeof n.data === 'string') {
+          try {
+            const parsed = JSON.parse(n.data)
+            taskId = parsed.task_id || parsed.id
+          } catch (e) {}
+        }
+      }
+      if (taskId || n.type === 'confirmation_request') {
+        const targetId = taskId || (this.pending.length > 0 ? this.pending[0].id : '')
+        if (targetId) {
+          uni.navigateTo({
+            url: `/pages/child/confirm-detail?id=${targetId}&child_id=${this.user.id}`,
+          })
+          return
+        }
+      }
+
+      // 2. 若为计划书生成通知，跳转至行程守护页
       if (n.type === 'plan_created') {
         let tripId = n.trip_id || null
         if (!tripId && n.data) {

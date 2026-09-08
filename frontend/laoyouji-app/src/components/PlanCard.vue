@@ -9,43 +9,62 @@
     现在缺失是一个**字段**（missing: true）而不是一个**缺席**，所以它占一行、
     看得见、还能被计数。
   -->
-  <view class="card-wrap" :class="{ compact }">
-    <view class="card-head">
-      <text class="card-title">{{ title }}</text>
-      <text v-if="!complete && missingCount" class="card-todo">
-        还有 {{ missingCount }} 项待补
-      </text>
+  <view class="card-wrap" :class="[{ compact }, { 'is-expanded': isExpanded }]">
+    <view class="card-head" @tap="toggleExpand">
+      <view class="card-head-left">
+        <text class="card-title">{{ title }}</text>
+        <view class="card-badges">
+          <text v-if="sections && sections.length" class="page-badge">
+            共 {{ sections.length }} 页
+          </text>
+          <text v-if="!complete && missingCount" class="card-todo">
+            {{ missingCount }} 项待补
+          </text>
+          <text v-else class="card-ready">
+            规划就绪
+          </text>
+        </view>
+      </view>
+
+      <view class="card-head-right">
+        <view class="plan-toggle-btn" :class="{ open: isExpanded }">
+          <text class="toggle-text">{{ isExpanded ? '收起' : '查看完整计划书' }}</text>
+          <text class="toggle-arrow">{{ isExpanded ? '▲' : '▼' }}</text>
+        </view>
+      </view>
     </view>
 
-    <view v-for="(section, si) in sections" :key="si" class="section">
-      <text v-if="!compact && section.heading" class="section-heading">
-        {{ section.heading }}
-      </text>
-      <view v-for="(row, ri) in section.rows" :key="ri" class="row">
-        <text class="key">{{ row.label }}</text>
-        <text class="val" :class="{ missing: row.missing }">
-          {{ row.missing ? '待补' : row.value }}
+    <!-- 可展开的完整计划书各页 -->
+    <view v-show="isExpanded" class="card-body">
+      <view v-for="(section, si) in sections" :key="si" class="section">
+        <text v-if="!compact && section.heading" class="section-heading">
+          {{ section.heading }}
+        </text>
+        <view v-for="(row, ri) in section.rows" :key="ri" class="row">
+          <text class="key">{{ row.label }}</text>
+          <text class="val" :class="{ missing: row.missing }">
+            {{ row.missing ? '待补' : row.value }}
+          </text>
+        </view>
+        <!-- 页内叮嘱属于这一页，不能被抽到卡片末尾去 -->
+        <text
+          v-for="(note, ni) in section.notes || []"
+          :key="'n' + ni"
+          class="section-note"
+        >
+          {{ note }}
         </text>
       </view>
-      <!-- 页内叮嘱属于这一页，不能被抽到卡片末尾去 -->
-      <text
-        v-for="(note, ni) in section.notes || []"
-        :key="'n' + ni"
-        class="section-note"
-      >
-        {{ note }}
-      </text>
-    </view>
 
-    <view v-if="notes && notes.length" class="card-foot">
-      <text v-for="(note, ni) in notes" :key="ni" class="footnote">{{ note }}</text>
-    </view>
+      <view v-if="notes && notes.length" class="card-foot">
+        <text v-for="(note, ni) in notes" :key="ni" class="footnote">{{ note }}</text>
+      </view>
 
-    <!-- 朗读入口。后端的 announce 通道不会随 card 事件下来（card 事件只带卡片本身），
-         所以这里默认**把卡上写的念出来** —— 包括脚注里的免责声明。 -->
-    <view v-if="speech" class="replay" @tap="replay">
-      <text class="replay-icon">🔊</text>
-      <text class="replay-text">念给我听</text>
+      <!-- 朗读入口 -->
+      <view v-if="speech" class="replay" @tap.stop="replay">
+        <text class="replay-icon">🔊</text>
+        <text class="replay-text">念给我听</text>
+      </view>
     </view>
   </view>
 </template>
@@ -65,6 +84,12 @@ export default {
     compact: { type: Boolean, default: false },
     // 朗读文本的**覆盖**位。留空则由 speech 从卡面内容自己拼。
     announce: { type: String, default: '' },
+    defaultExpanded: { type: Boolean, default: false },
+  },
+  data() {
+    return {
+      isExpanded: this.defaultExpanded,
+    }
   },
   computed: {
     missingCount() {
@@ -73,16 +98,6 @@ export default {
         0,
       )
     },
-    /**
-     * 念给老人听的那段话。
-     *
-     * 为什么要在前端拼：后端把 R4 免责声明注进的是工具结果的 summary / announce
-     * 两个字段，而 `card` 事件推的只是卡片本身（session.py 只 emit
-     * result["card"]）—— announce 根本到不了这里。卡上写着的（含脚注里的免责
-     * 声明）就是唯一可靠的信源，所以念卡面，不念一个不存在的字段。
-     *
-     * 待补的行照念"待补"：听的人也有权知道哪一项还没定下来。
-     */
     speech() {
       if (this.announce) return this.announce
       const parts = this.title ? [this.title] : []
@@ -98,6 +113,9 @@ export default {
     },
   },
   methods: {
+    toggleExpand() {
+      this.isExpanded = !this.isExpanded
+    },
     replay() {
       const ok = speak(this.speech)
       if (!ok) uni.showToast({ title: '当前设备不支持语音播报', icon: 'none' })
@@ -114,16 +132,31 @@ export default {
   border: 2rpx solid $lyj-line;
   border-radius: $lyj-radius;
   margin: $lyj-space-sm $lyj-space-md;
-  padding: $lyj-space-lg;
+  padding: $lyj-space-md $lyj-space-lg;
   box-shadow: $lyj-shadow-card;
+  transition: all 0.2s ease;
 }
 .card-wrap.compact {
   padding: $lyj-space-md;
 }
 .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  min-height: 72rpx;
+}
+.card-wrap.is-expanded .card-head {
   margin-bottom: $lyj-space-md;
   padding-bottom: $lyj-space-sm;
   border-bottom: 2rpx solid $lyj-line;
+}
+.card-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  min-width: 0;
+  flex: 1;
 }
 .card-title {
   display: block;
@@ -132,11 +165,56 @@ export default {
   color: $lyj-text;
   line-height: $lyj-line-height;
 }
+.card-badges {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.page-badge {
+  font-size: $lyj-font-xs;
+  padding: 2rpx 14rpx;
+  border-radius: 999rpx;
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
 .card-todo {
-  display: block;
-  margin-top: $lyj-space-xs;
-  font-size: $lyj-font-sm;
+  font-size: $lyj-font-xs;
   color: $lyj-warn-text;
+  font-weight: 600;
+}
+.card-ready {
+  font-size: $lyj-font-xs;
+  color: $lyj-success;
+  font-weight: 600;
+}
+.card-head-right {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+.plan-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
+  border-radius: $lyj-radius-pill;
+  background: #f1f5f9;
+  color: $lyj-primary;
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+}
+.plan-toggle-btn.open {
+  background: $lyj-primary-soft;
+}
+.toggle-arrow {
+  font-size: 20rpx;
+}
+.card-body {
+  animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6rpx); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .section {
   margin-bottom: $lyj-space-md;
