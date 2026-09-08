@@ -20,14 +20,6 @@
         <button class="icon-action-btn" :title="allExpanded ? '全部收起' : '全部展开'" @tap="toggleAllExpanded">
           <text class="icon-action-text">{{ allExpanded ? '收起全部' : '展开全部' }}</text>
         </button>
-        <button
-          class="icon-action-btn replay-btn"
-          :class="{ 'is-active': replay.active }"
-          :title="replay.active ? (replay.playing ? '暂停演播' : '继续演播') : '动态演播全链路'"
-          @tap="toggleReplayMode"
-        >
-          <text class="icon-action-text">{{ replay.active ? (replay.playing ? '⏸ 暂停演播' : '▶ 继续演播') : '✨ 动态演播全链路' }}</text>
-        </button>
         <button v-if="isDesktop" class="icon-action-btn collapse-pane-btn" title="收起执行树面板" @tap="$emit('close')">
           <text class="icon-action-text">⇤ 收起</text>
         </button>
@@ -46,7 +38,7 @@
       <view class="metric-divider"></view>
       <view class="metric-item">
         <text class="metric-label">协同智能体</text>
-        <text class="metric-val tabular-num">{{ activeAgentsCount }} / 4</text>
+        <text class="metric-val tabular-num">{{ activeAgentsCount }} / 3</text>
       </view>
       <view class="metric-divider"></view>
       <view class="metric-item">
@@ -64,268 +56,6 @@
     <scroll-view class="tree-scroll" scroll-y>
       <view class="tree-canvas">
 
-        <!-- ================= 动态规划 DAG 画布 (Planning Flowchart / DAG Canvas) (R3) ================= -->
-        <view class="planning-dag-card">
-          <view class="dag-header">
-            <view class="dag-header-title-box">
-              <text class="dag-sparkle">✨</text>
-              <view class="dag-titles">
-                <text class="dag-main-title">多智能体动态规划 DAG (Agent Planning Flowchart)</text>
-                <text class="dag-sub-title">感知输入 ➔ 意图拆解 ➔ 并行协同 ➔ 安全拦截网 ➔ 方案装配 ➔ 成果闭环</text>
-              </view>
-            </view>
-            <view class="dag-header-actions">
-              <button
-                class="replay-trigger-btn"
-                :class="{ 'is-playing': replay.active }"
-                @tap="toggleReplayMode"
-              >
-                <text class="replay-btn-icon">{{ replay.active ? (replay.playing ? '⏸' : '▶') : '✨' }}</text>
-                <text class="replay-btn-text">{{ replay.active ? (replay.playing ? '暂停演播' : '继续演播') : '动态演播全链路' }}</text>
-              </button>
-            </view>
-          </view>
-
-          <!-- 动态演播全链路控制面板 (Replay Controller Bar) -->
-          <view v-if="replay.active" class="replay-controller-bar">
-            <view class="replay-narrative">
-              <view class="narrative-tag">
-                <text class="narrative-step-num tabular-num">{{ currentReplayStepInfo.num }}</text>
-                <text class="narrative-icon">{{ currentReplayStepInfo.icon }}</text>
-              </view>
-              <view class="narrative-content">
-                <text class="narrative-title">{{ currentReplayStepInfo.title }}</text>
-                <text class="narrative-desc">{{ currentReplayStepInfo.desc }}</text>
-              </view>
-            </view>
-
-            <view class="replay-buttons-row">
-              <button class="ctrl-btn" @tap="prevReplayStep" :disabled="replay.step <= 0">
-                <text class="ctrl-text">⏮ 上一步</text>
-              </button>
-              <button class="ctrl-btn primary" @tap="toggleReplayPlay">
-                <text class="ctrl-text">{{ replay.playing ? '⏸ 暂停' : '▶ 播放' }}</text>
-              </button>
-              <button class="ctrl-btn" @tap="nextReplayStep" :disabled="replay.step >= 5">
-                <text class="ctrl-text">⏭ 下一步</text>
-              </button>
-              <button class="ctrl-btn" @tap="resetReplay">
-                <text class="ctrl-text">↺ 重置</text>
-              </button>
-              <button class="ctrl-btn exit" @tap="exitReplay">
-                <text class="ctrl-text">✕ 退出</text>
-              </button>
-            </view>
-
-            <!-- 演播进度指示条 -->
-            <view class="replay-progress-track">
-              <view
-                v-for="s in 6"
-                :key="s"
-                class="replay-progress-dot"
-                :class="{
-                  'passed': (s - 1) < replay.step,
-                  'current': (s - 1) === replay.step,
-                }"
-                @tap="seekReplay(s - 1)"
-              >
-                <text class="dot-num tabular-num">{{ s - 1 }}</text>
-              </view>
-              <view
-                class="replay-progress-bar-fill"
-                :style="{ width: (replay.step / 5 * 100) + '%' }"
-              ></view>
-            </view>
-          </view>
-
-          <!-- DAG 拓扑流程图主体 (Visual DAG Hierarchy) -->
-          <view class="dag-canvas-container">
-            <!-- 节点 1：Root Intent 根意图调度 -->
-            <view
-              class="dag-node dag-node-root"
-              :class="{
-                'is-frontier': isRootFrontier,
-                'is-completed': isRootDone,
-              }"
-              @tap="scrollToSection('root')"
-            >
-              <view class="dag-node-glow"></view>
-              <view class="dag-node-avatar orchestrator-avatar">
-                <text class="dag-avatar-icon">🎯</text>
-              </view>
-              <view class="dag-node-text-group">
-                <text class="dag-node-title">老友记总调度</text>
-                <text class="dag-node-role">Orchestrator · 意图理解与任务派发</text>
-              </view>
-              <view class="dag-node-state-chip" :class="rootStatusClass">
-                {{ rootStatusText }}
-              </view>
-            </view>
-
-            <!-- 动态能量连接线：总调度 -> 派发主干 -->
-            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isAnyAgentActive }">
-              <view class="pulse-particle"></view>
-            </view>
-
-            <!-- 节点 2：多智能体并发协同总线 -->
-            <view class="dag-parallel-trunk-label">
-              <text class="trunk-label-text">⚡ 多智能体并发协同总线 (Parallel Dispatch Trunk)</text>
-            </view>
-            <view class="dag-trunk-bar" :class="{ 'energy-pulse': isAnyAgentActive }"></view>
-
-            <!-- 节点 3：并行子智能体集群 (Subagents Cluster) -->
-            <view class="dag-subagents-grid">
-              <!-- 健康守护 -->
-              <view
-                class="dag-node dag-sub-node health-sub-node"
-                :class="{
-                  'is-frontier': isHealthFrontier,
-                  'is-completed': healthStatusClass === 'status-completed',
-                  'is-suspended': healthStatusClass === 'status-suspended',
-                  'is-inactive': !isHealthActive,
-                }"
-                @tap="scrollToSection('health')"
-              >
-                <view class="dag-node-avatar health-avatar">
-                  <text class="dag-avatar-icon">🏥</text>
-                </view>
-                <text class="dag-sub-name">健康守护</text>
-                <text class="dag-sub-role">安康助手</text>
-                <view class="dag-mini-status" :class="healthStatusClass">
-                  {{ healthStatusText }}
-                </view>
-              </view>
-
-              <!-- 银发导航 -->
-              <view
-                class="dag-node dag-sub-node travel-sub-node"
-                :class="{
-                  'is-frontier': isTravelFrontier,
-                  'is-completed': travelStatusClass === 'status-completed',
-                  'is-suspended': travelStatusClass === 'status-suspended',
-                  'is-inactive': !isTravelActive,
-                }"
-                @tap="scrollToSection('travel')"
-              >
-                <view class="dag-node-avatar travel-avatar">
-                  <text class="dag-avatar-icon">🧭</text>
-                </view>
-                <text class="dag-sub-name">银发导航</text>
-                <text class="dag-sub-role">出行管家</text>
-                <view class="dag-mini-status" :class="travelStatusClass">
-                  {{ travelStatusText }}
-                </view>
-              </view>
-
-              <!-- 邻里帮 -->
-              <view
-                class="dag-node dag-sub-node community-sub-node"
-                :class="{
-                  'is-frontier': isCommunityFrontier,
-                  'is-completed': communityStatusClass === 'status-completed',
-                  'is-suspended': communityStatusClass === 'status-suspended',
-                  'is-inactive': !isCommunityActive,
-                }"
-                @tap="scrollToSection('community')"
-              >
-                <view class="dag-node-avatar community-avatar">
-                  <text class="dag-avatar-icon">🏘️</text>
-                </view>
-                <text class="dag-sub-name">邻里帮</text>
-                <text class="dag-sub-role">就医陪诊</text>
-                <view class="dag-mini-status" :class="communityStatusClass">
-                  {{ communityStatusText }}
-                </view>
-              </view>
-            </view>
-
-            <!-- 动态能量连接线：子智能体 -> 安全防护网 -->
-            <view class="dag-trunk-bar" :class="{ 'energy-pulse': isSafetyActive || isArtifactReady }"></view>
-            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isSafetyActive || isArtifactReady }">
-              <view class="pulse-particle"></view>
-            </view>
-
-            <!-- 节点 4：资金与医疗安全防护网 (Safety Guard Gateway) -->
-            <view
-              class="dag-node dag-node-gateway"
-              :class="{
-                'is-frontier': isSafetyFrontier,
-                'is-suspended': pendingTasksCount > 0,
-                'is-completed': pendingTasksCount === 0 && (hasTaskStarted || replay.step >= 4),
-                'is-rejected': hasAnyRejected,
-                'is-inactive': !isSafetyActive,
-              }"
-              @tap="scrollToSection('safety')"
-            >
-              <view class="dag-node-glow"></view>
-              <view class="dag-node-avatar safety-avatar">
-                <text class="dag-avatar-icon">🛡️</text>
-              </view>
-              <view class="dag-node-text-group">
-                <text class="dag-node-title">资金与医疗安全防护网</text>
-                <text class="dag-node-role">Safety Guard Gateway · 双向审批回路 (Loopback)</text>
-              </view>
-              <view class="dag-node-state-chip" :class="safetyStatusClass">
-                {{ safetyStatusText }}
-              </view>
-            </view>
-
-            <!-- 动态能量连接线：安全网 -> 方案建造师 -->
-            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isPlanBuilderActive || isArtifactReady }">
-              <view class="pulse-particle"></view>
-            </view>
-
-            <!-- 节点 5：方案建造师 (PlanBuilder) -->
-            <view
-              class="dag-node dag-node-builder"
-              :class="{
-                'is-frontier': isPlanBuilderFrontier,
-                'is-completed': planBuilderStatusClass === 'status-completed',
-                'is-inactive': !isPlanBuilderActive,
-              }"
-              @tap="scrollToSection('planBuilder')"
-            >
-              <view class="dag-node-glow"></view>
-              <view class="dag-node-avatar planbuilder-avatar">
-                <text class="dag-avatar-icon">📐</text>
-              </view>
-              <view class="dag-node-text-group">
-                <text class="dag-node-title">方案建造师</text>
-                <text class="dag-node-role">PlanBuilder · 事实聚合与去幻觉对齐</text>
-              </view>
-              <view class="dag-node-state-chip" :class="planBuilderStatusClass">
-                {{ planBuilderStatusText }}
-              </view>
-            </view>
-
-            <!-- 动态能量连接线：方案建造师 -> 终极交付物 -->
-            <view class="dag-wire-vertical" :class="{ 'energy-pulse': isArtifactReady }">
-              <view class="pulse-particle"></view>
-            </view>
-
-            <!-- 节点 6：终极交付物 (Final Deliverable Artifact) -->
-            <view
-              class="dag-node dag-node-artifact"
-              :class="{
-                'is-ready': isArtifactReady,
-                'is-frontier': isArtifactReady,
-                'is-inactive': !isArtifactReady && !replay.active,
-              }"
-              @tap="openArtifactModal"
-            >
-              <view class="dag-node-avatar artifact-avatar">
-                <text class="dag-avatar-icon">📄</text>
-              </view>
-              <view class="dag-node-text-group">
-                <text class="dag-node-title">{{ artifactDisplayTitle }}</text>
-                <text class="dag-node-role">{{ artifactDisplaySubtitle }}</text>
-              </view>
-              <view class="dag-node-state-chip" :class="isArtifactReady ? 'status-completed' : 'status-ready'">
-                {{ artifactChipText }}
-              </view>
-            </view>
-          </view>
-        </view>
 
         <!-- ================= 根节点：老友记主调度 (Orchestrator Card) ================= -->
         <view class="root-node-card" :class="{ 'is-thinking': thinking || rootThinking }">
@@ -777,7 +507,7 @@
                 <view class="branch-title-group">
                   <view class="branch-name-row">
                     <text class="branch-name">资金与医疗安全防护网</text>
-                    <text class="branch-en-tag">Safety Guard Gateway · 双向审批回路</text>
+                    <text class="branch-en-tag">安全网关 · 链路管控环节</text>
                   </view>
                   <text class="branch-desc">高危支付拦截 · 医疗操作防护 · 子女端实时核准</text>
                 </view>
@@ -855,7 +585,7 @@
                 <view class="branch-title-group">
                   <view class="branch-name-row">
                     <text class="branch-name">方案建造师</text>
-                    <text class="branch-en-tag">PlanBuilder · 方案装配</text>
+                    <text class="branch-en-tag">交付装配 · 链路管控环节</text>
                   </view>
                   <text class="branch-desc">多智能体事实对齐 · 交付物确定性装配</text>
                 </view>
@@ -997,210 +727,6 @@
 </template>
 
 <script>
-const REPLAY_SANDBOX = {
-  intentText: '老人诉求：“我想去北京看腿疼的老毛病” ➔ 拆解为权威骨科挂号、G102高铁订票、积水潭适老酒店及五页就医出行方案',
-  scenarioTag: '跨城异地就医全闭环',
-  stepsInfo: [
-    {
-      num: '0/5',
-      title: '老友记总调度：意图拆解与全局任务编排',
-      desc: '总调度 Orchestrator 感知老人诉求，分解为医院挂号、高铁、适老酒店及计划书 4 阶段流水线',
-      icon: '🎯',
-    },
-    {
-      num: '1/5',
-      title: '安康助手：权威专家号源智能匹配',
-      desc: '健康智能体启动 search_hospital，锁定北京积水潭医院骨科田伟主任医师号源',
-      icon: '🏥',
-    },
-    {
-      num: '2/5',
-      title: '银发导航：高铁车次与适老无障碍酒店检索',
-      desc: '并发执行 search_train 与 search_hotel，锁定 G102 次适老车厢与漫心无障碍酒店',
-      icon: '🧭',
-    },
-    {
-      num: '3/5',
-      title: '安全防护网：高危拦截与强行挂起保护',
-      desc: '触发资金医疗安全防线（挂号¥100 + 高铁¥443.50 + 酒店¥680），已向子女端发送审批请求',
-      icon: '🛡️',
-    },
-    {
-      num: '4/5',
-      title: '双向回路：子女端审批放行 (Loopback)',
-      desc: '模拟子女手机端通过 3 项核准，工具状态立即转为已完成/已出票/已预约，闭环放行',
-      icon: '⚡',
-    },
-    {
-      num: '5/5',
-      title: '方案建造师：五页大字就医出行计划书装配',
-      desc: '汇总挂号凭证、车次、酒店及携带清单，成功生成《就医出行计划书》，流水线 4/4 阶段全部达成！',
-      icon: '📄',
-    },
-  ],
-  thoughts: {
-    orchestrator: '针对长辈主诉“去北京看腿疼老毛病”，总调度启动跨城异地就医多智能体并行编排：分发骨科名医筛查至安康助手，往返高铁与适老住宿派发至银发导航，全流程注入安全护栏防线。',
-    health: '老人腿痛初筛为膝关节退行性病变。锁定全国骨科标杆北京积水潭医院（国家骨科医学中心），优选关节外科田伟主任医师周二上午专家号，提示携带既往病历与X光片。',
-    travel: '配合田主任上午就诊时序，优选南京南站始发 G102 次清晨高铁（08:15开，12:30到，配置无障碍设施）。选定距门诊450米的漫心适老酒店无障碍房，配备应急呼叫与安全扶手。',
-    community: '考虑到老人异地就医独行困难，主动匹配三甲医院持证陪诊员，预约北京南站轮椅接站进出站服务，提供全流程代取药与就医引导。',
-    safety: '依据金融与医疗双重风控机制，门诊挂号费(¥100.00)、高铁票款(¥443.50)及酒店住宿费(¥680.00)单次超额，触发强行挂起保护，已将工单推至子女手机端待批。',
-    planBuilder: '汇总各子智能体返回的凭证号源与执行事实，经过去重与交叉校验，最终组装输出五页大字可读、可打印、可语音播报的《异地就医出行全套方案》。',
-  },
-  displaySteps(step) {
-    return [
-      {
-        name: '选医院挂专家号',
-        status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'in_progress' : 'pending')),
-      },
-      {
-        name: '查高铁车次及订票',
-        status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
-      },
-      {
-        name: '订适老无障碍酒店',
-        status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'in_progress' : 'pending')),
-      },
-      {
-        name: '聚合装配计划书',
-        status: step >= 5 ? 'completed' : (step >= 4 ? 'in_progress' : 'pending'),
-      },
-    ]
-  },
-  getTools(step) {
-    const h1 = {
-      key: 'replay_h_1',
-      name: 'search_hospital',
-      summary: '医院与号源检索',
-      status: step >= 1 ? 'completed' : 'pending',
-      args: { city: '北京', department: '骨科', specialty: '关节外科' },
-      result: '已查到北京积水潭医院骨科田伟主任医师号源',
-      isHighRisk: false,
-    }
-    const h2 = {
-      key: 'replay_h_2',
-      name: 'register_appointment',
-      summary: '预约专家门诊',
-      status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 1 ? 'running' : 'pending')),
-      args: { hospital: '北京积水潭医院', doctor: '田伟 主任医师', date: '明天上午', fee: 100 },
-      result: step >= 4 ? '已锁定田伟主任医师上午专家号凭证' : '',
-      isHighRisk: true,
-      amount: '100.00',
-      desc: '专家门诊预约挂号扣费已安全拦截，需子女手机端核准放行',
-      confirmationId: 'conf_demo_appoint_01',
-    }
-    const healthTools = step >= 1 ? [h1, h2] : []
-
-    const t1 = {
-      key: 'replay_t_1',
-      name: 'search_train',
-      summary: '检索高铁车次',
-      status: step >= 2 ? 'completed' : 'pending',
-      args: { from_station: '南京南站', to_station: '北京南站', date: 'tomorrow' },
-      result: '锁定 G102 次清晨高铁（配置无障碍设施）',
-      isHighRisk: false,
-    }
-    const t2 = {
-      key: 'replay_t_2',
-      name: 'book_ticket',
-      summary: '预订高铁车票',
-      status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'running' : 'pending')),
-      args: { train_no: 'G102', seat_type: '二等座', price: 443.50 },
-      result: step >= 4 ? 'G102 次 03 车 06A 适老二等座已出票' : '',
-      isHighRisk: true,
-      amount: '443.50',
-      desc: '高铁车票订购涉及资金支出，需子女核准',
-      confirmationId: 'conf_demo_ticket_01',
-    }
-    const t3 = {
-      key: 'replay_t_3',
-      name: 'search_hotel',
-      summary: '检索适老酒店',
-      status: step >= 2 ? 'completed' : 'pending',
-      args: { city: '北京', keyword: '积水潭医院 漫心适老酒店' },
-      result: '选定漫心酒店（距门诊450米无障碍房）',
-      isHighRisk: false,
-    }
-    const t4 = {
-      key: 'replay_t_4',
-      name: 'book_hotel',
-      summary: '预订适老酒店',
-      status: step >= 4 ? 'completed' : (step === 3 ? 'suspended' : (step >= 2 ? 'running' : 'pending')),
-      args: { hotel_name: '漫心酒店（北京积水潭医院店）', room_type: '无障碍双床房', price: 680.00 },
-      result: step >= 4 ? '适老无障碍双床房（2晚）预订成功' : '',
-      isHighRisk: true,
-      amount: '680.00',
-      desc: '适老无障碍酒店预订扣费已拦截，需子女端核准',
-      confirmationId: 'conf_demo_hotel_01',
-    }
-    const travelTools = step >= 2 ? [t1, t2, t3, t4] : []
-
-    const highRiskTools = step >= 3 ? [h2, t2, t4] : []
-
-    const pb1 = {
-      key: 'replay_pb_1',
-      name: 'compose_deliverable',
-      summary: '方案聚合装配',
-      status: step >= 5 ? 'completed' : (step === 4 ? 'running' : 'pending'),
-      args: { kind: 'trip_plan', city: '北京' },
-      result: step >= 5,
-      resultText: '✅ 已成功从多智能体回放提取全部事实，装配成五页大字适老就医计划书',
-    }
-    const planBuilderTools = step >= 4 ? [pb1] : []
-
-    return { healthTools, travelTools, highRiskTools, planBuilderTools }
-  },
-  artifactPages: [
-    {
-      title: '北京积水潭医院专家挂号凭证',
-      rows: [
-        { label: '就诊医院', val: '北京积水潭医院（新街口院区）' },
-        { label: '科室医生', val: '骨科专家门诊 · 田伟 主任医师' },
-        { label: '门诊时段', val: '明天上午 08:30 - 09:30' },
-        { label: '诊查费用', val: '¥100.00（家人已代付确认）' },
-      ],
-      note: '就诊当天请携带老人医保卡及既往腿部关节 X 光片。',
-    },
-    {
-      title: '往返高铁车次出行凭证',
-      rows: [
-        { label: '去程车次', val: 'G102 次 高铁二等座' },
-        { label: '发到站点', val: '南京南站 (08:15) ➔ 北京南站 (12:30)' },
-        { label: '乘车证件', val: '刷居民身份证直接刷闸进出站' },
-        { label: '票价金额', val: '¥443.50（家人已代付确认）' },
-      ],
-      note: '已申请重点旅客无障碍轮椅进站引导服务，候车室 A12 专区。',
-    },
-    {
-      title: '积水潭漫心适老无障碍酒店',
-      rows: [
-        { label: '预订酒店', val: '漫心酒店（北京积水潭医院店）' },
-        { label: '入住房型', val: '适老无障碍双床房（2晚）' },
-        { label: '适老设施', val: '卫浴防滑扶手、紧急呼叫铃、电梯直达' },
-        { label: '到院距离', val: '步行 450 米，出南门即达积水潭门诊' },
-      ],
-      note: '酒店前台已登记老人优先入住及无障碍轮椅借用。',
-    },
-    {
-      title: '随身物品与就医携带清单',
-      rows: [
-        { label: '必带证件', val: '二代身份证原件、全国医保电子凭证 / 社保卡' },
-        { label: '健康病历', val: '既往关节拍片底片、日常用药盒 / 慢病处方本' },
-        { label: '常备药品', val: '降压药、硝酸甘油、关节止痛膏贴' },
-      ],
-      note: '随身小包放随身证件与药盒，大件衣物由家属或陪诊人员协助。',
-    },
-    {
-      title: '目的地出行天气与健康叮嘱',
-      rows: [
-        { label: '目的地天气', val: '晴间多云，气温 18℃ ~ 26℃，微风' },
-        { label: '空气质量', val: '优良 (AQI 42)，体感舒适适宜出行' },
-        { label: '穿衣建议', val: '轻薄透气棉质长袖，早晚可加一件防风薄外套' },
-      ],
-      note: '候车室与车厢内冷气较足，上车前请先备好披肩或外套保暖。',
-    },
-  ],
-}
-
 export default {
   name: 'AgentExecutionTree',
   props: {
@@ -1223,12 +749,6 @@ export default {
         planBuilder: true,
       },
       showArtifactModal: false,
-      replay: {
-        active: false,
-        playing: false,
-        step: 0,
-        timer: null,
-      },
       expandedToolResults: {},
       _userChangedAllExpanded: false,
     }
@@ -1257,27 +777,43 @@ export default {
   },
   mounted() {
     this.syncActiveBranches()
-    if (typeof document !== 'undefined') {
-      this._onVisChange = () => {
-        if (document.hidden && this.replay && this.replay.playing) {
-          this.pauseReplay()
-        }
-      }
-      document.addEventListener('visibilitychange', this._onVisChange)
-    }
-  },
-  beforeUnmount() {
-    if (this.replay.timer) {
-      clearInterval(this.replay.timer)
-      this.replay.timer = null
-    }
-    if (typeof document !== 'undefined' && this._onVisChange) {
-      document.removeEventListener('visibilitychange', this._onVisChange)
-    }
   },
   computed: {
     safeMessages() {
       return (this.messages || []).filter((m) => m && typeof m === 'object')
+    },
+
+    dispatchedAgents() {
+      const set = new Set()
+      if (this.thinking && this.currentAgent) {
+        const norm = this.normalizeAgent(this.currentAgent)
+        if (norm && norm !== 'main') {
+          set.add(norm)
+        }
+      }
+      for (const m of this.safeMessages) {
+        if (!m || typeof m !== 'object') continue
+        const kind = m.kind || ''
+        if (
+          kind === 'tool' ||
+          kind === 'tool_call' ||
+          kind === 'tool_result' ||
+          kind === 'status' ||
+          kind === 'agent_status' ||
+          kind === 'report' ||
+          m.reasoning ||
+          m.thought
+        ) {
+          const raw = m.agent || (m.tool_call && m.tool_call.agent) || m.sender || ''
+          if (raw) {
+            const norm = this.normalizeAgent(raw)
+            if (norm && norm !== 'main') {
+              set.add(norm)
+            }
+          }
+        }
+      }
+      return set
     },
 
     allExpanded: {
@@ -1300,7 +836,6 @@ export default {
     },
 
     hasTaskStarted() {
-      if (this.replay.active) return true
       return this.safeMessages.some(
         (m) =>
           m.isUser ||
@@ -1312,113 +847,76 @@ export default {
     },
 
     hasAnyRejected() {
-      if (this.replay.active) return false
       if (this.allTools.some((t) => t.status === 'rejected')) return true
       return this.safeMessages.some(
         (m) => m.kind === 'suspend' && m.status === 'rejected',
       )
     },
 
-    // 动态判断子智能体活跃状态
+    // 动态判断子智能体活跃状态（严格由真实派发与工具调用驱动）
     isHealthActive() {
-      if (this.replay.active) return this.replay.step >= 1
-      if (this.healthTools.length > 0) return true
-      const hasAgentMsg = this.safeMessages.some(
-        (m) =>
-          (m.kind === 'status' || m.agent) &&
-          this.matchesAgent(m.agent, 'health'),
+      return (
+        this.dispatchedAgents.has('health') ||
+        (this.healthTools && this.healthTools.length > 0) ||
+        (this.thinking && this.isCurrentAgent('health'))
       )
-      if (hasAgentMsg) return true
-      if (this.thinking && this.isCurrentAgent('health')) return true
-      return false
     },
 
     isTravelActive() {
-      if (this.replay.active) return this.replay.step >= 2
-      if (this.travelTools.length > 0) return true
-      const hasAgentMsg = this.safeMessages.some(
-        (m) =>
-          (m.kind === 'status' || m.agent) &&
-          this.matchesAgent(m.agent, 'travel'),
+      return (
+        this.dispatchedAgents.has('travel') ||
+        (this.travelTools && this.travelTools.length > 0) ||
+        (this.thinking && this.isCurrentAgent('travel'))
       )
-      if (hasAgentMsg) return true
-      if (this.thinking && this.isCurrentAgent('travel')) return true
-      return false
     },
 
     isCommunityActive() {
-      if (this.replay.active) return false
-      if (this.communityTools.length > 0) return true
-      const hasAgentMsg = this.safeMessages.some(
-        (m) =>
-          (m.kind === 'status' || m.agent) &&
-          this.matchesAgent(m.agent, 'community'),
+      return (
+        this.dispatchedAgents.has('community') ||
+        (this.communityTools && this.communityTools.length > 0) ||
+        (this.thinking && this.isCurrentAgent('community'))
       )
-      if (hasAgentMsg) return true
-      if (this.thinking && this.isCurrentAgent('community')) return true
-      return false
     },
 
     isSafetyActive() {
-      if (this.replay.active) return this.replay.step >= 3
-      return this.highRiskTools.length > 0 || this.pendingTasksCount > 0 || this.hasAnyRejected
+      return (
+        this.highRiskTools.length > 0 ||
+        this.pendingTasksCount > 0 ||
+        this.hasAnyRejected
+      )
     },
 
     isPlanBuilderActive() {
-      if (this.replay.active) return this.replay.step >= 4
-      if (this.isArtifactReady) return true
-      if (this.planBuilderTools.length > 0) return true
-      const hasAgentMsg = this.safeMessages.some(
-        (m) =>
-          (m.kind === 'status' || m.agent) &&
-          this.matchesAgent(m.agent, 'plan_builder'),
+      return (
+        this.isArtifactReady ||
+        (this.planBuilderTools && this.planBuilderTools.length > 0)
       )
-      if (hasAgentMsg) return true
-      if (this.thinking && this.isCurrentAgent('planBuilder')) return true
-      return false
     },
 
-    // 协同智能体数严格等于当前真实激活的子智能体数量
+    // 协同智能体数严格等于当前真实激活的子智能体数量（分母为3，方案建造师与安全网关不计入）
     activeAgentsCount() {
-      if (this.replay.active) {
-        if (this.replay.step === 0) return 0
-        if (this.replay.step === 1) return 1
-        if (this.replay.step <= 4) return 2
-        return 3
+      const DISPATCHABLE_AGENTS = ['health', 'travel', 'community']
+      const activeMap = {
+        health: this.isHealthActive,
+        travel: this.isTravelActive,
+        community: this.isCommunityActive,
       }
-      const activeList = [
-        this.isHealthActive,
-        this.isTravelActive,
-        this.isCommunityActive,
-        this.isPlanBuilderActive,
-      ]
-      return activeList.filter(Boolean).length
+      return DISPATCHABLE_AGENTS.filter((a) => activeMap[a]).length
     },
 
     // 执行工具数严格等于当前分支展示的全部工具数量
     totalToolsCount() {
-      if (this.replay.active) {
-        const tools = REPLAY_SANDBOX.getTools(this.replay.step)
-        return (tools.healthTools.length + tools.travelTools.length + tools.planBuilderTools.length)
-      }
       return this.allTools.length
     },
 
     // 待批拦截数严格等于真实挂起待确权项目
     pendingTasksCount() {
-      if (this.replay.active) {
-        if (this.replay.step === 3) return 3
-        return 0
-      }
       const suspendedTools = this.allTools.filter((t) => t.status === 'suspended').length
       const suspendedMsgs = this.safeMessages.filter((m) => m.kind === 'suspend' && m.status === 'pending').length
       return Math.max(suspendedTools, suspendedMsgs)
     },
 
     globalStatusText() {
-      if (this.replay.active) {
-        return `演播全链路中 · 第 ${this.replay.step}/5 阶段`
-      }
       if (this.thinking || this.rootThinking) return 'LLM 正在并行规划推理'
       if (this.pendingTasksCount > 0) return '高危操作等待子女端审批'
       if (this.hasAnyRejected) return '高危操作已被子女拒绝拦截'
@@ -1433,7 +931,6 @@ export default {
     },
 
     globalStatusClass() {
-      if (this.replay.active) return 'status-thinking'
       if (this.thinking || this.rootThinking) return 'status-thinking'
       if (this.pendingTasksCount > 0) return 'status-suspended'
       if (this.hasAnyRejected) return 'status-rejected'
@@ -1448,13 +945,10 @@ export default {
     },
 
     isAnyAgentActive() {
-      return this.replay.active || this.thinking || this.rootThinking || this.pendingTasksCount > 0 || this.hasTaskStarted
+      return this.thinking || this.rootThinking || this.pendingTasksCount > 0 || this.hasTaskStarted
     },
 
     rootStatusClass() {
-      if (this.replay.active) {
-        return this.replay.step === 0 ? 'status-thinking' : 'status-completed'
-      }
       if (this.thinking || this.rootThinking) return 'status-thinking'
       if (this.hasAnyRejected) return 'status-rejected'
       if (this.isArtifactReady) return 'status-completed'
@@ -1465,9 +959,6 @@ export default {
     },
 
     rootStatusIcon() {
-      if (this.replay.active) {
-        return this.replay.step === 0 ? '⚡' : '✅'
-      }
       if (this.thinking || this.rootThinking) return '⚡'
       if (this.hasAnyRejected) return '🛑'
       if (this.isArtifactReady) return '✅'
@@ -1476,9 +967,6 @@ export default {
     },
 
     rootStatusText() {
-      if (this.replay.active) {
-        return this.replay.step === 0 ? '意图分析与全局编排中' : '全局任务规划完成'
-      }
       if (this.thinking || this.rootThinking) return '意图拆解与全局调度中'
       if (this.hasAnyRejected) return '局部流程已由家人终止'
       if (this.isArtifactReady) return '全链路执行完毕'
@@ -1490,7 +978,6 @@ export default {
 
     // 动态根据真实上下文推导场景标签
     currentScenarioTag() {
-      if (this.replay.active) return REPLAY_SANDBOX.scenarioTag
       if (!this.hasTaskStarted) return '待命中'
 
       // 1. 优先从 todo 任务清单推导
@@ -1571,9 +1058,6 @@ export default {
 
     // 动态根据真实诉求与任务推导意图文本
     currentIntentText() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.intentText
-      }
       const userMsgs = this.safeMessages.filter((m) => m.isUser && m.text)
       if (userMsgs.length > 0) {
         const last = userMsgs[userMsgs.length - 1].text
@@ -1593,15 +1077,8 @@ export default {
       return '等待长辈输入诉求… 可按住说话或打字告诉老友记，主调度将实时理解意图并下发协同网络。'
     },
 
-    currentReplayStepInfo() {
-      return REPLAY_SANDBOX.stepsInfo[this.replay.step] || REPLAY_SANDBOX.stepsInfo[0]
-    },
-
     // 智能体推理独白：真实模式下完全由会话真实上下文生成
     agentThoughts() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.thoughts
-      }
 
       const msgs = this.safeMessages
       const userMsgs = msgs.filter((m) => m.isUser && m.text)
@@ -1834,42 +1311,8 @@ export default {
       }
     },
 
-    // DAG 前沿活跃判断
-    isRootFrontier() {
-      if (this.replay.active) return this.replay.step === 0
-      return this.thinking || this.rootThinking
-    },
-    isRootDone() {
-      if (this.replay.active) return this.replay.step >= 1
-      return this.hasTaskStarted && !this.thinking
-    },
-    isHealthFrontier() {
-      if (this.replay.active) return this.replay.step === 1
-      return this.healthStatusClass === 'status-thinking' || this.healthStatusClass === 'status-suspended'
-    },
-    isTravelFrontier() {
-      if (this.replay.active) return this.replay.step === 2
-      return this.travelStatusClass === 'status-thinking' || this.travelStatusClass === 'status-suspended'
-    },
-    isCommunityFrontier() {
-      if (this.replay.active) return this.replay.step === 2
-      return this.communityStatusClass === 'status-thinking' || this.communityStatusClass === 'status-suspended'
-    },
-    isSafetyFrontier() {
-      if (this.replay.active) return this.replay.step === 3
-      return this.pendingTasksCount > 0
-    },
-    isPlanBuilderFrontier() {
-      if (this.replay.active) return this.replay.step === 4
-      return this.planBuilderStatusClass === 'status-thinking'
-    },
 
     safetyStatusClass() {
-      if (this.replay.active) {
-        if (this.replay.step === 3) return 'status-suspended'
-        if (this.replay.step >= 4) return 'status-completed'
-        return 'status-ready'
-      }
       if (this.pendingTasksCount > 0) return 'status-suspended'
       if (this.hasAnyRejected) return 'status-rejected'
       if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0 && this.highRiskTools.length > 0)) {
@@ -1878,11 +1321,6 @@ export default {
       return 'status-ready'
     },
     safetyStatusIcon() {
-      if (this.replay.active) {
-        if (this.replay.step === 3) return '⏸️'
-        if (this.replay.step >= 4) return '✅'
-        return '🛡️'
-      }
       if (this.pendingTasksCount > 0) return '⏸️'
       if (this.hasAnyRejected) return '🛑'
       if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0 && this.highRiskTools.length > 0)) {
@@ -1891,11 +1329,6 @@ export default {
       return '🛡️'
     },
     safetyStatusText() {
-      if (this.replay.active) {
-        if (this.replay.step === 3) return '3项高危拦截待批'
-        if (this.replay.step >= 4) return '双向回路放行完成'
-        return '安全防线待命'
-      }
       if (this.pendingTasksCount > 0) return `${this.pendingTasksCount}项高危待批`
       if (this.hasAnyRejected) return '已拦截终止'
       if (this.isArtifactReady || (this.hasTaskStarted && this.pendingTasksCount === 0 && this.highRiskTools.length > 0)) {
@@ -1906,12 +1339,7 @@ export default {
 
     // 动态推导流水线任务分解步骤（杜绝写死“选医院挂专家号”）
     displaySteps() {
-      // 1. 演播模式：自包含 4 阶段
-      if (this.replay && this.replay.active) {
-        return REPLAY_SANDBOX.displaySteps(this.replay.step)
-      }
-
-      // 2. 真实模式：从 messages 中提取最新真实 todo 快照
+      // 从 messages 中提取最新真实 todo 快照
       const todoMsgs = this.safeMessages.filter(
         (m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0,
       )
@@ -1997,45 +1425,26 @@ export default {
     },
 
     healthTools() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.getTools(this.replay.step).healthTools
-      }
       return this.parseTools(['health', '安康助手'])
     },
 
     travelTools() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.getTools(this.replay.step).travelTools
-      }
       return this.parseTools(['travel', '银发导航'])
     },
 
     communityTools() {
-      if (this.replay.active) {
-        return []
-      }
       return this.parseTools(['community', '邻里帮'])
     },
 
     planBuilderTools() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.getTools(this.replay.step).planBuilderTools
-      }
       return this.parseTools(['plan_builder', 'planBuilder', '方案建造师'])
     },
 
     allTools() {
-      if (this.replay.active) {
-        const t = REPLAY_SANDBOX.getTools(this.replay.step)
-        return t.healthTools.concat(t.travelTools, t.planBuilderTools)
-      }
       return this.healthTools.concat(this.travelTools, this.communityTools, this.planBuilderTools)
     },
 
     highRiskTools() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.getTools(this.replay.step).highRiskTools
-      }
       const tools = this.allTools.filter((t) => t.isHighRisk)
       const existingCids = new Set(tools.map((t) => t.confirmationId).filter(Boolean))
       const existingNames = new Set(tools.map((t) => t.name))
@@ -2071,32 +1480,14 @@ export default {
     },
 
     healthStatusClass() {
-      if (this.replay.active) {
-        if (this.replay.step === 1) return 'status-thinking'
-        if (this.replay.step === 3) return 'status-suspended'
-        if (this.replay.step >= 4) return 'status-completed'
-        return 'status-ready'
-      }
       return this.branchStatus(this.healthTools, 'health', '安康助手')
     },
 
     healthStatusIcon() {
-      if (this.replay.active) {
-        if (this.replay.step === 1) return '⚡'
-        if (this.replay.step === 3) return '⏸️'
-        if (this.replay.step >= 4) return '✅'
-        return '🏥'
-      }
       return this.branchIcon(this.healthStatusClass, '🏥')
     },
 
     healthStatusText() {
-      if (this.replay.active) {
-        if (this.replay.step === 1) return '专家号源检索中'
-        if (this.replay.step === 3) return '待子女确认挂号'
-        if (this.replay.step >= 4) return '挂号成功 · 已确认'
-        return '安康助手待命'
-      }
       const cls = this.healthStatusClass
       if (cls === 'status-suspended') return '待子女确认健康操作'
       if (cls === 'status-rejected') return '子女已拒绝该操作'
@@ -2106,32 +1497,14 @@ export default {
     },
 
     travelStatusClass() {
-      if (this.replay.active) {
-        if (this.replay.step === 2) return 'status-thinking'
-        if (this.replay.step === 3) return 'status-suspended'
-        if (this.replay.step >= 4) return 'status-completed'
-        return 'status-ready'
-      }
       return this.branchStatus(this.travelTools, 'travel', '银发导航')
     },
 
     travelStatusIcon() {
-      if (this.replay.active) {
-        if (this.replay.step === 2) return '⚡'
-        if (this.replay.step === 3) return '⏸️'
-        if (this.replay.step >= 4) return '✅'
-        return '🧭'
-      }
       return this.branchIcon(this.travelStatusClass, '🧭')
     },
 
     travelStatusText() {
-      if (this.replay.active) {
-        if (this.replay.step === 2) return '高铁与酒店规划中'
-        if (this.replay.step === 3) return '待子女确认票务酒店'
-        if (this.replay.step >= 4) return '车次与酒店均已出票'
-        return '银发导航待命'
-      }
       const cls = this.travelStatusClass
       if (cls === 'status-suspended') return '待子女确认票务/住宿'
       if (cls === 'status-rejected') return '子女已拒绝出行操作'
@@ -2158,11 +1531,6 @@ export default {
     },
 
     planBuilderStatusClass() {
-      if (this.replay.active) {
-        if (this.replay.step === 4) return 'status-thinking'
-        if (this.replay.step >= 5) return 'status-completed'
-        return 'status-ready'
-      }
       if (this.isArtifactReady) return 'status-completed'
       if (this.planBuilderTools.some((t) => t.status === 'running')) return 'status-thinking'
       if (this.planBuilderTools.some((t) => t.status === 'rejected')) return 'status-rejected'
@@ -2170,11 +1538,6 @@ export default {
       return 'status-ready'
     },
     planBuilderStatusIcon() {
-      if (this.replay.active) {
-        if (this.replay.step === 4) return '⚡'
-        if (this.replay.step >= 5) return '✅'
-        return '📐'
-      }
       if (this.isArtifactReady) return '✅'
       if (this.planBuilderTools.some((t) => t.status === 'running')) return '⚡'
       if (this.planBuilderTools.some((t) => t.status === 'rejected')) return '🛑'
@@ -2182,11 +1545,6 @@ export default {
       return '📐'
     },
     planBuilderStatusText() {
-      if (this.replay.active) {
-        if (this.replay.step === 4) return '装配计划书中'
-        if (this.replay.step >= 5) return '五页计划书装配完成'
-        return '方案装配待命'
-      }
       if (this.isArtifactReady) return '交付方案装配完成'
       if (this.hasAnyRejected) return '前序审批已拒绝 · 装配终止'
       if (this.thinking && this.isPlanBuilderActive) return '装配方案中'
@@ -2195,9 +1553,6 @@ export default {
     },
 
     isArtifactReady() {
-      if (this.replay.active) {
-        return this.replay.step >= 5
-      }
       const hasCard = this.safeMessages.some((m) => m.kind === 'card')
       if (hasCard) return true
       const suspends = this.safeMessages.filter((m) => m.kind === 'suspend')
@@ -2213,9 +1568,6 @@ export default {
     },
 
     artifactDisplayTitle() {
-      if (this.replay.active) {
-        return '《五页就医出行计划书》'
-      }
       const msgs = this.safeMessages
       const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
       if (realCard && realCard.title) {
@@ -2227,9 +1579,6 @@ export default {
     },
 
     artifactDisplaySubtitle() {
-      if (this.replay.active) {
-        return '五页适老大字版 · 挂号凭证+高铁票+酒店+慢病清单+天气'
-      }
       const msgs = this.safeMessages
       const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
       if (realCard) {
@@ -2244,20 +1593,8 @@ export default {
       return '适老大字版 · 待各协同智能体完成事实聚合后交付'
     },
 
-    artifactChipText() {
-      if (this.replay.active) {
-        return this.replay.step >= 5 ? '✅ 已交付 (点击预览)' : '⏳ 待装配交付'
-      }
-      if (this.isArtifactReady) return '✅ 已交付 (点击预览)'
-      if (this.pendingTasksCount > 0) return '⏳ 等待审批后交付'
-      if (this.thinking) return '⚡ 方案装配中'
-      return '⏳ 待方案闭环交付'
-    },
 
     modalTitleText() {
-      if (this.replay.active) {
-        return '就医出行计划书 (可打印适老大字版)'
-      }
       const msgs = this.safeMessages
       const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
       if (realCard && realCard.title) {
@@ -2269,16 +1606,10 @@ export default {
     },
 
     modalSubText() {
-      if (this.replay.active) {
-        return '由老友记主调度协同安康助手与银发导航自动生成 · 4/4 阶段全部闭环'
-      }
       return '由老友记多智能体协同网络聚合生成 · 事实对齐已闭环'
     },
 
     artifactPages() {
-      if (this.replay.active) {
-        return REPLAY_SANDBOX.artifactPages
-      }
 
       const msgs = this.safeMessages
       const realCard = msgs.slice().reverse().find(
@@ -2377,24 +1708,36 @@ export default {
       if (!agentVal) return false
       const a = String(agentVal).toLowerCase()
       if (targetKey === 'health' || targetKey === '安康助手') {
-        return a.includes('health') || a.includes('安康')
+        return a.includes('health') || a.includes('安康') || a.includes('医疗')
       }
       if (targetKey === 'travel' || targetKey === '银发导航') {
-        return a.includes('travel') || a.includes('银发')
+        return a.includes('travel') || a.includes('银发') || a.includes('出行') || a.includes('导航')
       }
       if (targetKey === 'community' || targetKey === '邻里帮') {
-        return a.includes('community') || a.includes('邻里')
+        return a.includes('community') || a.includes('邻里') || a.includes('便民')
       }
       if (targetKey === 'plan_builder' || targetKey === 'planBuilder' || targetKey === '方案建造师') {
-        return a.includes('plan') || a.includes('建造师')
+        return a.includes('plan') || a.includes('建造师') || a.includes('方案')
       }
       if (targetKey === 'main' || targetKey === 'orchestrator' || targetKey === '老友记') {
         return a.includes('main') || a.includes('orchestrator') || a.includes('老友记') || a.includes('主调度')
       }
       if (targetKey === 'safety' || targetKey === '风控') {
-        return a.includes('safety') || a.includes('guard') || a.includes('风控') || a.includes('安全')
+        return a.includes('safety') || a.includes('guard') || a.includes('风控') || a.includes('安全') || a.includes('护航')
       }
       return false
+    },
+
+    normalizeAgent(agent) {
+      if (!agent) return ''
+      const a = String(agent).replace(/#\d+$/, '').trim()
+      if (this.matchesAgent(a, 'health')) return 'health'
+      if (this.matchesAgent(a, 'travel')) return 'travel'
+      if (this.matchesAgent(a, 'community')) return 'community'
+      if (this.matchesAgent(a, 'plan_builder')) return 'plan_builder'
+      if (this.matchesAgent(a, 'safety')) return 'safety'
+      if (this.matchesAgent(a, 'main')) return 'main'
+      return a.toLowerCase()
     },
 
     isCurrentAgent(agentKey) {
@@ -2402,7 +1745,6 @@ export default {
     },
 
     syncActiveBranches() {
-      if (this.replay && this.replay.active) return
       if (!this._userChangedAllExpanded) {
         this.collapsedAgents.health = !this.isHealthActive
         this.collapsedAgents.travel = !this.isTravelActive
@@ -2472,8 +1814,27 @@ export default {
         return 'plan_builder'
       }
 
-      // 4. 社区居家便民与生活服务类（保洁、陪诊、助餐、用药翻译、支付等兜底纳入邻里便民分支，确保无工具遗漏）
-      return 'community'
+      // 4. 社区居家便民与生活服务类（显式关键词归属）
+      if (
+        t.includes('canteen') ||
+        t.includes('order') ||
+        t.includes('service') ||
+        t.includes('clean') ||
+        t.includes('accompany') ||
+        t.includes('activit') ||
+        t.includes('community') ||
+        t.includes('pay') ||
+        t.includes('plain') ||
+        t.includes('profile') ||
+        t.includes('help') ||
+        t.includes('volunteer') ||
+        t.includes('meal')
+      ) {
+        return 'community'
+      }
+
+      // 5. 严格兜底：未归属工具返回空字符串，不盲目点亮任何子分支
+      return ''
     },
 
     parseTools(agentPrefixes) {
@@ -2735,11 +2096,6 @@ export default {
     },
 
     triggerApprove(confirmationId, toolName) {
-      if (this.replay.active) {
-        this.seekReplay(4)
-        uni.showToast({ title: '已模拟子女端审核同意！', icon: 'success' })
-        return
-      }
       this.$emit('resolve-confirmation', {
         confirmationId,
         tool: toolName,
@@ -2752,10 +2108,6 @@ export default {
     },
 
     triggerReject(confirmationId, toolName) {
-      if (this.replay.active) {
-        uni.showToast({ title: '已模拟子女端拒绝该操作', icon: 'none' })
-        return
-      }
       this.$emit('resolve-confirmation', {
         confirmationId,
         tool: toolName,
@@ -2768,11 +2120,6 @@ export default {
     },
 
     approveAllPending() {
-      if (this.replay.active) {
-        this.seekReplay(4)
-        uni.showToast({ title: '已模拟子女端一键核准全部操作！', icon: 'success' })
-        return
-      }
       const pending = this.highRiskTools.filter((t) => t.status === 'suspended')
       if (pending.length === 0) {
         uni.showToast({ title: '当前没有待子女确认的高危操作', icon: 'none' })
@@ -2780,90 +2127,6 @@ export default {
       }
       pending.forEach((t) => this.triggerApprove(t.confirmationId, t.name))
       uni.showToast({ title: `已模拟子女端一键核准 ${pending.length} 项操作！`, icon: 'success' })
-    },
-
-    toggleReplayMode() {
-      if (!this.replay.active) {
-        this.startReplay()
-      } else {
-        this.toggleReplayPlay()
-      }
-    },
-
-    startReplay() {
-      this.replay.active = true
-      this.replay.playing = true
-      this.replay.step = 0
-      this.allExpanded = true
-      if (this.replay.timer) clearInterval(this.replay.timer)
-      this.replay.timer = setInterval(() => {
-        if (this.replay.step < 5) {
-          this.replay.step++
-        } else {
-          this.pauseReplay()
-        }
-      }, 2200)
-      uni.showToast({ title: '已开启动态演播全链路 ✨', icon: 'none' })
-    },
-
-    pauseReplay() {
-      this.replay.playing = false
-      if (this.replay.timer) {
-        clearInterval(this.replay.timer)
-        this.replay.timer = null
-      }
-    },
-
-    resumeReplay() {
-      if (this.replay.step >= 5) this.replay.step = 0
-      this.replay.playing = true
-      if (this.replay.timer) clearInterval(this.replay.timer)
-      this.replay.timer = setInterval(() => {
-        if (this.replay.step < 5) {
-          this.replay.step++
-        } else {
-          this.pauseReplay()
-        }
-      }, 2200)
-    },
-
-    toggleReplayPlay() {
-      if (this.replay.playing) {
-        this.pauseReplay()
-      } else {
-        this.resumeReplay()
-      }
-    },
-
-    nextReplayStep() {
-      this.pauseReplay()
-      if (this.replay.step < 5) this.replay.step++
-    },
-
-    prevReplayStep() {
-      this.pauseReplay()
-      if (this.replay.step > 0) this.replay.step--
-    },
-
-    resetReplay() {
-      this.replay.step = 0
-      this.pauseReplay()
-      uni.showToast({ title: '演播已重置至阶段 0', icon: 'none' })
-    },
-
-    seekReplay(step) {
-      this.pauseReplay()
-      this.replay.step = step
-    },
-
-    exitReplay() {
-      this.pauseReplay()
-      this.replay.active = false
-      this.replay.step = 0
-      this.showArtifactModal = false
-      this._userChangedAllExpanded = false
-      this.syncActiveBranches()
-      uni.showToast({ title: '已退出演播，恢复实时状态', icon: 'none' })
     },
 
     scrollToSection(id) {
@@ -3056,19 +2319,6 @@ export default {
   background: rgba(255, 255, 255, 0.22);
 }
 
-.replay-btn {
-  background: #FF6B35;
-  border-color: #ff8252;
-  color: #ffffff;
-  font-weight: 700;
-  box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.3);
-}
-
-.replay-btn.is-active {
-  background: #10b981;
-  border-color: #34d399;
-}
-
 .close-drawer-btn {
   width: 44px;
   height: 44px;
@@ -3148,410 +2398,6 @@ export default {
   gap: 24rpx;
 }
 
-/* ================= 规划 DAG 卡片 (R3) ================= */
-.planning-dag-card {
-  background: #ffffff;
-  border: 2rpx solid #e2e8f0;
-  border-radius: 24rpx;
-  padding: 24rpx;
-  box-shadow: 0 6rpx 20rpx rgba(15, 23, 42, 0.04);
-}
-
-.dag-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 20rpx;
-  border-bottom: 2rpx solid #f1f5f9;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
-
-.dag-header-title-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 12rpx;
-}
-
-.dag-sparkle {
-  font-size: 32rpx;
-  line-height: 1.2;
-}
-
-.dag-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.dag-main-title {
-  font-size: 28rpx;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.dag-sub-title {
-  font-size: 20rpx;
-  color: #64748b;
-}
-
-.replay-trigger-btn {
-  min-height: 44px;
-  padding: 0 24rpx;
-  background: #FF6B35;
-  border: none;
-  border-radius: 16rpx;
-  color: #ffffff;
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4rpx 14rpx rgba(255, 107, 53, 0.3);
-}
-
-.replay-trigger-btn.is-playing {
-  background: #10b981;
-  box-shadow: 0 4rpx 14rpx rgba(16, 185, 129, 0.3);
-}
-
-.replay-trigger-btn:active {
-  transform: translateY(1px) scale(0.99);
-}
-
-/* 演播控制条 */
-.replay-controller-bar {
-  margin-top: 20rpx;
-  background: #f8fafc;
-  border: 2rpx solid #cbd5e1;
-  border-radius: 20rpx;
-  padding: 20rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  animation: fadeIn 0.3s ease;
-}
-
-.replay-narrative {
-  display: flex;
-  align-items: flex-start;
-  gap: 16rpx;
-  background: #ffffff;
-  padding: 16rpx 20rpx;
-  border-radius: 16rpx;
-  border: 1rpx solid #e2e8f0;
-}
-
-.narrative-tag {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: #FF6B35;
-  color: #ffffff;
-  padding: 6rpx 14rpx;
-  border-radius: 12rpx;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.narrative-step-num {
-  font-size: 20rpx;
-  line-height: 1.2;
-}
-
-.narrative-icon {
-  font-size: 26rpx;
-  line-height: 1;
-}
-
-.narrative-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-  flex: 1;
-}
-
-.narrative-title {
-  font-size: 26rpx;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.narrative-desc {
-  font-size: 22rpx;
-  color: #475569;
-  line-height: 1.4;
-}
-
-.replay-buttons-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-}
-
-.ctrl-btn {
-  min-height: 44px;
-  padding: 0 20rpx;
-  background: #ffffff;
-  border: 2rpx solid #cbd5e1;
-  border-radius: 12rpx;
-  color: #334155;
-  font-size: 22rpx;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: all 0.15s;
-}
-
-.ctrl-btn:active {
-  transform: translateY(1px) scale(0.99);
-  background: #f1f5f9;
-}
-
-.ctrl-btn.primary {
-  background: #2563eb;
-  border-color: #1d4ed8;
-  color: #ffffff;
-}
-
-.ctrl-btn.exit {
-  background: #f1f5f9;
-  color: #64748b;
-  margin-left: auto;
-}
-
-.replay-progress-track {
-  position: relative;
-  height: 12rpx;
-  background: #e2e8f0;
-  border-radius: 999rpx;
-  margin: 12rpx 10rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.replay-progress-bar-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: #FF6B35;
-  border-radius: 999rpx;
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.replay-progress-dot {
-  width: 32rpx;
-  height: 32rpx;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 4rpx solid #cbd5e1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.replay-progress-dot .dot-num {
-  font-size: 16rpx;
-  font-weight: 800;
-  color: #64748b;
-}
-
-.replay-progress-dot.passed {
-  border-color: #FF6B35;
-  background: #FF6B35;
-  .dot-num { color: #ffffff; }
-}
-
-.replay-progress-dot.current {
-  border-color: #2563eb;
-  background: #2563eb;
-  transform: scale(1.2);
-  box-shadow: 0 0 12rpx rgba(37, 99, 235, 0.5);
-  .dot-num { color: #ffffff; }
-}
-
-/* DAG 拓扑节点可视化 */
-.dag-canvas-container {
-  margin-top: 24rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-}
-
-.dag-node {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 16rpx 20rpx;
-  background: #ffffff;
-  border: 2rpx solid #cbd5e1;
-  border-radius: 18rpx;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.dag-node:active {
-  transform: translateY(1px) scale(0.99);
-}
-
-.dag-node.is-frontier {
-  border-color: #FF6B35;
-  box-shadow: 0 0 18rpx rgba(255, 107, 53, 0.35);
-  animation: dag-frontier-pulse 2s infinite;
-}
-
-.dag-node.is-completed {
-  border-color: #10b981;
-}
-
-.dag-node.is-suspended {
-  border-color: #f59e0b;
-  background: #fffbeb;
-}
-
-.dag-node.is-rejected {
-  border-color: #ef4444;
-  background: #fef2f2;
-}
-
-.dag-node-avatar {
-  width: 52rpx;
-  height: 52rpx;
-  border-radius: 12rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.dag-avatar-icon {
-  font-size: 30rpx;
-  line-height: 1;
-}
-
-.dag-node-text-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2rpx;
-  flex: 1;
-}
-
-.dag-node-title {
-  font-size: 26rpx;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.dag-node-role {
-  font-size: 20rpx;
-  color: #64748b;
-}
-
-.dag-node-state-chip {
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  font-size: 20rpx;
-  font-weight: 700;
-  background: #f1f5f9;
-  color: #475569;
-  flex-shrink: 0;
-}
-
-.dag-wire-vertical {
-  width: 4rpx;
-  height: 28rpx;
-  background: #cbd5e1;
-  position: relative;
-}
-
-.dag-wire-vertical.energy-pulse {
-  background: linear-gradient(180deg, #FF6B35 0%, #10b981 100%);
-  box-shadow: 0 0 8rpx rgba(255, 107, 53, 0.5);
-}
-
-.dag-parallel-trunk-label {
-  padding: 4rpx 16rpx;
-  background: #f1f5f9;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 999rpx;
-  font-size: 18rpx;
-  font-weight: 700;
-  color: #64748b;
-  margin: 4rpx 0;
-}
-
-.dag-trunk-bar {
-  width: 90%;
-  height: 4rpx;
-  background: #cbd5e1;
-}
-
-.dag-trunk-bar.energy-pulse {
-  background: linear-gradient(90deg, #10b981, #FF6B35, #2563eb);
-  box-shadow: 0 0 8rpx rgba(255, 107, 53, 0.4);
-}
-
-.dag-subagents-grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
-  margin: 12rpx 0;
-}
-
-.dag-sub-node {
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 16rpx 8rpx;
-  gap: 6rpx;
-}
-
-.dag-sub-name {
-  font-size: 22rpx;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.dag-sub-role {
-  font-size: 18rpx;
-  color: #64748b;
-}
-
-.dag-mini-status {
-  font-size: 18rpx;
-  font-weight: 700;
-  padding: 2rpx 10rpx;
-  border-radius: 999rpx;
-  background: #f1f5f9;
-  color: #64748b;
-  white-space: nowrap;
-}
-
-.dag-sub-node.is-inactive {
-  opacity: 0.55;
-  filter: grayscale(0.5);
-}
-
-.dag-node.is-inactive {
-  opacity: 0.65;
-}
 
 /* 智能体推理独白卡片 (R3) */
 .agent-monologue-card {
@@ -4687,22 +3533,9 @@ export default {
   border: 2rpx solid #cbd5e1;
 }
 
-@keyframes dag-frontier-pulse {
-  0%, 100% {
-    box-shadow: 0 0 10rpx rgba(255, 107, 53, 0.25);
-  }
-  50% {
-    box-shadow: 0 0 24rpx rgba(255, 107, 53, 0.55);
-  }
-}
 
 @keyframes lyj-pulse-glow {
   0%, 100% { transform: scale(1); opacity: 0.8; }
   50% { transform: scale(1.2); opacity: 1; }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-8rpx); }
-  to { opacity: 1; transform: translateY(0); }
 }
 </style>

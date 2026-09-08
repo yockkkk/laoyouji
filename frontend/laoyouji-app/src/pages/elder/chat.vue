@@ -49,17 +49,12 @@
         <!-- 会话流 -->
         <scroll-view class="stream" scroll-y :scroll-top="scrollTop" :scroll-into-view="anchor">
           <view class="stream-inner">
-            <view v-for="(m, i) in messages" :key="i">
+            <view v-for="(m, i) in elderMessages" :key="i">
               <ChatBubble
                 v-if="m.kind === 'text'"
                 :text="m.text"
                 :is-user="m.isUser"
                 :agent="m.agent"
-              />
-              <StepTimeline
-                v-else-if="m.kind === 'todo'"
-                :todos="m.todos"
-                :progress="m.progress"
               />
               <PlanCard
                 v-else-if="m.kind === 'card'"
@@ -77,13 +72,6 @@
                 :expires-at="m.expiresAt"
                 :status="m.status"
               />
-              <view v-else-if="m.kind === 'tool'" class="tool-bubble" :class="{ blocked: m.blocked }">
-                <text class="tool-icon">{{ m.blocked ? '⚠️' : '🔧' }}</text>
-                <text class="tool-text">{{ m.summary }}</text>
-              </view>
-              <view v-else-if="m.kind === 'status'" class="status-bubble">
-                <text class="status-text">{{ m.text }}</text>
-              </view>
             </view>
             <view :id="'bottom-anchor'" class="bottom-anchor"></view>
           </view>
@@ -203,7 +191,6 @@
 
 <script>
 import ChatBubble from '../../components/ChatBubble.vue'
-import StepTimeline from '../../components/StepTimeline.vue'
 import PlanCard from '../../components/PlanCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
@@ -248,7 +235,7 @@ function dayLabel(iso) {
 }
 
 export default {
-  components: { ChatBubble, StepTimeline, PlanCard, ConfirmCard, LyjMic, AgentExecutionTree },
+  components: { ChatBubble, PlanCard, ConfirmCard, LyjMic, AgentExecutionTree },
   data() {
     return {
       user: null,
@@ -280,6 +267,15 @@ export default {
     }
   },
   computed: {
+    elderMessages() {
+      return (this.messages || []).filter((m) => {
+        if (!m) return false
+        if (m.kind === 'text') return m.isUser || this.isMainAgent(m.agent) // 老人原话 + 主智能体定稿
+        if (m.kind === 'card') return true // 交付物本来就是给老人看的
+        if (m.kind === 'suspend') return true // 家人确认卡，老人必须看到
+        return false // todo / tool / status 一律只进右侧链路
+      })
+    },
     drawerPanelStyle() {
       if (this.drawerDragY > 0) {
         return {
@@ -407,6 +403,18 @@ export default {
       if (!wasDesktop && this.isDesktop) {
         this.closeDrawer()
       }
+    },
+
+    normalizeAgent(agent) {
+      if (!agent) return ''
+      const str = String(agent).trim().toLowerCase()
+      return str.split('#')[0]
+    },
+
+    isMainAgent(agent) {
+      if (!agent) return true
+      const norm = this.normalizeAgent(agent)
+      return norm === 'main' || norm === '老友记' || norm === 'orchestrator'
     },
 
     toggleTreePane() {
@@ -1355,38 +1363,6 @@ export default {
 }
 .stream-inner {
   padding: $lyj-space-md 0 40rpx;
-}
-.tool-bubble {
-  display: flex;
-  align-items: center;
-  gap: $lyj-space-xs;
-  margin: $lyj-space-xs $lyj-space-md;
-  background: $lyj-muted-bg;
-  border-radius: $lyj-radius;
-  padding: $lyj-space-sm $lyj-space-md;
-}
-.tool-bubble.blocked {
-  background: $lyj-warn-bg;
-}
-.tool-icon {
-  font-size: $lyj-font-sm;
-}
-.tool-text {
-  flex: 1;
-  font-size: $lyj-font-sm;
-  color: $lyj-text-light;
-  line-height: $lyj-line-height;
-}
-.tool-bubble.blocked .tool-text {
-  color: $lyj-warn-text;
-}
-.status-bubble {
-  text-align: center;
-  margin: $lyj-space-xs 0;
-}
-.status-text {
-  font-size: $lyj-font-sm;
-  color: $lyj-text-light;
 }
 .bottom-anchor {
   height: 40rpx;

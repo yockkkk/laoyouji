@@ -23,12 +23,25 @@ const scriptMatch = vueContent.match(/<script>([\s\S]*?)<\/script>/)
 assert(scriptMatch, 'Script tag must exist in vue file')
 const scriptText = scriptMatch[1]
 
-const sandboxMatch = scriptText.match(/const REPLAY_SANDBOX = (\{[\s\S]*?\n\};?)/)
-assert(sandboxMatch, 'REPLAY_SANDBOX must exist')
-const REPLAY_SANDBOX = eval('(' + sandboxMatch[1] + ')')
+assert.ok(!vueContent.includes('REPLAY_SANDBOX'), 'REPLAY_SANDBOX must not exist anywhere in AgentExecutionTree.vue')
+assert.ok(!vueContent.includes('toggleReplayMode'), 'Replay methods must not exist anywhere in AgentExecutionTree.vue')
+assert.ok(!/replay/i.test(vueContent), 'Zero occurrences of replay allowed in AgentExecutionTree.vue')
+
+// Test static invariant: no planning-dag-card or dag-node anywhere in AgentExecutionTree.vue (Milestone 2)
+assert.ok(!vueContent.includes('planning-dag-card'), 'planning-dag-card must not exist anywhere in AgentExecutionTree.vue')
+assert.ok(!vueContent.includes('dag-node'), 'dag-node must not exist anywhere in AgentExecutionTree.vue')
+
+// Test static invariant: activeAgentsCount denominator is 3 (Milestone 3 Scheme A)
+assert.ok(vueContent.includes('{{ activeAgentsCount }} / 3'), 'Template must display {{ activeAgentsCount }} / 3')
+assert.ok(!vueContent.includes('{{ activeAgentsCount }} / 4'), 'Template must not contain {{ activeAgentsCount }} / 4')
 
 const compObjText = scriptText.substring(scriptText.indexOf('export default {')).replace('export default ', '')
+assert.ok(!compObjText.includes('兜底纳入邻里便民分支'), 'getAgentForTool must not contain blind community fallback')
+
 const compDef = eval('(' + compObjText + ')')
+assert.ok(typeof compDef.methods.normalizeAgent === 'function', 'normalizeAgent method must exist')
+assert.ok(typeof compDef.computed.dispatchedAgents === 'function', 'dispatchedAgents computed must exist')
+assert.equal(compDef.methods.getAgentForTool('completely_unknown_xyz'), '', 'Terminal fallback must be empty string')
 
 // Mock uni global
 globalThis.uni = {
@@ -288,9 +301,9 @@ console.log('Test 6: Child Rejection Flow')
 }
 
 // ---------------------------------------------------------------------------
-// Test 7: Replay Mode Sandbox & Seamless Restoration
+// Test 7: Decommission Dynamic Replay (Zero Replay Invariants & Pure Real Data)
 // ---------------------------------------------------------------------------
-console.log('Test 7: Replay Mode Sandbox & Seamless Restoration')
+console.log('Test 7: Decommission Dynamic Replay (Zero Replay Invariants & Pure Real Data)')
 {
   const vm = createTreeInstance({
     messages: [
@@ -305,32 +318,16 @@ console.log('Test 7: Replay Mode Sandbox & Seamless Restoration')
     ],
   })
 
-  assert.equal(vm.replay.active, false)
-  assert.equal(vm.currentScenarioTag, '邻里助老便民服务')
-  assert.equal(vm.isCommunityActive, true)
+  // Verify replay state and methods do not exist on the component instance
+  assert.equal(vm.replay, undefined, 'vm.replay must be undefined (replay data removed)')
+  assert.equal(vm.toggleReplayMode, undefined, 'vm.toggleReplayMode must be undefined')
+  assert.equal(vm.startReplay, undefined, 'vm.startReplay must be undefined')
+  assert.equal(vm.pauseReplay, undefined, 'vm.pauseReplay must be undefined')
+  assert.equal(vm.resumeReplay, undefined, 'vm.resumeReplay must be undefined')
+  assert.equal(vm.exitReplay, undefined, 'vm.exitReplay must be undefined')
+  assert.equal(vm.currentReplayStepInfo, undefined, 'vm.currentReplayStepInfo must be undefined')
 
-  // Start replay
-  vm.toggleReplayMode()
-  assert.equal(vm.replay.active, true)
-  assert.equal(vm.currentScenarioTag, '跨城异地就医全闭环')
-
-  // Step 1: Health active in replay
-  vm.seekReplay(1)
-  assert.equal(vm.isHealthActive, true)
-
-  // Step 3: Safety Intercept
-  vm.seekReplay(3)
-  assert.equal(vm.pendingTasksCount, 3)
-  assert.equal(vm.isSafetyActive, true)
-
-  // Step 5: Artifact Delivered
-  vm.seekReplay(5)
-  assert.equal(vm.isArtifactReady, true)
-  assert.equal(vm.artifactPages.length, 5)
-
-  // Exit Replay: Must immediately restore the real session cleanly
-  vm.exitReplay()
-  assert.equal(vm.replay.active, false)
+  // Verify pure real-data behavior
   assert.equal(vm.currentScenarioTag, '邻里助老便民服务')
   assert.equal(vm.isCommunityActive, true)
   assert.equal(vm.isHealthActive, false)
@@ -342,7 +339,9 @@ console.log('Test 7: Replay Mode Sandbox & Seamless Restoration')
   const thoughts = vm.agentThoughts
   assert(!JSON.stringify(thoughts).includes('北京'))
   assert(!JSON.stringify(thoughts).includes('积水潭'))
-  console.log('✓ Passed: Replay mode sandbox fully isolated, restore is immediate\n')
+  assert(!JSON.stringify(thoughts).includes('田伟'))
+  assert(!JSON.stringify(thoughts).includes('G102'))
+  console.log('✓ Passed: Replay mode completely decommissioned, pure real data verified\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -405,7 +404,39 @@ console.log('Test 9: Complete Tool Coverage (no dropped tools in any category)')
   assert.ok(vm.communityTools.some((t) => t.name === 'plain_say'), 'plain_say must be in communityTools')
   assert.ok(vm.communityTools.some((t) => t.name === 'get_user_profile'), 'get_user_profile must be in communityTools')
 
-  console.log('✓ Passed: All registered tools categorized without any dropping\n')
+  // Milestone 3 assertions: Unknown tools must return empty string (never blind guess community)
+  assert.equal(vm.getAgentForTool('completely_unknown_xyz'), '', 'completely_unknown_xyz must return empty string')
+  assert.equal(vm.getAgentForTool('random_unregistered_tool'), '', 'random_unregistered_tool must return empty string')
+
+  // Milestone 3 assertions: normalizeAgent method
+  assert.equal(vm.normalizeAgent('health#1'), 'health')
+  assert.equal(vm.normalizeAgent('travel#2'), 'travel')
+  assert.equal(vm.normalizeAgent('community#3'), 'community')
+  assert.equal(vm.normalizeAgent('🏥 安康助手'), 'health')
+  assert.equal(vm.normalizeAgent('🚗 出行管家'), 'travel')
+  assert.equal(vm.normalizeAgent('🧭 银发导航'), 'travel')
+  assert.equal(vm.normalizeAgent('🤝 邻里帮'), 'community')
+  assert.equal(vm.normalizeAgent('🛡️ 安全护航'), 'safety')
+  assert.equal(vm.normalizeAgent('📋 方案建造师'), 'plan_builder')
+  assert.equal(vm.normalizeAgent('老友记主调度'), 'main')
+  assert.equal(vm.normalizeAgent('orchestrator'), 'main')
+  assert.equal(vm.normalizeAgent(''), '')
+  assert.equal(vm.normalizeAgent(null), '')
+
+  // Milestone 3 assertions: dispatchedAgents derived from safeMessages
+  const vmScoped = createTreeInstance({
+    messages: [
+      { kind: 'tool', agent: 'health#1', tool: 'search_hospital' },
+      { kind: 'status', agent: 'travel#1', text: '正在检索车次' },
+      { kind: 'tool', agent: 'main', tool: 'delegate' },
+    ],
+  })
+  assert.ok(vmScoped.dispatchedAgents.has('health'), 'health#1 must normalize to health in dispatchedAgents')
+  assert.ok(vmScoped.dispatchedAgents.has('travel'), 'travel#1 must normalize to travel in dispatchedAgents')
+  assert.ok(!vmScoped.dispatchedAgents.has('main'), 'main orchestrator must not be in dispatchedAgents')
+  assert.equal(vmScoped.activeAgentsCount, 2, 'activeAgentsCount must be 2 for health and travel')
+
+  console.log('✓ Passed: All registered tools categorized without any dropping, unknown tools return empty string, normalizeAgent & dispatchedAgents verified\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -596,6 +627,7 @@ console.log('Test 16: Explicit reasoning prioritization for PlanBuilder & Safety
 
   assert.equal(vm.agentThoughts.planBuilder, '已完成多智能体交叉校验与去幻觉对齐，装配就医单。')
   assert.equal(vm.agentThoughts.safety, '资金池风控审核通过，全流程免责声明已注入。')
+  assert.equal(vm.activeAgentsCount, 0, 'PlanBuilder and Safety must not count towards activeAgentsCount (Scheme A)')
   console.log('✓ Passed: Explicit reasoning prioritized for PlanBuilder and Safety\n')
 }
 
