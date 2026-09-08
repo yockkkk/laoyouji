@@ -115,17 +115,21 @@ export default {
       try {
         const audio = await this._recorder.stop()
         this._recorder = null
-        // 主链路永远走专业方言 ASR：Web Speech 草稿只做预览。旧逻辑是
-        // "草稿有值就不调 ASR"，方言老人被浏览器识别成错字就直接发出去了。
+        // 主链路永远走专业方言 ASR：Web Speech 草稿做实时预览与降级兜底
         text = ((await recognizeAudio(audio.tempFilePath, this.dialect)) || '').trim()
       } catch (e) {
-        uni.showToast({ title: '没听清，您再按住说一遍', icon: 'none', duration: 2000 })
-        this.processing = false
-        this.interimText = ''
-        return
+        console.warn('后端 ASR 转录失败，尝试使用浏览器实时识别草稿兜底:', e)
+        if (this.interimText && this.interimText.trim()) {
+          text = this.interimText.trim()
+        } else {
+          uni.showToast({ title: '没听清，您再按住说一遍', icon: 'none', duration: 2000 })
+          this.processing = false
+          this.interimText = ''
+          return
+        }
       }
       if (!text) {
-        // 专业 ASR 没识别出来时，浏览器草稿兜底一句，总比让老人重说强
+        // 专业 ASR 返回空时，浏览器草稿兜底一句，总比让老人重说强
         text = (this.interimText || '').trim()
       }
       this.processing = false

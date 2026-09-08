@@ -202,7 +202,7 @@ export function startWebSpeech(dialect, onResult, onEnd) {
   rec.continuous = true
   rec.onresult = (e) => {
     let text = ''
-    for (let i = e.resultIndex; i < e.results.length; i++) {
+    for (let i = 0; i < e.results.length; i++) {
       text += e.results[i][0].transcript
     }
     onResult && onResult(text)
