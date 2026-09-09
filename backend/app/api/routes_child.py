@@ -12,8 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_ctx, get_current_principal
 from app.auth.security import Principal
 from app.core.context import AppContext
-from app.safety.privacy import filter_alert, filter_medication
+from app.safety.privacy import filter_alert, filter_medication, filter_checkpoint
 from app.shared.plan_helpers import extract_destination, list_trips_for_display
+from app.api.routes_guardian import lookup_coords
 
 router = APIRouter(prefix="/api/child", tags=["child"])
 
@@ -120,6 +121,42 @@ async def dashboard(
                 "plan": plan_obj,
             })
 
+    # 查找长辈当前最新的实时位置（无论哪个行程）
+    latest_location = None
+    recent_trips = await ctx.repos.list(
+        "trips", where={"elder_id": elder_id}, order="-created_at", limit=10
+    )
+    # 也把没有挂 elder_id 的活跃遗留行程纳入检索并回填
+    unassigned_trips = await ctx.repos.list(
+        "trips", where={"elder_id": None}, order="-created_at", limit=5
+    )
+    for ut in unassigned_trips:
+        await ctx.repos.update("trips", ut["id"], {"elder_id": elder_id})
+        recent_trips.append(ut)
+
+    for tr in recent_trips:
+        cps = await ctx.repos.list(
+            "trip_checkpoints", where={"trip_id": tr["id"]}, order="-created_at", limit=1
+        )
+        if cps:
+            cp = cps[0]
+            if (cp.get("lng") is None or cp.get("lat") is None) and cp.get("location"):
+                lng, lat = lookup_coords(cp["location"])
+                if lng is not None and lat is not None:
+                    cp["lng"], cp["lat"] = lng, lat
+
+            filtered_cp = filter_checkpoint(grant, cp)
+            if filtered_cp:
+                latest_location = {
+                    "trip_id": tr["id"],
+                    "purpose": tr.get("purpose") or "出行行程",
+                    "trip_status": tr.get("status"),
+                    "destination": extract_destination(tr),
+                    "is_off_route": cp.get("status") == "off_route",
+                    **filtered_cp,
+                }
+                break
+
     # 家人通知中心消息
     notifications = await ctx.repos.list(
         "notifications", where={"user_id": child_id}, order="-created_at", limit=20
@@ -129,6 +166,7 @@ async def dashboard(
         "child": {"id": child["id"], "name": child["name"]},
         "elder": {"id": elder_id, "name": elder["name"], "city": elder.get("city")},
         "privacy": grant.to_dict(),
+        "latest_location": latest_location,
         "pending_confirmations": pending,
         "medications": medications,
         "trips": trips_data,

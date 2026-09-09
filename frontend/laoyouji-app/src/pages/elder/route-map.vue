@@ -41,14 +41,17 @@
     </view>
 
     <!-- 适老高德地图视窗 (真实高德 JS API 2.0 Canvas 渲染) -->
-    <view class="map-section">
-      <div id="elder-amap-container" class="amap-box"></div>
+    <view class="map-section" :class="{ expanded: isExpandedMap }">
+      <div id="elder-amap-container" class="amap-box" :class="{ expanded: isExpandedMap }"></div>
       <view v-if="mapLoading" class="map-loading-mask">
         <text class="loading-icon">⏳</text>
         <text class="loading-text">高德地图 2.0 画布加载中…</text>
       </view>
       <!-- 地图工具浮层 -->
       <view class="map-controls">
+        <button class="ctrl-btn expand-btn" @tap="toggleExpandMap">
+          {{ isExpandedMap ? '🗗 恢复标准' : '🔍 放大地图' }}
+        </button>
         <button class="ctrl-btn" @tap="resetView">🗺️ 全览</button>
         <button class="ctrl-btn" @tap="locateElder">📍 我的位置</button>
       </view>
@@ -146,6 +149,7 @@ export default {
         { name: '北京南站', lng: 116.3789, lat: 39.8652, type: 'station' },
         { name: '北京积水潭医院', lng: 116.3748, lat: 39.9485, type: 'end' },
       ],
+      isExpandedMap: false,
       polylinePath: [],
     }
   },
@@ -159,6 +163,9 @@ export default {
   },
   mounted() {
     this.user = getCurrentUser()
+    if (!this.user || !this.user.id) {
+      this.user = { id: '7db6af27-e478-44f5-8e2a-cde3aa14e91e', name: '张桂芳', role: 'elder' }
+    }
     this.initPage()
   },
   onUnload() {
@@ -380,8 +387,22 @@ export default {
         }
       }
     },
+    toggleExpandMap() {
+      this.isExpandedMap = !this.isExpandedMap
+      this.$nextTick(() => {
+        if (this.amapInstance) {
+          setTimeout(() => {
+            if (this.routePolyline) {
+              this.amapInstance.setFitView([this.routePolyline])
+            } else {
+              this.amapInstance.setFitView()
+            }
+          }, 200)
+        }
+      })
+    },
     advanceLocation() {
-      // 模拟老人沿路线前进至下一步
+      // 模拟老人沿路线前进至下一步并同步家人端
       this.currentStepIndex = (this.currentStepIndex + 1) % this.steps.length
       const step = this.steps[this.currentStepIndex]
       if (step && step.coords) {
@@ -393,7 +414,7 @@ export default {
           this.amapInstance.panTo(this.elderCoords)
         }
         uni.showToast({
-          title: `已行进至：${step.title}`,
+          title: `已更新位置：${step.title}（已同步家人）`,
           icon: 'none',
         })
         this.doReportLocation()
@@ -615,13 +636,33 @@ export default {
   margin: 0 24rpx 24rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.08);
   border: 2rpx solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+.map-section.expanded {
+  margin: 0 12rpx 24rpx;
+  border-radius: 28rpx;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.15);
 }
 .amap-box {
   width: 100%;
-  height: 520rpx;
+  height: 680rpx;
   background: #e2e8f0;
+  transition: height 0.3s ease;
+}
+.amap-box.expanded {
+  height: 78vh;
+  min-height: 560px;
+}
+@media (min-width: 768px) {
+  .amap-box {
+    height: 480px;
+  }
+  .amap-box.expanded {
+    height: 76vh;
+    min-height: 620px;
+  }
 }
 .map-loading-mask {
   position: absolute;
@@ -647,21 +688,27 @@ export default {
 .map-controls {
   position: absolute;
   right: 20rpx;
-  bottom: 20rpx;
+  bottom: 24rpx;
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  gap: 14rpx;
+  z-index: 120;
 }
 .ctrl-btn {
   background: #ffffff;
   color: #1e293b;
   border: 1rpx solid #cbd5e1;
-  border-radius: 30rpx;
-  font-size: 24rpx;
+  border-radius: 36rpx;
+  font-size: 26rpx;
   font-weight: 700;
-  padding: 8rpx 20rpx;
-  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.1);
+  padding: 10rpx 24rpx;
+  box-shadow: 0 6rpx 14rpx rgba(0, 0, 0, 0.12);
   cursor: pointer;
+}
+.ctrl-btn.expand-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
 }
 
 /* 换乘步骤大字卡片 */

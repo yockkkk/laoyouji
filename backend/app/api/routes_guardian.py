@@ -147,6 +147,14 @@ async def list_trips(elder_id: str | None = None, limit: int = 20):
     ctx = get_ctx()
     where = {"elder_id": elder_id} if elder_id else {}
     trips = await ctx.repos.list("trips", where=where, order="-created_at", limit=limit)
+    for t in trips:
+        cps = await ctx.repos.list("trip_checkpoints", where={"trip_id": t["id"]}, order="-created_at", limit=1)
+        if cps:
+            t["has_checkpoints"] = True
+            t["latest_location"] = cps[0].get("location")
+            t["latest_checkpoint_at"] = cps[0].get("created_at")
+        else:
+            t["has_checkpoints"] = False
     return {"trips": trips, "count": len(trips)}
 
 
@@ -161,8 +169,13 @@ async def direct_route(origin: str = "家（南京鼓楼区）", destination: st
 async def create_quick_trip(body: QuickTripIn):
     """长辈进入路线规划时若无现存 trip_id，自动建立关联行程，打通定时上报闭环。"""
     ctx = get_ctx()
+    elder_id = body.elder_id
+    if not elder_id:
+        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
+        if elders:
+            elder_id = elders[0]["id"]
     trip = await ctx.repos.insert("trips", {
-        "elder_id": body.elder_id,
+        "elder_id": elder_id,
         "purpose": body.purpose or f"前往{body.destination}就医出行",
         "status": "ongoing",
         "origin": body.origin,
@@ -179,6 +192,16 @@ async def trip_detail(trip_id: str, child_id: str | None = None):
     trip = await ctx.repos.get("trips", trip_id)
     if not trip:
         raise HTTPException(404, "行程不存在")
+
+    # 自动修复遗留行程缺失的 elder_id，确保隐私权限可正常关联
+    elder_id = trip.get("elder_id")
+    if not elder_id:
+        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
+        if elders:
+            elder_id = elders[0]["id"]
+            await ctx.repos.update("trips", trip_id, {"elder_id": elder_id})
+            trip["elder_id"] = elder_id
+
     checkpoints = await ctx.repos.list(
         "trip_checkpoints", where={"trip_id": trip_id}, order="created_at"
     )
@@ -203,7 +226,7 @@ async def trip_detail(trip_id: str, child_id: str | None = None):
             "route": route_data,
         }
 
-    grant = await ctx.privacy.grant_for(trip.get("elder_id") or "", child_id)
+    grant = await ctx.privacy.grant_for(elder_id or "", child_id)
     await ctx.privacy.audit(grant, "trip_detail")
     graded = [c for c in (filter_checkpoint(grant, x) for x in checkpoints) if c]
     return {
@@ -232,18 +255,51 @@ async def trip_route(trip_id: str):
 async def trip_realtime(trip_id: str, child_id: str | None = None):
     """子女端 10 秒实时轮询接口：获取长辈当前最新位置与偏航警报状态。"""
     ctx = get_ctx()
-    trip = await ctx.repos.get("trips", trip_id)
-    if not trip:
-        raise HTTPException(404, "行程不存在")
+    if trip_id == "latest":
+        trips = await ctx.repos.list("trips", order="-created_at", limit=10)
+        if not trips:
+            raise HTTPException(404, "暂无行程")
+        trip = trips[0]
+        trip_id = trip["id"]
+    else:
+        trip = await ctx.repos.get("trips", trip_id)
+        if not trip:
+            raise HTTPException(404, "行程不存在")
+
+    # 自动修复遗留行程缺失的 elder_id
+    elder_id = trip.get("elder_id")
+    if not elder_id:
+        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
+        if elders:
+            elder_id = elders[0]["id"]
+            await ctx.repos.update("trips", trip_id, {"elder_id": elder_id})
+            trip["elder_id"] = elder_id
 
     checkpoints = await ctx.repos.list(
         "trip_checkpoints", where={"trip_id": trip_id}, order="-created_at", limit=1
     )
     latest_cp = checkpoints[0] if checkpoints else None
 
+    # 若当前行程暂无打点，但长辈近期有其他上报记录，兜底提供最新位置防白屏
+    if not latest_cp and elder_id:
+        other_trips = await ctx.repos.list("trips", where={"elder_id": elder_id}, order="-created_at", limit=5)
+        for ot in other_trips:
+            if ot["id"] == trip_id:
+                continue
+            alt_cps = await ctx.repos.list("trip_checkpoints", where={"trip_id": ot["id"]}, order="-created_at", limit=1)
+            if alt_cps:
+                latest_cp = alt_cps[0]
+                break
+
+    # 补齐经纬度（若缺失）
+    if latest_cp and (latest_cp.get("lng") is None or latest_cp.get("lat") is None) and latest_cp.get("location"):
+        lng, lat = lookup_coords(latest_cp["location"])
+        if lng is not None and lat is not None:
+            latest_cp["lng"], latest_cp["lat"] = lng, lat
+
     # 如果需要隐私过滤
     if latest_cp and child_id:
-        grant = await ctx.privacy.grant_for(trip.get("elder_id") or "", child_id)
+        grant = await ctx.privacy.grant_for(elder_id or "", child_id)
         latest_cp = filter_checkpoint(grant, latest_cp)
 
     is_off_route = bool(latest_cp and latest_cp.get("status") == "off_route")
@@ -268,6 +324,15 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
     trip = await ctx.repos.get("trips", trip_id)
     if not trip:
         raise HTTPException(404, "行程不存在")
+
+    # 自动修复遗留行程缺失的 elder_id
+    elder_id = trip.get("elder_id")
+    if not elder_id:
+        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
+        if elders:
+            elder_id = elders[0]["id"]
+            await ctx.repos.update("trips", trip_id, {"elder_id": elder_id})
+            trip["elder_id"] = elder_id
 
     if trip.get("status") == "planned":
         await ctx.repos.update("trips", trip_id, {

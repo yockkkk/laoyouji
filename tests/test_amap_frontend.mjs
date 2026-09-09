@@ -97,6 +97,20 @@ const chatContent = fs.readFileSync('frontend/laoyouji-app/src/pages/elder/chat.
 assert.ok(chatContent.includes(':trip-id="m.tripId || \'\'"'), 'chat.vue must pass tripId to PlanCard')
 console.log('✓ Passed: PlanCard tripId propagation verified in dashboard.vue and chat.vue')
 
+// 8. Verify enlarged map view and child dashboard live location card
+console.log('Test 8: enlarged map view & child dashboard live location card')
+assert.ok(routeMapContent.includes('isExpandedMap'), 'route-map.vue must support isExpandedMap')
+assert.ok(routeMapContent.includes('toggleExpandMap'), 'route-map.vue must have toggleExpandMap method')
+assert.ok(routeMapContent.includes('height: 680rpx'), 'route-map.vue must expand default map height to 680rpx')
+assert.ok(guardianContent.includes('isMapExpanded'), 'guardian.vue must support isMapExpanded')
+assert.ok(guardianContent.includes('toggleMapExpand'), 'guardian.vue must have toggleMapExpand method')
+assert.ok(guardianContent.includes('height: 760rpx'), 'guardian.vue must expand default map height to 760rpx')
+assert.ok(guardianContent.includes('elder-live-status-card'), 'guardian.vue must display elder-live-status-card on map')
+assert.ok(dashContent.includes('elder-location-section'), 'dashboard.vue must render elder-location-section')
+assert.ok(dashContent.includes('latestLocation'), 'dashboard.vue must support latestLocation state')
+assert.ok(dashContent.includes('openGuardianMap'), 'dashboard.vue must support openGuardianMap method')
+console.log('✓ Passed: enlarged map view & child dashboard live location card verified')
+
 console.log('\n======================================================')
 console.log('ALL GAODE MAP FRONTEND INTEGRATION CHECKS PASSED!')
 console.log('======================================================')

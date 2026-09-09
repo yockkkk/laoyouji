@@ -113,7 +113,7 @@
 
     <template v-else-if="trip && !locationOff">
       <!-- 真实高德地图行程守护视窗 (高德 JS API 2.0 Canvas 渲染) -->
-      <view class="gaode-guard-card">
+      <view class="gaode-guard-card" :class="{ expanded: isMapExpanded }">
         <!-- 偏航警报气泡 (长辈偏离路线时醒目显示) -->
         <view v-if="isOffRoute" class="offroute-alert-bubble">
           <view class="alert-icon-pulse">⚠️</view>
@@ -126,8 +126,26 @@
           </button>
         </view>
 
+        <!-- 长辈实时位置与状态浮动条 -->
+        <view class="elder-live-status-card" v-if="latestCheckpoint">
+          <view class="live-status-main">
+            <view class="live-avatar-box">👴</view>
+            <view class="live-info-box">
+              <view class="live-place-row">
+                <text class="live-place-name">{{ latestCheckpoint.location || '已连接' }}</text>
+                <text class="live-status-tag" :class="latestCheckpoint.status">
+                  {{ latestCheckpoint.status === 'off_route' ? '⚠️ 偏航预警' : latestCheckpoint.status === 'arrived' ? '🏁 已到达' : '🟢 正常行进' }}
+                </text>
+              </view>
+              <text class="live-note" v-if="latestCheckpoint.note">{{ latestCheckpoint.note }}</text>
+              <text class="live-time" v-if="latestCheckpoint.created_at">最新同步：{{ formatCheckpointTime(latestCheckpoint.created_at) }}</text>
+            </view>
+          </view>
+          <button class="live-focus-btn" size="mini" @tap="focusElderLocation">📍 聚焦长辈</button>
+        </view>
+
         <!-- 地图 Canvas 挂载点 -->
-        <div id="child-gaode-map" class="child-amap-canvas"></div>
+        <div id="child-gaode-map" class="child-amap-canvas" :class="{ expanded: isMapExpanded }"></div>
 
         <view v-if="mapLoading" class="map-loading-overlay">
           <text class="map-loading-text">高德地图 2.0 视窗渲染中…</text>
@@ -138,12 +156,15 @@
           <view class="status-indicator-pill">
             <view class="status-indicator-dot" :class="{ alert: isOffRoute }"></view>
             <text class="status-indicator-text">
-              {{ isOffRoute ? '⚠️ 发现偏离规划路线' : '🟢 实时守护中 (10秒刷新)' }}
+              {{ isOffRoute ? '⚠️ 发现偏离规划路线' : '🟢 实时守护中 (8秒自动刷新)' }}
             </text>
           </view>
           <view class="map-ctrl-btns">
-            <button class="ctrl-btn" size="mini" @tap="resetChildMapView">全览</button>
-            <button class="ctrl-btn" size="mini" @tap="focusElderLocation">长辈位置</button>
+            <button class="ctrl-btn expand" size="mini" @tap="toggleMapExpand">
+              {{ isMapExpanded ? '🗗 恢复标准' : '🔍 放大地图' }}
+            </button>
+            <button class="ctrl-btn" size="mini" @tap="resetChildMapView">🗺️ 全览</button>
+            <button class="ctrl-btn" size="mini" @tap="focusElderLocation">📍 父母位置</button>
           </view>
         </view>
 
@@ -230,6 +251,7 @@ export default {
       elderCoords: [118.7732, 32.0618],
       routeCoords: [],
       routePointsData: DEFAULT_POINTS,
+      isMapExpanded: false,
       simStep: 0,
       _switchSeq: 0,
     }
@@ -329,11 +351,13 @@ export default {
           this.allTrips = dashRes.trips
         }
 
-        // 确定当前展示的 tripId
-        if (!this.tripId) {
-          if (this.allTrips.length > 0) {
-            this.tripId = this.allTrips[0].id
-          }
+        // 确定当前展示的 tripId (优先匹配进行中且有定位记录的行程)
+        if (!this.tripId && this.allTrips.length > 0) {
+          const activeTrip = this.allTrips.find((t) => t.status === 'ongoing' && t.has_checkpoints)
+            || this.allTrips.find((t) => t.status === 'ongoing')
+            || this.allTrips.find((t) => t.has_checkpoints)
+            || this.allTrips[0]
+          this.tripId = activeTrip.id
         }
 
         // 2. 加载选中的行程详情
@@ -373,6 +397,11 @@ export default {
         // 同步最新的长辈经纬度
         if (this.latestCheckpoint && this.latestCheckpoint.lng && this.latestCheckpoint.lat) {
           this.elderCoords = [this.latestCheckpoint.lng, this.latestCheckpoint.lat]
+        } else if (dashRes && dashRes.latest_location && dashRes.latest_location.lng && dashRes.latest_location.lat) {
+          this.elderCoords = [dashRes.latest_location.lng, dashRes.latest_location.lat]
+          if (!this.checkpoints.length) {
+            this.checkpoints.push(dashRes.latest_location)
+          }
         } else if (this.routePointsData.length) {
           this.elderCoords = [this.routePointsData[0].lng, this.routePointsData[0].lat]
         }
@@ -560,6 +589,32 @@ export default {
         }
       }, 8000)
     },
+    toggleMapExpand() {
+      this.isMapExpanded = !this.isMapExpanded
+      this.$nextTick(() => {
+        if (this.amapInstance) {
+          setTimeout(() => {
+            if (this.routePolyline) {
+              this.amapInstance.setFitView([this.routePolyline])
+            } else {
+              this.amapInstance.setFitView()
+            }
+          }, 200)
+        }
+      })
+    },
+    formatCheckpointTime(ts) {
+      if (!ts) return '刚刚'
+      try {
+        const d = new Date(ts)
+        const hh = String(d.getHours()).padStart(2, '0')
+        const mm = String(d.getMinutes()).padStart(2, '0')
+        const ss = String(d.getSeconds()).padStart(2, '0')
+        return `${hh}:${mm}:${ss}`
+      } catch (e) {
+        return ts
+      }
+    },
     stopPolling() {
       if (this.pollTimer) {
         clearInterval(this.pollTimer)
@@ -573,7 +628,8 @@ export default {
     },
     focusElderLocation() {
       if (this.amapInstance && this.elderCoords) {
-        this.amapInstance.setZoomAndCenter(12, this.elderCoords)
+        this.amapInstance.setZoomAndCenter(13, this.elderCoords)
+        uni.showToast({ title: '已定位父母当前坐标', icon: 'none' })
       }
     },
     callElder() {
@@ -883,11 +939,114 @@ export default {
   overflow: hidden;
   border: 2rpx solid #e2e8f0;
   box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+.gaode-guard-card.expanded {
+  margin: 0 8rpx $lyj-space-md;
+  border-radius: 24rpx;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.15);
+}
+.elder-live-status-card {
+  padding: 16rpx 20rpx;
+  background: #f8fafc;
+  border-bottom: 2rpx solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+.live-status-main {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+  min-width: 0;
+}
+.live-avatar-box {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #e0f2fe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  flex-shrink: 0;
+}
+.live-info-box {
+  flex: 1;
+  min-width: 0;
+}
+.live-place-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+.live-place-name {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+.live-status-tag {
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 2rpx 12rpx;
+  border-radius: 12rpx;
+  background: #dcfce7;
+  color: #15803d;
+}
+.live-status-tag.off_route {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.live-status-tag.arrived {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+.live-note {
+  display: block;
+  font-size: 22rpx;
+  color: #64748b;
+  margin-top: 4rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-time {
+  display: block;
+  font-size: 20rpx;
+  color: #94a3b8;
+  margin-top: 2rpx;
+}
+.live-focus-btn {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 700;
+  border-radius: 24rpx;
+  border: none;
+  padding: 6rpx 20rpx;
+  flex-shrink: 0;
 }
 .child-amap-canvas {
   width: 100%;
-  height: 580rpx;
+  height: 760rpx;
   background: #f1f5f9;
+  transition: height 0.3s ease;
+}
+.child-amap-canvas.expanded {
+  height: 82vh;
+  min-height: 600px;
+}
+@media (min-width: 768px) {
+  .child-amap-canvas {
+    height: 540px;
+  }
+  .child-amap-canvas.expanded {
+    height: 80vh;
+    min-height: 680px;
+  }
 }
 .map-loading-overlay {
   position: absolute;
@@ -1011,6 +1170,12 @@ export default {
   font-weight: 700;
   padding: 4rpx 16rpx;
   margin: 0;
+  cursor: pointer;
+}
+.ctrl-btn.expand {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
 }
 
 /* 模拟操作栏 */

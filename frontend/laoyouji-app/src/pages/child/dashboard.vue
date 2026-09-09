@@ -20,6 +20,49 @@
 
     <!-- 响应式铺砌布局 -->
     <view class="sections-grid">
+      <!-- 父母实时位置动态卡片 -->
+      <view v-if="privacy.bound && privacy.location_level !== 'off'" class="section elder-location-section">
+        <view class="section-head location-head">
+          <view class="location-title-wrap">
+            <view class="pulse-beacon"></view>
+            <text class="section-title location-title">📍 父母实时位置动态</text>
+          </view>
+          <text v-if="latestLocationTime" class="location-refresh-time">{{ latestLocationTime }}</text>
+        </view>
+
+        <view v-if="latestLocation" class="location-card-content">
+          <view class="loc-main-row">
+            <view class="loc-icon-badge">👴</view>
+            <view class="loc-text-block">
+              <view class="loc-name-row">
+                <text class="loc-name">{{ latestLocation.location || '已在途中' }}</text>
+                <text class="loc-tag" :class="latestLocation.is_off_route ? 'alert' : 'normal'">
+                  {{ latestLocation.is_off_route ? '⚠️ 偏航预警' : latestLocation.trip_status === 'completed' ? '🏁 已到达' : '🟢 正常行进' }}
+                </text>
+              </view>
+              <text v-if="latestLocation.purpose" class="loc-purpose">
+                当前行程：{{ latestLocation.purpose }}
+              </text>
+              <text v-if="latestLocation.note" class="loc-note">
+                {{ latestLocation.note }}
+              </text>
+            </view>
+          </view>
+          <view class="loc-btn-wrap">
+            <button class="loc-map-btn" size="mini" @tap="openGuardianMap(latestLocation.trip_id)">
+              🗺️ 查看高德大地图实时轨迹与守护 ›
+            </button>
+          </view>
+        </view>
+
+        <view v-else class="location-empty-box">
+          <text class="location-empty-hint">长辈开启路线规划后，将在此自动同步其实时行进坐标与偏航预警。</text>
+          <button class="loc-map-btn-sm" size="mini" @tap="openGuardianMap()">
+            🗺️ 进入行程守护大地图
+          </button>
+        </view>
+      </view>
+
       <!-- 待我审批事项 -->
       <view v-if="pendingConfirmations.length" class="section pending-section">
         <view class="section-head">
@@ -171,11 +214,24 @@ export default {
       privacy: DENIED,
       elderName: '',
       elderCity: '',
+      latestLocation: null,
       timer: null,
       lastRefresh: '',
     }
   },
   computed: {
+    latestLocationTime() {
+      if (!this.latestLocation || !this.latestLocation.created_at) return ''
+      try {
+        const d = new Date(this.latestLocation.created_at)
+        const hh = String(d.getHours()).padStart(2, '0')
+        const mm = String(d.getMinutes()).padStart(2, '0')
+        const ss = String(d.getSeconds()).padStart(2, '0')
+        return `最近上报 ${hh}:${mm}:${ss}`
+      } catch (e) {
+        return ''
+      }
+    },
     elderLine() {
       if (!this.privacy.bound) return '尚未绑定老人'
       const who = [this.elderName, this.elderCity].filter(Boolean).join(' · ')
@@ -337,6 +393,9 @@ export default {
         this.elderCity = d.elder ? d.elder.city || '' : ''
         this.trips = d.trips || []
         this.plans = d.plans || []
+        if (d.latest_location) {
+          this.latestLocation = d.latest_location
+        }
 
         const serverPending = d.pending_confirmations || []
         const serverIds = new Set(serverPending.map((x) => x.id))
@@ -561,6 +620,10 @@ export default {
     goGuardian(t) {
       uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.trip_id || t.id}` })
     },
+    openGuardianMap(tripId) {
+      const url = tripId ? `/pages/child/guardian?trip_id=${tripId}` : '/pages/child/guardian'
+      uni.navigateTo({ url })
+    },
   },
 }
 </script>
@@ -645,6 +708,143 @@ export default {
   color: $lyj-child-muted;
   line-height: $lyj-line-height;
 }
+.elder-location-section {
+  background: #ffffff;
+  border: 2rpx solid #bfdbfe;
+  border-left: 8rpx solid #2563eb;
+  border-radius: $lyj-radius-lg;
+  box-shadow: 0 4rpx 16rpx rgba(37, 99, 235, 0.08);
+}
+.location-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.location-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.pulse-beacon {
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 6rpx rgba(16, 185, 129, 0.25);
+  animation: beaconPulse 1.8s infinite ease-in-out;
+}
+@keyframes beaconPulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 0 10rpx rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.9); opacity: 0.7; }
+}
+.location-title {
+  color: #1e3a8a;
+  font-weight: 800;
+}
+.location-refresh-time {
+  font-size: 22rpx;
+  color: #64748b;
+}
+.location-card-content {
+  padding: 12rpx 0 0;
+}
+.loc-main-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+.loc-icon-badge {
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 50%;
+  background: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  flex-shrink: 0;
+}
+.loc-text-block {
+  flex: 1;
+  min-width: 0;
+}
+.loc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+.loc-name {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #0f172a;
+}
+.loc-tag {
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 2rpx 14rpx;
+  border-radius: 12rpx;
+  background: #dcfce7;
+  color: #15803d;
+}
+.loc-tag.alert {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.loc-purpose {
+  display: block;
+  font-size: 24rpx;
+  color: #475569;
+  margin-top: 6rpx;
+}
+.loc-note {
+  display: block;
+  font-size: 24rpx;
+  color: #0284c7;
+  margin-top: 6rpx;
+  background: #f0f9ff;
+  padding: 8rpx 14rpx;
+  border-radius: 10rpx;
+}
+.loc-btn-wrap {
+  margin-top: 20rpx;
+}
+.loc-map-btn {
+  width: 100%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 700;
+  border-radius: 40rpx;
+  border: none;
+  padding: 12rpx 0;
+  cursor: pointer;
+  box-shadow: 0 4rpx 12rpx rgba(37, 99, 235, 0.25);
+}
+.location-empty-box {
+  padding: 16rpx 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.location-empty-hint {
+  font-size: 26rpx;
+  color: #64748b;
+  line-height: 1.5;
+}
+.loc-map-btn-sm {
+  background: #f1f5f9;
+  color: #2563eb;
+  border: 2rpx solid #bfdbfe;
+  font-size: 26rpx;
+  font-weight: 700;
+  border-radius: 30rpx;
+  align-self: flex-start;
+  padding: 6rpx 20rpx;
+  cursor: pointer;
+}
+
 .pending-section {
   border-left: 8rpx solid #f59e0b;
 }
