@@ -879,15 +879,29 @@ export default {
           if (bubble && bubble.text) {
             bubble.text = ''
           }
-          this.messages.push({
-            kind: 'tool',
-            callId: d.call_id,
-            tool: d.tool || '',
-            agent: d.agent || '',
-            args: d.args || {},
-            status: 'running',
-            summary: d.summary || d.tool,
-          })
+          // 幂等：同一 call_id 可能重复到达 —— SSE 断线转轮询时 pollEvents 从
+          // afterSeq=0 起把本轮事件整段重放，其中的 tool_call 已在实时流里推过一遍。
+          // 原来这里无条件 push，于是断线那一下之前见过的每个工具都叠成两张卡。
+          // 已存在同 call_id 就地更新，不再新增；已办结的状态不回退成 running。
+          const existingTool = d.call_id
+            ? this.messages.find((m) => m.kind === 'tool' && m.callId === d.call_id)
+            : null
+          if (existingTool) {
+            if (d.tool) existingTool.tool = d.tool
+            if (d.agent) existingTool.agent = d.agent
+            if (d.args && Object.keys(d.args).length) existingTool.args = d.args
+            if (d.summary) existingTool.summary = d.summary
+          } else {
+            this.messages.push({
+              kind: 'tool',
+              callId: d.call_id,
+              tool: d.tool || '',
+              agent: d.agent || '',
+              args: d.args || {},
+              status: 'running',
+              summary: d.summary || d.tool,
+            })
+          }
           this._scrollBottom()
           break
         }

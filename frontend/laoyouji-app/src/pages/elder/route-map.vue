@@ -94,7 +94,7 @@
 </template>
 
 <script>
-import { loadAMap } from '../../utils/amap'
+import { loadAMap, ensureAmapMarkerStyles } from '../../utils/amap'
 import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { speak } from '../../api/asr'
@@ -277,6 +277,8 @@ export default {
     async initAmap() {
       try {
         const AMap = await loadAMap()
+        // 保证高德 Marker 的自定义 DOM 样式已注入 document.head（穿透 uni-app 作用域）
+        ensureAmapMarkerStyles()
         const container = document.getElementById('elder-amap-container')
         if (!container) return
 
@@ -284,7 +286,11 @@ export default {
           zoom: 6,
           center: [117.5, 35.5],
           viewMode: '2D',
-          mapStyle: 'amap://styles/normal',
+          resizeEnable: true,
+          // 不要显式设 mapStyle: 'amap://styles/normal' —— 任何 amap://styles/* 都会
+          // 走「个性化地图」服务，而该服务默认未在此 Key 上开通，请求失败会导致底图
+          // 瓦片整片灰白（矢量图层如路线折线仍能画出，于是只灰底不灰线）。省略即用
+          // SDK 内置标准底图，不依赖个性化地图服务。
         })
 
         // 绘制高亮规划线路 Polyline (适老鲜艳大对比度，粗度8px，箭头标识)
@@ -779,61 +785,8 @@ export default {
 }
 </style>
 
-<!-- 高德地图 Marker 自定义 DOM 样式（必须为全局样式以穿透 Canvas 层） -->
-<style lang="scss">
-.elder-map-marker {
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
-  border: 2px solid #ffffff;
-  color: #ffffff;
-  pointer-events: auto;
-}
-.elder-map-marker.badge-start {
-  background: #10b981;
-}
-.elder-map-marker.badge-station {
-  background: #2563eb;
-}
-.elder-map-marker.badge-end {
-  background: #ef4444;
-}
+<!-- 高德 Marker 的自定义 DOM 样式统一在 utils/amap.js 的 ensureAmapMarkerStyles()
+     里以文档级 <style> 注入：高德 Marker 是运行时插进它自己容器的，uni-app H5 会给
+     页面样式加作用域标记，写在这里的非 scoped 规则也命中不到，站点标签会退化成
+     竖排黑字。故此处不再重复声明，避免"看似有样式其实不生效"的误导。 -->
 
-/* 呼吸动效 Marker */
-.elder-live-pulse-marker {
-  position: relative;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.elder-live-pulse-marker .pulse-ring {
-  position: absolute;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: rgba(232, 84, 30, 0.35);
-  animation: elderBreathe 1.8s infinite ease-out;
-}
-@keyframes elderBreathe {
-  0% { transform: scale(0.6); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-.elder-live-pulse-marker .pulse-core {
-  position: relative;
-  z-index: 2;
-  background: #e8541e;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 800;
-  padding: 4px 8px;
-  border-radius: 14px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  white-space: nowrap;
-}
-</style>

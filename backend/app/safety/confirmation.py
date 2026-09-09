@@ -44,6 +44,24 @@ class ConfirmationService:
         user_id = turn.user.get("id")
         user_role = turn.user.get("role", "elder")
 
+        # 幂等护栏：真实模型在等家人确认期间，会把同一笔高危操作再下一遍——因为
+        # suspended 结果在它看来像"没办成"（见 tool.py to_model_content：ok=False）。
+        # 同一会话里 (工具 + 完全一致的入参) 仍在 pending 的确认任务只应有一张，否则
+        # 家人会收到重复审批卡，两张都点同意就是重复下单、重复扣费。命中已存在的挂起
+        # 任务：不再新建、不再重复通知、也不再 emit suspended（那张黄卡第一次已发过，
+        # 重发会在两端各叠一张重复卡），只把"已在等确认、别再下单"回给模型让它收手。
+        dup = await self._find_pending_duplicate(turn.session_id, tool.name, args)
+        if dup:
+            rel = dup.get("relation_for_elder") or "家人"
+            return {
+                "ok": False,
+                "suspended": True,
+                "confirmation_id": dup["id"],
+                "duplicate": True,
+                "summary": f"这笔操作刚才已经发给{rel}确认了，正在等通过，通过后会自动"
+                           f"办好——请不要重复发起或重复下单。",
+            }
+
         # 查找家庭关联：
         binding = await self._repo.find_one(
             "family_bindings", {"elder_id": user_id, "status": "active"}
@@ -163,8 +181,34 @@ class ConfirmationService:
             "ok": False,
             "suspended": True,
             "confirmation_id": task["id"],
-            "summary": f"已发起{relation_for_elder}确认，等待通过后自动执行。",
+            "summary": f"已发起{relation_for_elder}确认并挂起，等家人点同意后会自动执行；"
+                       f"这笔已经受理，请勿重复调用本工具或重复下单。",
         }
+
+    async def _find_pending_duplicate(self, session_id: str, tool_name: str,
+                                      args: dict) -> dict | None:
+        """同会话内、同工具、入参完全一致且仍 pending 的确认任务（命中取第一张）。
+
+        入参相等放在 Python 层做精确 dict 比较：tool_args 是 JSON 列，各存储后端
+        对 JSON 列的 .eq 过滤行为不一致，只靠 where 不可靠；where 先按标量列
+        (session_id/tool_name/status) 收窄，再在结果里逐行比 args。
+        """
+        try:
+            rows = await self._repo.list(
+                "confirmation_tasks",
+                where={"session_id": session_id, "tool_name": tool_name,
+                       "status": "pending"},
+            )
+        except Exception as e:
+            logger.warning(f"查询重复确认任务失败，按无重复放行: {e}")
+            return None
+        for row in rows or []:
+            stored = row.get("tool_args")
+            if stored is None:
+                stored = row.get("arguments")
+            if stored == args:
+                return row
+        return None
 
     # ------------------------------------------------------------- 放行凭证校验
 

@@ -188,7 +188,7 @@
 
 <script>
 import LyjSegment from '../../components/LyjSegment.vue'
-import { loadAMap } from '../../utils/amap'
+import { loadAMap, ensureAmapMarkerStyles } from '../../utils/amap'
 import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { publishPendingCount } from '../../store/pendingBadge'
@@ -399,6 +399,9 @@ export default {
     async initChildAmap() {
       try {
         const AMap = await loadAMap()
+        // 高德 Marker 的自定义 DOM 样式必须走文档级注入才能命中（穿透 uni-app 作用域），
+        // 否则站点/偏航气泡会退化成竖排黑字。与长辈端 route-map 共用同一份样式。
+        ensureAmapMarkerStyles()
         const container = document.getElementById('child-gaode-map')
         if (!container) return
 
@@ -407,7 +410,10 @@ export default {
             zoom: 6,
             center: [117.5, 35.5],
             viewMode: '2D',
-            mapStyle: 'amap://styles/normal',
+            // 不显式设 mapStyle：'amap://styles/normal' 会强制走「个性化地图」服务，
+            // 该服务未在此 key 开通时底图瓦片整片灰白（路线/标记却仍能画出来，
+            // 正是之前"有蓝线没底图"的现象）。留空即用默认标准图，最稳。
+            resizeEnable: true,
           })
         }
         this.renderTripOnMap()
@@ -1265,69 +1271,7 @@ export default {
 }
 </style>
 
-<!-- 高德地图 Marker DOM 样式 -->
-<style lang="scss">
-.child-map-station-badge {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffffff;
-  white-space: nowrap;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  pointer-events: auto;
-}
-
-/* 子女端长辈位置呼吸波纹动效 Marker */
-.child-elder-breathe-marker {
-  position: relative;
-  width: 90px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.child-elder-breathe-marker .breathe-wave {
-  position: absolute;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(37, 99, 235, 0.35);
-  animation: childBreatheWave 1.6s infinite ease-out;
-}
-@keyframes childBreatheWave {
-  0% { transform: scale(0.6); opacity: 1; }
-  100% { transform: scale(2.0); opacity: 0; }
-}
-.child-elder-breathe-marker .breathe-core {
-  position: relative;
-  z-index: 2;
-  background: #1d4ed8;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 12px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  white-space: nowrap;
-}
-
-.child-offroute-marker-bubble {
-  background: #ef4444;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 4px 10px;
-  border-radius: 14px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
-  white-space: nowrap;
-  animation: offrouteBounce 0.8s infinite alternate;
-}
-@keyframes offrouteBounce {
-  from { transform: translateY(0); }
-  to { transform: translateY(-4px); }
-}
-</style>
+<!-- 高德 Marker 的自定义 DOM 样式统一在 utils/amap.js 的 ensureAmapMarkerStyles()
+     里以文档级 <style> 注入（子女端 .child-map-station-badge / .child-elder-breathe-marker
+     / .child-offroute-marker-bubble 及其动效都在那里）。高德 Marker 是运行时插进它
+     自己容器的，uni-app H5 的作用域标记会让写在这里的规则命中不到，故此处不再重复声明。 -->

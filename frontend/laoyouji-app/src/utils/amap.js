@@ -71,6 +71,50 @@ export function loadAMap() {
 }
 
 /**
+ * 注入高德自定义 Marker 的全局样式（幂等，仅注一次）。
+ *
+ * 为什么不放在页面 .vue 的 <style> 里：高德的 Marker DOM 是 AMap 通过
+ * document.createElement 动态插进它自己的容器的，uni-app H5 会给页面样式加
+ * data-v 作用域标记（即便写了非 scoped，编译期也可能被限定域），于是
+ * `.elder-map-marker` 这类选择器根本命中不到高德插进来的节点 —— 结果就是
+ * 站点标签退化成没有底色、没有内边距、逐字竖排的黑色文字。
+ * 这里用 JS 直接往 document.head 塞一段无作用域的 <style>，是文档级样式，
+ * 一定能命中高德的 Marker 节点。长辈端与子女端两套地图的标记样式都在这里。
+ */
+let markerStylesInjected = false
+export function ensureAmapMarkerStyles() {
+  if (typeof document === 'undefined' || markerStylesInjected) return
+  if (document.getElementById('amap-marker-styles')) {
+    markerStylesInjected = true
+    return
+  }
+  const style = document.createElement('style')
+  style.id = 'amap-marker-styles'
+  style.type = 'text/css'
+  style.textContent = `
+/* —— 长辈端 route-map 标记 —— */
+.elder-map-marker{display:inline-block;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,.2);border:2px solid #fff;color:#fff;pointer-events:auto;}
+.elder-map-marker.badge-start{background:#10b981;}
+.elder-map-marker.badge-station{background:#2563eb;}
+.elder-map-marker.badge-end{background:#ef4444;}
+.elder-live-pulse-marker{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;}
+.elder-live-pulse-marker .pulse-ring{position:absolute;width:50px;height:50px;border-radius:50%;background:rgba(232,84,30,.35);animation:elderBreathe 1.8s infinite ease-out;}
+@keyframes elderBreathe{0%{transform:scale(.6);opacity:1;}100%{transform:scale(1.6);opacity:0;}}
+.elder-live-pulse-marker .pulse-core{position:relative;z-index:2;background:#e8541e;color:#fff;font-size:12px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;}
+/* —— 子女端 guardian 标记 —— */
+.child-map-station-badge{display:inline-block;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;line-height:1.2;color:#fff;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:auto;}
+.child-elder-breathe-marker{position:relative;width:90px;height:40px;display:flex;align-items:center;justify-content:center;}
+.child-elder-breathe-marker .breathe-wave{position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,.35);animation:childBreatheWave 1.6s infinite ease-out;}
+@keyframes childBreatheWave{0%{transform:scale(.6);opacity:1;}100%{transform:scale(2.0);opacity:0;}}
+.child-elder-breathe-marker .breathe-core{position:relative;z-index:2;background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:3px 8px;border-radius:12px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:nowrap;}
+.child-offroute-marker-bubble{display:inline-block;background:#ef4444;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:4px 10px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(239,68,68,.4);white-space:nowrap;animation:offrouteBounce .8s infinite alternate;}
+@keyframes offrouteBounce{from{transform:translateY(0);}to{transform:translateY(-4px);}}
+`
+  document.head.appendChild(style)
+  markerStylesInjected = true
+}
+
+/**
  * 球面大圆距离（米）
  */
 export function calcDistanceMeters(p1, p2) {

@@ -1885,7 +1885,7 @@ export default {
     parseTools(agentPrefixes) {
       const msgs = this.safeMessages
       const suspends = msgs.filter((m) => m.kind === 'suspend')
-      return msgs
+      const rawTools = msgs
         .filter(
           (m) =>
             m.kind === 'tool' &&
@@ -1936,33 +1936,47 @@ export default {
           }
         })
 
-      // 严格去重与状态融合：避免历史会话或多次事件流推送导致的重复工具卡片
+      // 严格去重与状态融合：避免历史会话或多次事件流推送导致的重复工具卡片。
+      // 后端不会把"一次调用"发两遍，但同一笔逻辑操作会因三种情况产生多个不同
+      // call_id 的事件：①同名读工具挂在两个子智能体上各查一遍；②真实模型在
+      // 后续步骤重发同名同参调用（suspended 结果读起来像"没办成"）；③SSE 断线
+      // 转轮询时从头回放。因此不能只按 call_id 去重——还要按「工具名+入参」签名
+      // 合并，才能把入参完全一致的重复卡收成一张。命中 callId / confirmationId /
+      // 签名任一相同即视为同一张卡，终态与详细摘要向已存在的那张融合。
       const deduped = []
-      const seen = new Map()
+      const byKey = new Map()
       for (const item of rawTools) {
-        let key = item.callId || ''
-        if (!key && item.confirmationId) key = item.confirmationId
-        if (!key) {
-          try {
-            key = `${item.name}:${JSON.stringify(item.args)}`
-          } catch (e) {
-            key = `${item.name}:${item.summary}`
-          }
+        let sig
+        try {
+          sig = `${item.name}:${JSON.stringify(item.args || {})}`
+        } catch (e) {
+          sig = `${item.name}:${item.summary || ''}`
         }
-        if (seen.has(key)) {
-          const prev = seen.get(key)
-          // 状态优先级：rejected/completed/suspended > running
+        const prev =
+          (item.callId && byKey.get('c:' + item.callId)) ||
+          (item.confirmationId && byKey.get('f:' + item.confirmationId)) ||
+          byKey.get('s:' + sig) ||
+          null
+        if (prev) {
+          // 状态优先级：终态（completed/failed/rejected/suspended）覆盖 running
           if (item.status && item.status !== 'running') prev.status = item.status
           // 摘要优先级：详细中文说明 > 工具名
           if (item.summary && item.summary !== item.name) prev.summary = item.summary
           if (item.result) prev.result = item.result
           if (item.resultText) prev.resultText = item.resultText
           if (item.confirmationId && !prev.confirmationId) prev.confirmationId = item.confirmationId
+          if (item.callId && !prev.callId) prev.callId = item.callId
           if (item.amount && !prev.amount) prev.amount = item.amount
           if (item.desc && !prev.desc) prev.desc = item.desc
+          // 补登记键：让后续相同 callId / confirmationId / 签名都命中这张已存在的卡
+          if (item.callId) byKey.set('c:' + item.callId, prev)
+          if (item.confirmationId) byKey.set('f:' + item.confirmationId, prev)
+          byKey.set('s:' + sig, prev)
         } else {
-          seen.set(key, item)
           deduped.push(item)
+          if (item.callId) byKey.set('c:' + item.callId, item)
+          if (item.confirmationId) byKey.set('f:' + item.confirmationId, item)
+          byKey.set('s:' + sig, item)
         }
       }
       return deduped
