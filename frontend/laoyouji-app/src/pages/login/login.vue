@@ -154,6 +154,20 @@
         </view>
       </view>
 
+      <!-- 安卓 APK 快捷下载入口 -->
+      <view class="apk-download-bar" @tap="downloadApk">
+        <view class="apk-download-left">
+          <text class="apk-icon">📱</text>
+          <view class="apk-info">
+            <text class="apk-title">安装老友记安卓手机客户端</text>
+            <text class="apk-sub">超轻量原生封装 · 支持长辈语音与实时守护</text>
+          </view>
+        </view>
+        <view class="apk-btn">
+          <text class="apk-btn-text">立即下载</text>
+        </view>
+      </view>
+
       <!-- 底部安全与适老背书 -->
       <view class="security-footer">
         <view class="security-badge">
@@ -216,6 +230,15 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+
+    downloadApk() {
+      // #ifdef H5
+      window.location.href = '/laoyouji.apk'
+      // #endif
+      // #ifndef H5
+      uni.showToast({ title: '当前已是安装版客户端', icon: 'none' })
+      // #endif
     },
 
     goRegister() {
@@ -692,6 +715,67 @@ export default {
   font-weight: 700;
   color: #2A82E4;
   cursor: pointer;
+}
+
+/* ---------------- 安卓 APK 下载入口条 ---------------- */
+.apk-download-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 20rpx 24rpx;
+  border: 2rpx solid #BFDBFE;
+  box-shadow: 0 8rpx 24rpx rgba(37, 99, 235, 0.08);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.apk-download-bar:active {
+  transform: translateY(2rpx) scale(0.99);
+}
+
+.apk-download-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+}
+
+.apk-icon {
+  font-size: 44rpx;
+}
+
+.apk-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.apk-title {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #1E3A8A;
+}
+
+.apk-sub {
+  font-size: 22rpx;
+  color: #3B82F6;
+}
+
+.apk-btn {
+  background: #2563EB;
+  color: #FFFFFF;
+  padding: 12rpx 22rpx;
+  border-radius: 14rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  box-shadow: 0 4rpx 10rpx rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+}
+
+.apk-btn-text {
+  color: #FFFFFF;
 }
 
 /* ---------------- 底部背书 ---------------- */

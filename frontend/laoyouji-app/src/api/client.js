@@ -3,7 +3,7 @@
  */
 import { getAccessToken, getRefreshToken, setAuthSession, clearCurrentUser } from '../store/user'
 
-const BASE_URL = 'http://127.0.0.1:8000'
+const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || 'http://159.75.94.149:8000'
 export { BASE_URL }
 
 let refreshPromise = null
