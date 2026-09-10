@@ -138,12 +138,23 @@ page, uni-page-body {
     justify-content: center;
     align-items: center;
   }
-  uni-app {
-    max-width: 430px;
+  #app {
     width: 100%;
+    max-width: 430px;
     height: 100vh;
     max-height: 920px;
-    margin: 16px auto;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    flex: 0 0 430px;
+    box-sizing: border-box;
+  }
+  uni-app {
+    max-width: 430px !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 920px !important;
+    margin: 0 auto;
     position: relative;
     transform: translate(0, 0); /* 确立包含块 (Containing Block)，锁定 position: fixed 子元素于手机沙盒内 */
     background-color: $lyj-bg;
@@ -173,6 +184,11 @@ page, uni-page-body {
     background-color: $lyj-bg;
     margin: 0;
     padding: 0;
+  }
+  #app {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
   }
   uni-app {
     width: 100% !important;

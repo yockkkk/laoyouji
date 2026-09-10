@@ -38,7 +38,7 @@
           <text class="new-chat-icon">＋</text>
           <text class="new-chat-text">新对话</text>
         </view>
-        <text class="agent-tag" v-if="user">{{ currentAgent }}</text>
+        <text class="agent-tag" v-if="user && !isMainAgent(currentAgent)">{{ currentAgent }}</text>
       </view>
     </view>
 
@@ -351,7 +351,7 @@ export default {
       if (this.isDesktop) {
         return this.treeExpanded ? '智能体链路 [收起]' : '智能体链路 [展开]'
       }
-      return '智能体链路'
+      return '执行链路'
     },
     currentAgent() {
       for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -1309,13 +1309,9 @@ export default {
 
 .chat-page {
   /* #ifdef H5 */
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-width: 430px;
-  margin: 0 auto;
+  width: 100%;
+  height: 100%;
+  position: relative;
   /* #endif */
   /* #ifndef H5 */
   height: 100vh;
@@ -1328,20 +1324,20 @@ export default {
   z-index: 10;
 }
 .topbar {
-  padding: 20rpx $lyj-space-lg;
+  padding: 16rpx 20rpx;
   background: $lyj-card;
   border-bottom: 2rpx solid $lyj-line;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: $lyj-space-md;
+  gap: 12rpx;
   flex-shrink: 0;
 }
 .back-btn {
   display: inline-flex;
   align-items: center;
   gap: 4rpx;
-  padding: 8rpx 18rpx;
+  padding: 6rpx 14rpx;
   background: $lyj-field;
   border: 2rpx solid $lyj-line;
   border-radius: $lyj-radius-pill;
@@ -1353,42 +1349,49 @@ export default {
   opacity: 0.7;
 }
 .back-icon {
-  font-size: 38rpx;
+  font-size: 34rpx;
   line-height: 1;
   color: $lyj-primary;
   font-weight: 800;
 }
 .back-text {
-  font-size: $lyj-font-sm;
+  font-size: 24rpx;
   color: $lyj-primary;
   font-weight: 700;
 }
 .topbar-main {
   display: flex;
-  align-items: baseline;
-  gap: $lyj-space-sm;
+  flex-direction: column;
+  justify-content: center;
   flex: 1;
+  min-width: 0;
 }
 .title {
-  font-size: $lyj-font-lg;
+  font-size: 32rpx;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }
 .status {
-  font-size: $lyj-font-sm;
+  font-size: 22rpx;
   color: $lyj-success;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: $lyj-space-sm;
+  gap: 8rpx;
   flex-shrink: 0;
 }
 .tree-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8rpx;
-  padding: 8rpx 18rpx;
+  gap: 6rpx;
+  padding: 6rpx 14rpx;
   background: #fdfaf6;
   border: 2rpx solid #e7dcce;
   border-radius: $lyj-radius-pill;
@@ -1439,26 +1442,30 @@ export default {
   0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
   50% { box-shadow: 0 0 8rpx 3rpx rgba(37, 99, 235, 0.3); }
 }
+.history-btn,
 .new-chat-btn {
   display: inline-flex;
   align-items: center;
   gap: 4rpx;
-  padding: 8rpx 18rpx;
+  padding: 6rpx 14rpx;
   background: #fdfaf6;
   border: 2rpx solid #e7dcce;
   border-radius: $lyj-radius-pill;
   cursor: pointer;
   transition: all 0.15s;
 }
+.history-btn:active,
 .new-chat-btn:active {
   background: #f2e9dc;
 }
+.history-icon,
 .new-chat-icon {
   font-size: 26rpx;
   color: $lyj-primary;
   font-weight: 800;
   line-height: 1;
 }
+.history-text,
 .new-chat-text {
   font-size: $lyj-font-nav;
   color: $lyj-primary;
@@ -1466,13 +1473,7 @@ export default {
   line-height: 1;
 }
 .agent-tag {
-  font-size: $lyj-font-sm;
-  color: $lyj-primary;
-  background: $lyj-primary-soft;
-  padding: 6rpx 18rpx;
-  border-radius: $lyj-radius-pill;
-  font-weight: 600;
-  flex-shrink: 0;
+  display: none;
 }
 .stream {
   flex: 1;

@@ -141,10 +141,33 @@ class QuickTripIn(BaseModel):
     purpose: str | None = None
 
 
+async def ensure_trip_elder(ctx, trip: dict[str, Any]) -> str:
+    """确保行程挂载真实有效的长辈 ID，自动修复历史测试遗留孤儿行程。"""
+    elder_id = trip.get("elder_id")
+    user = await ctx.repos.get("users", elder_id) if elder_id else None
+    if not user or user.get("role") != "elder":
+        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
+        if elders:
+            elder_id = elders[0]["id"]
+            await ctx.repos.update("trips", trip["id"], {"elder_id": elder_id})
+            trip["elder_id"] = elder_id
+    return elder_id or ""
+
+
 @router.get("")
-async def list_trips(elder_id: str | None = None, limit: int = 20):
+async def list_trips(elder_id: str | None = None, child_id: str | None = None, limit: int = 20):
     """查询行程列表，支持子女端行程选择器切换多行程与历史行程。"""
     ctx = get_ctx()
+    if not elder_id and child_id:
+        bindings = await ctx.repos.list("family_bindings", where={"child_id": child_id, "status": "active"})
+        if bindings:
+            elder_id = bindings[0]["elder_id"]
+    if not elder_id:
+        # 默认优先关联系统活跃长辈，杜绝单测遗留孤儿数据污染
+        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
+        if elders:
+            elder_id = elders[0]["id"]
+
     where = {"elder_id": elder_id} if elder_id else {}
     # 多取一批再按 (长辈 + 去重键) 在内存折叠：同一趟进行中行程只留最新一条，
     # 避免子女端行程选择器被"前往XX医院 进行中"重复项占满（终态行程各自保留不合并）。
@@ -199,14 +222,8 @@ async def trip_detail(trip_id: str, child_id: str | None = None):
     if not trip:
         raise HTTPException(404, "行程不存在")
 
-    # 自动修复遗留行程缺失的 elder_id，确保隐私权限可正常关联
-    elder_id = trip.get("elder_id")
-    if not elder_id:
-        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
-        if elders:
-            elder_id = elders[0]["id"]
-            await ctx.repos.update("trips", trip_id, {"elder_id": elder_id})
-            trip["elder_id"] = elder_id
+    # 自动修复遗留行程缺失或指向非真实用户的 elder_id，确保隐私权限可正常关联
+    elder_id = await ensure_trip_elder(ctx, trip)
 
     checkpoints = await ctx.repos.list(
         "trip_checkpoints", where={"trip_id": trip_id}, order="created_at"
@@ -272,14 +289,8 @@ async def trip_realtime(trip_id: str, child_id: str | None = None):
         if not trip:
             raise HTTPException(404, "行程不存在")
 
-    # 自动修复遗留行程缺失的 elder_id
-    elder_id = trip.get("elder_id")
-    if not elder_id:
-        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
-        if elders:
-            elder_id = elders[0]["id"]
-            await ctx.repos.update("trips", trip_id, {"elder_id": elder_id})
-            trip["elder_id"] = elder_id
+    # 自动修复遗留行程缺失或指向非真实用户的 elder_id
+    elder_id = await ensure_trip_elder(ctx, trip)
 
     checkpoints = await ctx.repos.list(
         "trip_checkpoints", where={"trip_id": trip_id}, order="-created_at", limit=1
@@ -331,14 +342,8 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
     if not trip:
         raise HTTPException(404, "行程不存在")
 
-    # 自动修复遗留行程缺失的 elder_id
-    elder_id = trip.get("elder_id")
-    if not elder_id:
-        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
-        if elders:
-            elder_id = elders[0]["id"]
-            await ctx.repos.update("trips", trip_id, {"elder_id": elder_id})
-            trip["elder_id"] = elder_id
+    # 自动修复遗留行程缺失或指向非真实用户的 elder_id
+    elder_id = await ensure_trip_elder(ctx, trip)
 
     if trip.get("status") == "planned":
         await ctx.repos.update("trips", trip_id, {

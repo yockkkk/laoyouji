@@ -111,6 +111,16 @@
       <text class="empty-text">{{ emptyText }}</text>
     </view>
 
+    <!-- 隐私保护友好提示卡片 (当长辈未开放位置共享时温馨提示，杜绝白屏) -->
+    <view v-else-if="trip && locationOff" class="location-off-card">
+      <view class="location-off-icon">🔒</view>
+      <text class="location-off-title">长辈暂未开放实时位置共享</text>
+      <text class="location-off-desc">
+        长辈当前设置的位置隐私权限为不公开位置。您可以致电长辈核实行程安全，或在长辈手机端“隐私设置”中调整共享权限。
+      </text>
+      <button class="location-off-btn" @tap="callElder">致电长辈核实</button>
+    </view>
+
     <template v-else-if="trip && !locationOff">
       <!-- 真实高德地图行程守护视窗 (Leaflet + 高德栅格瓦片渲染) -->
       <view class="gaode-guard-card">
@@ -375,13 +385,13 @@ export default {
         // 1. 获取子女关联老人的所有行程列表
         const [dashRes, tripsRes] = await Promise.all([
           get(`/api/child/${this.user.id}/dashboard`).catch(() => null),
-          get('/api/trips').catch(() => null),
+          get('/api/trips', { child_id: this.user.id }).catch(() => null),
         ])
 
-        if (tripsRes && Array.isArray(tripsRes.trips)) {
-          this.allTrips = this.dedupTripList(tripsRes.trips)
-        } else if (dashRes && Array.isArray(dashRes.trips)) {
+        if (dashRes && Array.isArray(dashRes.trips) && dashRes.trips.length > 0) {
           this.allTrips = this.dedupTripList(dashRes.trips)
+        } else if (tripsRes && Array.isArray(tripsRes.trips) && tripsRes.trips.length > 0) {
+          this.allTrips = this.dedupTripList(tripsRes.trips)
         }
 
         // 确定当前展示的 tripId
@@ -1357,6 +1367,48 @@ export default {
   font-size: $lyj-font-md;
   color: #64748b;
   line-height: $lyj-line-height;
+}
+
+/* 隐私保护卡片 */
+.location-off-card {
+  margin: $lyj-space-md;
+  padding: $lyj-space-xl $lyj-space-lg;
+  background: #ffffff;
+  border-radius: 20rpx;
+  border: 1rpx solid #e2e8f0;
+  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16rpx;
+}
+.location-off-icon {
+  font-size: 72rpx;
+  line-height: 1;
+  margin-bottom: 8rpx;
+}
+.location-off-title {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #1e293b;
+}
+.location-off-desc {
+  font-size: 26rpx;
+  color: #64748b;
+  line-height: 1.6;
+  max-width: 580rpx;
+}
+.location-off-btn {
+  margin-top: 16rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 700;
+  border-radius: 40rpx;
+  border: none;
+  padding: 8rpx 40rpx;
+  cursor: pointer;
 }
 </style>
 
