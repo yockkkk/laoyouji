@@ -107,6 +107,23 @@ const chatContent = fs.readFileSync('frontend/laoyouji-app/src/pages/elder/chat.
 assert.ok(chatContent.includes(':trip-id="m.tripId || \'\'"'), 'chat.vue must pass tripId to PlanCard')
 console.log('✓ Passed: PlanCard tripId propagation verified in dashboard.vue and chat.vue')
 
+// 8. Verify PC Mobile Sandbox 430px & App.vue container
+console.log('Test 8: PC Mobile Sandbox 430px container in App.vue')
+const appContent = fs.readFileSync('frontend/laoyouji-app/src/App.vue', 'utf-8')
+assert.ok(appContent.includes('max-width: 430px'), 'App.vue must constrain PC desktop to 430px mobile sandbox')
+assert.ok(!appContent.includes('max-width: 960px'), 'App.vue must no longer have 960px desktop query')
+console.log('✓ Passed: PC Mobile Sandbox 430px container verified in App.vue')
+
+// 9. Verify Celestial Sky Blue Palette
+console.log('Test 9: Celestial Sky Blue Palette in uni.scss and pages.json')
+const scssContent = fs.readFileSync('frontend/laoyouji-app/src/uni.scss', 'utf-8')
+assert.ok(scssContent.includes('$lyj-primary: #2A82E4;'), 'uni.scss must define primary as #2A82E4')
+assert.ok(scssContent.includes('$lyj-bg: #F2F7FD;'), 'uni.scss must define bg as #F2F7FD')
+assert.ok(!scssContent.includes('#FF6B35'), 'uni.scss must not contain old warm orange #FF6B35')
+const pagesContent = fs.readFileSync('frontend/laoyouji-app/src/pages.json', 'utf-8')
+assert.ok(pagesContent.includes('"selectedColor": "#2A82E4"'), 'pages.json tabBar selectedColor must be #2A82E4')
+console.log('✓ Passed: Celestial Sky Blue Palette verified in uni.scss and pages.json')
+
 console.log('\n======================================================')
-console.log('ALL LEAFLET + 高德栅格瓦片 FRONTEND INTEGRATION CHECKS PASSED!')
+console.log('ALL MOBILE REFACTOR & CELESTIAL SKY BLUE CHECKS PASSED!')
 console.log('======================================================')

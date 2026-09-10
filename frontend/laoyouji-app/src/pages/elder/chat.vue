@@ -247,8 +247,8 @@ export default {
       scrollTop: 0,
       anchor: '',
       inputMode: 'voice', // voice (按住说话) | text (打字输入)
-      isDesktop: true, // 响应式分屏判断 (R1)
-      treeExpanded: true, // 桌面端右侧执行树展开状态
+      isDesktop: false, // 手机端原生架构模式
+      treeExpanded: false, // 桌面分屏停用
       treeDrawerVisible: false, // 移动端执行树抽屉显示状态
       _handleResize: null,
       _lastToggleAt: 0,
@@ -443,18 +443,9 @@ export default {
   },
   methods: {
     _updateViewport() {
-      const wasDesktop = this.isDesktop
-      if (typeof window !== 'undefined') {
-        this.isDesktop = window.innerWidth >= 768
-      } else {
-        try {
-          const info = uni.getSystemInfoSync()
-          this.isDesktop = (info.windowWidth || 0) >= 768
-        } catch (e) {}
-      }
-      if (!wasDesktop && this.isDesktop) {
-        this.closeDrawer()
-      }
+      // 手机端原生模式：聊天流单列全宽，执行链路统一收敛于底部上滑抽屉 (Bottom Sheet)
+      this.isDesktop = false
+      this.treeExpanded = false
     },
 
     normalizeAgent(agent) {
@@ -1323,6 +1314,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   /* #endif */
   /* #ifndef H5 */
   height: 100vh;
@@ -1502,6 +1495,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   background: rgba($lyj-text, 0.45);
   display: flex;
   align-items: center;
@@ -1680,7 +1675,9 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.55);
+  max-width: 430px;
+  margin: 0 auto;
+  background: rgba(19, 36, 56, 0.55);
   z-index: 150;
   display: flex;
   flex-direction: column;
@@ -1692,23 +1689,24 @@ export default {
 .mobile-drawer-panel {
   width: 100%;
   height: 86vh;
-  background: #f8fafc;
-  border-top-left-radius: 28rpx;
-  border-top-right-radius: 28rpx;
-  box-shadow: 0 -16rpx 48rpx rgba(0, 0, 0, 0.25);
+  background: #F4F8FD;
+  border-top-left-radius: 36rpx;
+  border-top-right-radius: 36rpx;
+  box-shadow: 0 -16rpx 48rpx rgba(19, 36, 56, 0.25);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-top: 2rpx solid $lyj-line;
 }
 
 .drawer-drag-bar {
-  padding: 16rpx 0 10rpx;
+  padding: 18rpx 0 12rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6rpx;
-  background: #0f172a;
+  gap: 8rpx;
+  background: #132438;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -1718,12 +1716,12 @@ export default {
   width: 80rpx;
   height: 8rpx;
   border-radius: 999rpx;
-  background: #475569;
+  background: #3D5369;
 }
 
 .drawer-drag-tip {
-  font-size: 20rpx;
-  color: #94a3b8;
+  font-size: 22rpx;
+  color: #8B9EAF;
   line-height: 1;
 }
 
@@ -1735,81 +1733,6 @@ export default {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-/* 电脑端宽屏自适应：双栏工作台架构 (R1) */
-@media screen and (min-width: 768px) {
-  .chat-page {
-    max-width: 960px;
-    left: 0 !important;
-    right: 0 !important;
-    margin: 0 auto !important;
-    border-left: 2rpx solid $lyj-line;
-    border-right: 2rpx solid $lyj-line;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
-    transition: max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .chat-page.split-mode {
-    max-width: 1600px !important;
-    width: 98vw;
-  }
-
-  .workbench-body.workbench-split {
-    display: flex;
-    flex-direction: row;
-  }
-
-  .workbench-body.workbench-split .workbench-chat-pane {
-    flex: 1.15;
-    border-right: 2rpx solid $lyj-line;
-    max-width: 58%;
-    min-width: 340px;
-  }
-
-  .workbench-tree-pane {
-    flex: 1;
-    min-width: 380px;
-    max-width: 50%;
-    height: 100%;
-    overflow: hidden;
-    background: #ffffff;
-    box-shadow: -4rpx 0 20rpx rgba(0, 0, 0, 0.03);
-    animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @media screen and (max-width: 1024px) {
-    .workbench-body.workbench-split .workbench-chat-pane {
-      flex: 1;
-      min-width: 300px;
-      max-width: 54%;
-    }
-    .workbench-tree-pane {
-      flex: 1;
-      min-width: 320px;
-      max-width: 50%;
-    }
-  }
-
-  .topbar {
-    padding: 24rpx 32rpx;
-  }
-  .stream-inner {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 24rpx 20rpx 40rpx;
-  }
-  .input-bar {
-    max-width: 860px;
-    margin: 0 auto;
-  }
-}
-
-/* 超宽 4K 屏幕优化：适度延展双栏宽度 */
-@media screen and (min-width: 2560px) {
-  .chat-page.split-mode {
-    max-width: 1800px !important;
-  }
 }
 
 /* 移动端狭窄屏自适应 (< 480px / 375px / 360px)：防止顶栏按钮折行和截断 */

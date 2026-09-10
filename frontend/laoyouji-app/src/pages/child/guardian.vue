@@ -964,8 +964,13 @@ export default {
 }
 .child-amap-canvas {
   width: 100%;
-  height: 580rpx;
+  height: 58vh;
+  min-height: 540rpx;
   background: #f1f5f9;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gaode-guard-card.expanded .child-amap-canvas {
+  height: 82vh;
 }
 .map-loading-overlay {
   position: absolute;

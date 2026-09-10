@@ -312,35 +312,9 @@ export default {
 .home-grid {
   display: flex;
   flex-direction: column;
+  gap: $lyj-space-md;
 }
 .home-col {
   width: 100%;
-}
-
-/* 电脑端宽屏铺砌自适应：大屏两列栅格平铺，卡片饱满铺开 */
-@media screen and (min-width: 768px) {
-  .home {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 30rpx 32rpx 120rpx;
-  }
-  .header {
-    padding: 20rpx 0 40rpx;
-  }
-  .home-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 32rpx;
-    align-items: start;
-  }
-  .reminder-card {
-    margin: 0 0 24rpx;
-  }
-  .weather-card {
-    margin: 0;
-  }
-  .quick {
-    padding: 0;
-  }
 }
 </style>

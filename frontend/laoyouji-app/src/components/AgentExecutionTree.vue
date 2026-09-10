@@ -2537,7 +2537,7 @@ export default {
 .agent-monologue-card {
   background: #fffbf5;
   border: 2rpx solid #fde68a;
-  border-left: 6rpx solid #FF6B35;
+  border-left: 6rpx solid #2A82E4;
   border-radius: 16rpx;
   padding: 16rpx 20rpx;
   margin-top: 16rpx;
@@ -2862,7 +2862,7 @@ export default {
 
 .trunk-line-vertical.flow-active,
 .trunk-horizontal-bar.flow-active {
-  background: linear-gradient(90deg, #10b981, #FF6B35, #2563eb);
+  background: linear-gradient(90deg, #10b981, #2A82E4, #1967C2);
 }
 
 /* 子智能体分支容器 */
@@ -3637,7 +3637,7 @@ export default {
 .page-badge {
   font-size: 20rpx;
   font-weight: 800;
-  background: #FF6B35;
+  background: #2A82E4;
   color: #ffffff;
   padding: 2rpx 12rpx;
   border-radius: 999rpx;
@@ -3699,7 +3699,7 @@ export default {
 }
 
 .footer-btn.primary {
-  background: #FF6B35;
+  background: #2A82E4;
   color: #ffffff;
   border: none;
 }

@@ -32,7 +32,7 @@
       "path": "pages/child/dashboard",
       "style": {
         "navigationBarTitleText": "家人看板",
-        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarBackgroundColor": "#132438",
         "navigationBarTextStyle": "white"
       }
     },
@@ -40,7 +40,7 @@
       "path": "pages/child/family",
       "style": {
         "navigationBarTitleText": "家庭成员",
-        "navigationBarBackgroundColor": "#1D2D44",
+        "navigationBarBackgroundColor": "#132438",
         "navigationBarTextStyle": "white"
       }
     },
@@ -48,7 +48,7 @@
       "path": "pages/child/notification",
       "style": {
         "navigationBarTitleText": "通知中心",
-        "navigationBarBackgroundColor": "#1D2D44",
+        "navigationBarBackgroundColor": "#132438",
         "navigationBarTextStyle": "white"
       }
     },
@@ -56,7 +56,7 @@
       "path": "pages/child/confirm-detail",
       "style": {
         "navigationBarTitleText": "待确认事项",
-        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarBackgroundColor": "#132438",
         "navigationBarTextStyle": "white"
       }
     },
@@ -64,7 +64,7 @@
       "path": "pages/child/guardian",
       "style": {
         "navigationBarTitleText": "行程守护",
-        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarBackgroundColor": "#132438",
         "navigationBarTextStyle": "white"
       }
     },
@@ -72,14 +72,14 @@
       "path": "pages/child/privacy",
       "style": {
         "navigationBarTitleText": "隐私权限",
-        "navigationBarBackgroundColor": "#1f2d3d",
+        "navigationBarBackgroundColor": "#132438",
         "navigationBarTextStyle": "white"
       }
     }
   ],
   "tabBar": {
-    "color": "#8a8078",
-    "selectedColor": "#e8541e",
+    "color": "#7E93A8",
+    "selectedColor": "#2A82E4",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "fontSize": "28rpx",
@@ -94,7 +94,7 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "老友记",
-    "navigationBarBackgroundColor": "#faf6f0",
-    "backgroundColor": "#faf6f0"
+    "navigationBarBackgroundColor": "#F2F7FD",
+    "backgroundColor": "#F2F7FD"
   }
 }

@@ -733,21 +733,4 @@ export default {
   background: $lyj-muted-bg;
   color: $lyj-text;
 }
-
-@media screen and (min-width: 768px) {
-  .notification-page {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 30rpx 32rpx 100rpx;
-  }
-  .sections-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24rpx;
-    align-items: start;
-  }
-  .section {
-    margin: 0;
-  }
-}
 </style>

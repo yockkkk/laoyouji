@@ -521,7 +521,7 @@ export default {
 
 .route-page {
   min-height: 100vh;
-  background: #faf6f0;
+  background: $lyj-bg;
   padding-bottom: 60rpx;
   box-sizing: border-box;
 }
@@ -533,7 +533,7 @@ export default {
   justify-content: space-between;
   padding: 24rpx 24rpx 16rpx;
   background: #ffffff;
-  border-bottom: 2rpx solid #e2dcd5;
+  border-bottom: 2rpx solid $lyj-line;
   min-height: 100rpx;
 }
 .nav-back-btn {
@@ -542,8 +542,8 @@ export default {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #f1ede6;
-  color: #1e293b;
+  background: $lyj-field;
+  color: $lyj-text;
   border-radius: 48rpx;
   border: none;
   padding: 0 24rpx;
@@ -562,17 +562,17 @@ export default {
 .nav-title {
   font-size: 38rpx;
   font-weight: 800;
-  color: #1e293b;
+  color: $lyj-text;
 }
 .nav-speak-btn {
   min-height: 96rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #fff3eb;
-  color: #e8541e;
+  background: $lyj-primary-soft;
+  color: $lyj-primary;
   border-radius: 48rpx;
-  border: 2rpx solid #ffccb3;
+  border: 2rpx solid $lyj-line;
   padding: 0 28rpx;
   margin: 0;
   cursor: pointer;
@@ -688,8 +688,13 @@ export default {
 }
 .amap-box {
   width: 100%;
-  height: 520rpx;
+  height: 58vh;
+  min-height: 520rpx;
   background: #e2e8f0;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.map-section.expanded .amap-box {
+  height: 82vh;
 }
 .map-loading-mask {
   position: absolute;
