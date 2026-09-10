@@ -307,6 +307,20 @@ export default {
           } else {
             result.push(m)
           }
+        } else if (m.kind === 'suspend') {
+          // 挂起卡去重（展示层兜底）：同一笔确认只留一张。confirmationId 优先，缺 id 时
+          // 退而求其次同 tool。断线重放已在 case 'suspended' 拦住，这里再挡住后端历史
+          // 水合(routes_chat.py 按每条 CONFIRM_SUSPENDED 各生成一张)那条路径。保留最早
+          // 那张——_resolveCard 按 confirmationId 命中并原地改写的也是它，家人点同意后
+          // 这张卡的状态能正确从"待确认"翻到"已办好"。
+          const key = m.confirmationId || ''
+          const dup = result.some(
+            (ex) =>
+              ex.kind === 'suspend' &&
+              ((key && ex.confirmationId === key) ||
+                (!key && ex.tool && ex.tool === m.tool)),
+          )
+          if (!dup) result.push(m)
         } else {
           result.push(m)
         }
@@ -947,22 +961,40 @@ export default {
           this._scrollBottom()
           break
 
-        case 'suspended':
-          this.messages.push({
-            kind: 'suspend',
-            tool: d.tool || '',
-            // confirmationId 是这张卡后来能被改写的唯一钥匙（见下面
-            // confirmation_resolved）。少了它，家人点完同意，这张黄卡就永远
-            // 停在"等他点同意"上。
-            confirmationId: d.confirmation_id || '',
-            message: d.message || '已经发给家人确认啦',
-            summary: d.summary || '',
-            amount: d.amount || 0,
-            expiresAt: d.expires_at || '',
-            status: 'pending',
-          })
+        case 'suspended': {
+          // 幂等：同一笔挂起可能到达两次 —— SSE 断线转 pollEvents 会从 afterSeq=0 把本轮
+          // 事件整段重放，其中的 suspended 已在实时流里推过一遍（隔壁 tool_call 早就这么
+          // 防了，这个 case 之前漏了，于是断线那一下黄卡叠成两张，就是"¥680 出现两张卡"）。
+          // confirmationId 是这张卡后来能被 confirmation_resolved 改写的唯一钥匙；已存在
+          // 同 confirmationId（缺 id 时退而求其次同 tool 且仍 pending）就地更新，不再新增。
+          const cid = d.confirmation_id || ''
+          const dupSuspend = this.messages.find(
+            (m) =>
+              m.kind === 'suspend' &&
+              ((cid && m.confirmationId === cid) ||
+                (!cid && m.tool && m.tool === (d.tool || '') && m.status === 'pending')),
+          )
+          if (dupSuspend) {
+            if (d.message) dupSuspend.message = d.message
+            if (d.summary) dupSuspend.summary = d.summary
+            if (d.amount) dupSuspend.amount = d.amount
+            if (d.expires_at) dupSuspend.expiresAt = d.expires_at
+            if (!dupSuspend.confirmationId && cid) dupSuspend.confirmationId = cid
+          } else {
+            this.messages.push({
+              kind: 'suspend',
+              tool: d.tool || '',
+              confirmationId: cid,
+              message: d.message || '已经发给家人确认啦',
+              summary: d.summary || '',
+              amount: d.amount || 0,
+              expiresAt: d.expires_at || '',
+              status: 'pending',
+            })
+          }
           this._scrollBottom()
           break
+        }
 
         /**
          * 家人在手机上点完了（confirmation.py:216）。**这条事件原来没接** ——

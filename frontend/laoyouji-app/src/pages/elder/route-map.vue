@@ -321,12 +321,22 @@ export default {
         }
 
         this.leafletMap = L.map(container, {
-          zoomControl: false,
+          // 恢复 +/- 缩放按钮：原来整个关掉，屏幕上没有任何缩放入口，桌面端根本没法
+          // 缩放。zoomControl 默认落在左上角，避开右下角的全览/我的位置浮层，不打架。
+          zoomControl: true,
           attributionControl: true,
-          scrollWheelZoom: false, // 适老：去掉滚轮误触，保留拖拽与双指缩放
+          // 半级缩放：zoomSnap/zoomDelta 从默认整级(1)收到 0.5，点一下 +/- 或滚一下
+          // 只缩半级，不再"一下子放太大/缩太小"——这才是用户要的「精度缩放」。
+          zoomSnap: 0.5,
+          zoomDelta: 0.5,
+          scrollWheelZoom: true, // 滚轮缩放（配合半级 zoomDelta，不会猛跳）
         }).setView([35.5, 117.5], 6)
         if (this.leafletMap.attributionControl) {
           this.leafletMap.attributionControl.setPrefix(false) // 只留「高德地图 © AutoNavi」，不显示 Leaflet 字样
+          // 归属信息挪到左下角：它默认在右下角、z-index:1000，会盖住同在右下角、又没设
+          // z-index 的全览/我的位置按钮（就是用户截图里"地图把按钮盖住了"）。挪走它，
+          // 再给按钮提层（见 .map-controls z-index），双保险。
+          this.leafletMap.attributionControl.setPosition('bottomleft')
         }
 
         // 高德栅格瓦片（GCJ-02，与后端返回坐标同基准，无需转换）。绕开断掉的高德控制面，
@@ -720,6 +730,9 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12rpx;
+  /* Leaflet 的缩放控件/归属信息在容器内是 z-index:1000，这里必须更高，否则右下角的
+     全览/我的位置会被盖住（用户截图里"按钮被地图盖了"）。归属信息已挪到左下角。 */
+  z-index: 1200;
 }
 .ctrl-btn {
   background: #ffffff;

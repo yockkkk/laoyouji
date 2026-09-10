@@ -172,10 +172,10 @@
         <view v-if="!checkpoints.length" class="empty-row">
           <text>长辈暂未上报新位置（进入高德路线规划后每 10 秒自动更新）</text>
         </view>
-        <view v-for="(cp, i) in checkpoints" :key="cp.id || i" class="cp">
+        <view v-for="(cp, i) in checkpointsDesc" :key="cp.id || i" class="cp">
           <view class="cp-left">
             <view class="cp-dot" :class="cp.status"></view>
-            <view v-if="i < checkpoints.length - 1" class="cp-line"></view>
+            <view v-if="i < checkpointsDesc.length - 1" class="cp-line"></view>
           </view>
           <view class="cp-body">
             <view class="cp-row">
@@ -294,6 +294,22 @@ export default {
       if (!this.latestCheckpoint) return ''
       return this.latestCheckpoint.note || `长辈当前处于规划路线外（${this.latestCheckpoint.location}）`
     },
+    checkpointsDesc() {
+      // 时间线展示专用：先折叠"连续同地点同状态"的重复上报（10 秒定时会刷出一串
+      // 相同的"途经XX，一切正常"，即用户反馈的"过于频繁"），再倒序把最新情况放最上面。
+      // 绝不改动 this.checkpoints 本身——地图轨迹与 latestCheckpoint 仍依赖它升序排列。
+      const src = this.checkpoints || []
+      const folded = []
+      for (const cp of src) {
+        const prev = folded[folded.length - 1]
+        if (prev && prev.location === cp.location && prev.status === cp.status) {
+          folded[folded.length - 1] = cp // 同地点同状态连续上报，只保留最新一条的时间
+          continue
+        }
+        folded.push(cp)
+      }
+      return folded.reverse()
+    },
   },
   onLoad(opts) {
     this.tripId = (opts && opts.trip_id) || ''
@@ -326,6 +342,29 @@ export default {
       const title = t.purpose || t.title || '出行计划'
       return title.length > 10 ? title.slice(0, 10) + '…' : title
     },
+    dedupTripList(list) {
+      // 前端展示兜底去重（与后端 trip_dedup_key 同源思路）：进行中/待出发行程
+      // 按 (长辈+目的地+标题) 折叠，只留最新一条；终态行程各自保留绝不合并。
+      // 列表已按 -created_at 降序，保留首个即保留最新。兜住 dashboard 回退路径。
+      if (!Array.isArray(list)) return []
+      const seen = new Set()
+      const out = []
+      for (const t of list) {
+        const status = t.status || 'planned'
+        let key
+        if (status === 'planned' || status === 'ongoing') {
+          const dest = (t.destination || '').trim()
+          const purpose = (t.purpose || t.title || '').trim()
+          key = `active:${t.elder_id || ''}:${dest}:${purpose}`
+        } else {
+          key = `terminal:${t.id}`
+        }
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(t)
+      }
+      return out
+    },
     async initData() {
       await this.loadTripsAndDetail()
       await this.initChildMap()
@@ -340,9 +379,9 @@ export default {
         ])
 
         if (tripsRes && Array.isArray(tripsRes.trips)) {
-          this.allTrips = tripsRes.trips
+          this.allTrips = this.dedupTripList(tripsRes.trips)
         } else if (dashRes && Array.isArray(dashRes.trips)) {
-          this.allTrips = dashRes.trips
+          this.allTrips = this.dedupTripList(dashRes.trips)
         }
 
         // 确定当前展示的 tripId
@@ -436,12 +475,15 @@ export default {
         this.mapFailed = false
         if (!this.leafletMap) {
           this.leafletMap = L.map(container, {
-            zoomControl: false,
+            zoomControl: true,
             attributionControl: true,
-            scrollWheelZoom: false,
+            zoomSnap: 0.5,
+            zoomDelta: 0.5,
+            scrollWheelZoom: true,
           }).setView([35.5, 117.5], 6)
           if (this.leafletMap.attributionControl) {
             this.leafletMap.attributionControl.setPrefix(false)
+            this.leafletMap.attributionControl.setPosition('bottomleft')
           }
           // 高德栅格瓦片（GCJ-02，与后端坐标同基准）。绕开断掉的高德控制面，直连数据面贴图。
           this.tileLayer = L.tileLayer(AMAP_RASTER_TILE_URL, {
@@ -960,7 +1002,7 @@ export default {
   top: 16rpx;
   left: 16rpx;
   right: 16rpx;
-  z-index: 100;
+  z-index: 1300;
   background: #fef2f2;
   border: 2rpx solid #ef4444;
   border-radius: 16rpx;
