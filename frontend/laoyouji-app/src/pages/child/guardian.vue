@@ -112,8 +112,8 @@
     </view>
 
     <template v-else-if="trip && !locationOff">
-      <!-- 真实高德地图行程守护视窗 (高德 JS API 2.0 Canvas 渲染) -->
-      <view class="gaode-guard-card" :class="{ expanded: isMapExpanded }">
+      <!-- 真实高德地图行程守护视窗 (Leaflet + 高德栅格瓦片渲染) -->
+      <view class="gaode-guard-card">
         <!-- 偏航警报气泡 (长辈偏离路线时醒目显示) -->
         <view v-if="isOffRoute" class="offroute-alert-bubble">
           <view class="alert-icon-pulse">⚠️</view>
@@ -126,29 +126,15 @@
           </button>
         </view>
 
-        <!-- 长辈实时位置与状态浮动条 -->
-        <view class="elder-live-status-card" v-if="latestCheckpoint">
-          <view class="live-status-main">
-            <view class="live-avatar-box">👴</view>
-            <view class="live-info-box">
-              <view class="live-place-row">
-                <text class="live-place-name">{{ latestCheckpoint.location || '已连接' }}</text>
-                <text class="live-status-tag" :class="latestCheckpoint.status">
-                  {{ latestCheckpoint.status === 'off_route' ? '⚠️ 偏航预警' : latestCheckpoint.status === 'arrived' ? '🏁 已到达' : '🟢 正常行进' }}
-                </text>
-              </view>
-              <text class="live-note" v-if="latestCheckpoint.note">{{ latestCheckpoint.note }}</text>
-              <text class="live-time" v-if="latestCheckpoint.created_at">最新同步：{{ formatCheckpointTime(latestCheckpoint.created_at) }}</text>
-            </view>
-          </view>
-          <button class="live-focus-btn" size="mini" @tap="focusElderLocation">📍 聚焦长辈</button>
-        </view>
-
         <!-- 地图 Canvas 挂载点 -->
-        <div id="child-gaode-map" class="child-amap-canvas" :class="{ expanded: isMapExpanded }"></div>
+        <div id="child-gaode-map" class="child-amap-canvas"></div>
 
         <view v-if="mapLoading" class="map-loading-overlay">
-          <text class="map-loading-text">高德地图 2.0 视窗渲染中…</text>
+          <text class="map-loading-text">高德地图加载中…</text>
+        </view>
+        <view v-else-if="mapFailed" class="map-loading-overlay">
+          <text class="map-loading-text">地图加载失败，请检查网络后重试</text>
+          <button class="map-retry-btn" size="mini" @tap="initChildMap">重新加载地图</button>
         </view>
 
         <!-- 地图浮动工具条 -->
@@ -156,15 +142,12 @@
           <view class="status-indicator-pill">
             <view class="status-indicator-dot" :class="{ alert: isOffRoute }"></view>
             <text class="status-indicator-text">
-              {{ isOffRoute ? '⚠️ 发现偏离规划路线' : '🟢 实时守护中 (8秒自动刷新)' }}
+              {{ isOffRoute ? '⚠️ 发现偏离规划路线' : '🟢 实时守护中 (10秒刷新)' }}
             </text>
           </view>
           <view class="map-ctrl-btns">
-            <button class="ctrl-btn expand" size="mini" @tap="toggleMapExpand">
-              {{ isMapExpanded ? '🗗 恢复标准' : '🔍 放大地图' }}
-            </button>
-            <button class="ctrl-btn" size="mini" @tap="resetChildMapView">🗺️ 全览</button>
-            <button class="ctrl-btn" size="mini" @tap="focusElderLocation">📍 父母位置</button>
+            <button class="ctrl-btn" size="mini" @tap="resetChildMapView">全览</button>
+            <button class="ctrl-btn" size="mini" @tap="focusElderLocation">长辈位置</button>
           </view>
         </view>
 
@@ -189,10 +172,10 @@
         <view v-if="!checkpoints.length" class="empty-row">
           <text>长辈暂未上报新位置（进入高德路线规划后每 10 秒自动更新）</text>
         </view>
-        <view v-for="(cp, i) in checkpoints" :key="cp.id || i" class="cp">
+        <view v-for="(cp, i) in checkpointsDesc" :key="cp.id || i" class="cp">
           <view class="cp-left">
             <view class="cp-dot" :class="cp.status"></view>
-            <view v-if="i < checkpoints.length - 1" class="cp-line"></view>
+            <view v-if="i < checkpointsDesc.length - 1" class="cp-line"></view>
           </view>
           <view class="cp-body">
             <view class="cp-row">
@@ -209,7 +192,15 @@
 
 <script>
 import LyjSegment from '../../components/LyjSegment.vue'
-import { loadAMap } from '../../utils/amap'
+import {
+  loadLeaflet,
+  ensureAmapMarkerStyles,
+  toLeafletLatLng,
+  makeMapMarkerIcon,
+  AMAP_RASTER_TILE_URL,
+  AMAP_TILE_SUBDOMAINS,
+  AMAP_TILE_ATTRIBUTION,
+} from '../../utils/amap'
 import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { publishPendingCount } from '../../store/pendingBadge'
@@ -240,18 +231,20 @@ export default {
       precision: '',
       loaded: false,
       mapLoading: true,
+      mapFailed: false,
       pendingConfirmations: [],
       actionLoading: {},
       pollTimer: null,
-      amapInstance: null,
+      leafletMap: null,
+      tileLayer: null,
       routePolyline: null,
+      routeCasing: null,
       elderMarker: null,
       offRouteMarker: null,
       waypointMarkers: [],
       elderCoords: [118.7732, 32.0618],
       routeCoords: [],
       routePointsData: DEFAULT_POINTS,
-      isMapExpanded: false,
       simStep: 0,
       _switchSeq: 0,
     }
@@ -301,6 +294,22 @@ export default {
       if (!this.latestCheckpoint) return ''
       return this.latestCheckpoint.note || `长辈当前处于规划路线外（${this.latestCheckpoint.location}）`
     },
+    checkpointsDesc() {
+      // 时间线展示专用：先折叠"连续同地点同状态"的重复上报（10 秒定时会刷出一串
+      // 相同的"途经XX，一切正常"，即用户反馈的"过于频繁"），再倒序把最新情况放最上面。
+      // 绝不改动 this.checkpoints 本身——地图轨迹与 latestCheckpoint 仍依赖它升序排列。
+      const src = this.checkpoints || []
+      const folded = []
+      for (const cp of src) {
+        const prev = folded[folded.length - 1]
+        if (prev && prev.location === cp.location && prev.status === cp.status) {
+          folded[folded.length - 1] = cp // 同地点同状态连续上报，只保留最新一条的时间
+          continue
+        }
+        folded.push(cp)
+      }
+      return folded.reverse()
+    },
   },
   onLoad(opts) {
     this.tripId = (opts && opts.trip_id) || ''
@@ -318,10 +327,11 @@ export default {
   },
   onUnload() {
     this.stopPolling()
-    if (this.amapInstance) {
+    if (this.leafletMap) {
       try {
-        this.amapInstance.destroy()
+        this.leafletMap.remove()
       } catch (e) {}
+      this.leafletMap = null
     }
   },
   methods: {
@@ -332,9 +342,32 @@ export default {
       const title = t.purpose || t.title || '出行计划'
       return title.length > 10 ? title.slice(0, 10) + '…' : title
     },
+    dedupTripList(list) {
+      // 前端展示兜底去重（与后端 trip_dedup_key 同源思路）：进行中/待出发行程
+      // 按 (长辈+目的地+标题) 折叠，只留最新一条；终态行程各自保留绝不合并。
+      // 列表已按 -created_at 降序，保留首个即保留最新。兜住 dashboard 回退路径。
+      if (!Array.isArray(list)) return []
+      const seen = new Set()
+      const out = []
+      for (const t of list) {
+        const status = t.status || 'planned'
+        let key
+        if (status === 'planned' || status === 'ongoing') {
+          const dest = (t.destination || '').trim()
+          const purpose = (t.purpose || t.title || '').trim()
+          key = `active:${t.elder_id || ''}:${dest}:${purpose}`
+        } else {
+          key = `terminal:${t.id}`
+        }
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(t)
+      }
+      return out
+    },
     async initData() {
       await this.loadTripsAndDetail()
-      await this.initChildAmap()
+      await this.initChildMap()
       this.startPolling()
     },
     async loadTripsAndDetail() {
@@ -346,18 +379,16 @@ export default {
         ])
 
         if (tripsRes && Array.isArray(tripsRes.trips)) {
-          this.allTrips = tripsRes.trips
+          this.allTrips = this.dedupTripList(tripsRes.trips)
         } else if (dashRes && Array.isArray(dashRes.trips)) {
-          this.allTrips = dashRes.trips
+          this.allTrips = this.dedupTripList(dashRes.trips)
         }
 
-        // 确定当前展示的 tripId (优先匹配进行中且有定位记录的行程)
-        if (!this.tripId && this.allTrips.length > 0) {
-          const activeTrip = this.allTrips.find((t) => t.status === 'ongoing' && t.has_checkpoints)
-            || this.allTrips.find((t) => t.status === 'ongoing')
-            || this.allTrips.find((t) => t.has_checkpoints)
-            || this.allTrips[0]
-          this.tripId = activeTrip.id
+        // 确定当前展示的 tripId
+        if (!this.tripId) {
+          if (this.allTrips.length > 0) {
+            this.tripId = this.allTrips[0].id
+          }
         }
 
         // 2. 加载选中的行程详情
@@ -397,11 +428,6 @@ export default {
         // 同步最新的长辈经纬度
         if (this.latestCheckpoint && this.latestCheckpoint.lng && this.latestCheckpoint.lat) {
           this.elderCoords = [this.latestCheckpoint.lng, this.latestCheckpoint.lat]
-        } else if (dashRes && dashRes.latest_location && dashRes.latest_location.lng && dashRes.latest_location.lat) {
-          this.elderCoords = [dashRes.latest_location.lng, dashRes.latest_location.lat]
-          if (!this.checkpoints.length) {
-            this.checkpoints.push(dashRes.latest_location)
-          }
         } else if (this.routePointsData.length) {
           this.elderCoords = [this.routePointsData[0].lng, this.routePointsData[0].lat]
         }
@@ -425,65 +451,104 @@ export default {
         this.switchTrip(this.tripOptions[idx].value)
       }
     },
-    async initChildAmap() {
+    async initChildMap() {
+      let L
       try {
-        const AMap = await loadAMap()
-        const container = document.getElementById('child-gaode-map')
-        if (!container) return
+        L = await loadLeaflet()
+      } catch (err) {
+        console.error('子女端地图库加载失败:', err)
+        this.mapLoading = false
+        this.mapFailed = true
+        return
+      }
+      // 标记的自定义 DOM 样式必须走文档级注入才能命中（穿透 uni-app 作用域），
+      // 否则站点/偏航气泡会退化成竖排黑字。与长辈端 route-map 共用同一份样式。
+      ensureAmapMarkerStyles()
+      await this.$nextTick()
+      const container = document.getElementById('child-gaode-map')
+      if (!container) {
+        this.mapLoading = false
+        return
+      }
 
-        if (!this.amapInstance) {
-          this.amapInstance = new AMap.Map(container, {
-            zoom: 6,
-            center: [117.5, 35.5],
-            viewMode: '2D',
-            mapStyle: 'amap://styles/normal',
-          })
+      try {
+        this.mapFailed = false
+        if (!this.leafletMap) {
+          this.leafletMap = L.map(container, {
+            zoomControl: true,
+            attributionControl: true,
+            zoomSnap: 0.5,
+            zoomDelta: 0.5,
+            scrollWheelZoom: true,
+          }).setView([35.5, 117.5], 6)
+          if (this.leafletMap.attributionControl) {
+            this.leafletMap.attributionControl.setPrefix(false)
+            this.leafletMap.attributionControl.setPosition('bottomleft')
+          }
+          // 高德栅格瓦片（GCJ-02，与后端坐标同基准）。绕开断掉的高德控制面，直连数据面贴图。
+          this.tileLayer = L.tileLayer(AMAP_RASTER_TILE_URL, {
+            subdomains: AMAP_TILE_SUBDOMAINS,
+            maxZoom: 18,
+            minZoom: 3,
+            attribution: AMAP_TILE_ATTRIBUTION,
+          }).addTo(this.leafletMap)
         }
         this.renderTripOnMap()
         this.mapLoading = false
+        this.$nextTick(() => {
+          setTimeout(() => {
+            if (this.leafletMap) this.leafletMap.invalidateSize()
+          }, 200)
+        })
       } catch (err) {
-        console.error('子女端高德地图初始化失败:', err)
+        console.error('子女端地图初始化失败:', err)
         this.mapLoading = false
+        this.mapFailed = true
       }
     },
     renderTripOnMap() {
-      if (!this.amapInstance || typeof window === 'undefined' || !window.AMap) return
-      const AMap = window.AMap
+      const L = window.L
+      if (!this.leafletMap || !L) return
 
       // 清除旧图层与站点标记
+      if (this.routeCasing) {
+        this.leafletMap.removeLayer(this.routeCasing)
+        this.routeCasing = null
+      }
       if (this.routePolyline) {
-        this.amapInstance.remove(this.routePolyline)
+        this.leafletMap.removeLayer(this.routePolyline)
         this.routePolyline = null
       }
       if (this.waypointMarkers.length) {
-        this.amapInstance.remove(this.waypointMarkers)
+        this.waypointMarkers.forEach((m) => this.leafletMap.removeLayer(m))
         this.waypointMarkers = []
       }
       if (this.offRouteMarker) {
-        this.amapInstance.remove(this.offRouteMarker)
+        this.leafletMap.removeLayer(this.offRouteMarker)
         this.offRouteMarker = null
       }
 
       // 如果未获取到详细 polyline，使用途经点连线兜底
-      const polyPath = this.routeCoords.length
+      const polyLngLat = this.routeCoords.length
         ? this.routeCoords
         : this.routePointsData.map((p) => [p.lng, p.lat])
+      const latlngs = polyLngLat.map((p) => toLeafletLatLng(p))
 
-      // 绘制行程真实路线轨迹 Polyline
-      this.routePolyline = new AMap.Polyline({
-        path: polyPath,
-        isOutline: true,
-        outlineColor: '#ffffff',
-        borderWeight: 2,
-        strokeColor: '#2563eb', // 专业沉稳高德蓝
-        strokeOpacity: 0.92,
-        strokeWeight: 7,
-        strokeStyle: 'solid',
+      // 行程真实路线轨迹：白色描边打底 + 高德蓝主线
+      this.routeCasing = L.polyline(latlngs, {
+        color: '#ffffff',
+        weight: 10,
+        opacity: 0.9,
         lineJoin: 'round',
         lineCap: 'round',
-        showDir: true,
-      })
-      this.amapInstance.add(this.routePolyline)
+      }).addTo(this.leafletMap)
+      this.routePolyline = L.polyline(latlngs, {
+        color: '#2563eb', // 专业沉稳高德蓝
+        weight: 7,
+        opacity: 0.92,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(this.leafletMap)
 
       // 绘制途经打点 Markers
       this.routePointsData.forEach((pt) => {
@@ -491,70 +556,54 @@ export default {
         const isEnd = pt.type === 'end'
         const badgeColor = isStart ? '#10b981' : isEnd ? '#ef4444' : '#3b82f6'
         const prefix = isStart ? '起·' : isEnd ? '终·' : '站·'
-
-        const markerEl = document.createElement('div')
-        markerEl.className = 'child-map-station-badge'
-        markerEl.style.backgroundColor = badgeColor
-        markerEl.innerText = `${prefix}${pt.name}`
-
-        const marker = new AMap.Marker({
-          position: [pt.lng, pt.lat],
-          content: markerEl,
-          offset: new AMap.Pixel(-40, -28),
+        const icon = makeMapMarkerIcon(L, {
+          html: `<div class="child-map-station-badge" style="background-color:${badgeColor}">${prefix}${pt.name}</div>`,
+          size: [40, 26],
         })
+        const marker = L.marker(toLeafletLatLng(pt), { icon }).addTo(this.leafletMap)
         this.waypointMarkers.push(marker)
-        this.amapInstance.add(marker)
       })
 
       // 绘制/更新长辈当前位置呼吸 Marker
       if (!this.elderMarker) {
-        const liveEl = document.createElement('div')
-        liveEl.className = 'child-elder-breathe-marker'
-        liveEl.innerHTML = `
-          <div class="breathe-wave"></div>
-          <div class="breathe-core">👴 父母实时位置</div>
-        `
-        this.elderMarker = new AMap.Marker({
-          position: this.elderCoords,
-          content: liveEl,
-          offset: new AMap.Pixel(-45, -20),
-          zIndex: 130,
+        const liveIcon = makeMapMarkerIcon(L, {
+          html: `<div class="child-elder-breathe-marker"><div class="breathe-wave"></div><div class="breathe-core">👴 父母实时位置</div></div>`,
+          size: [90, 40],
         })
-        this.amapInstance.add(this.elderMarker)
+        this.elderMarker = L.marker(toLeafletLatLng(this.elderCoords), {
+          icon: liveIcon,
+          zIndexOffset: 1000,
+        }).addTo(this.leafletMap)
       } else {
-        this.elderMarker.setPosition(this.elderCoords)
+        this.elderMarker.setLatLng(toLeafletLatLng(this.elderCoords))
       }
 
       // 同步偏航警告点标记
       this.updateOffRouteMarker()
 
       // 自适应视野缩放
-      this.amapInstance.setFitView([this.routePolyline])
+      if (latlngs.length) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
+      }
     },
     updateOffRouteMarker() {
-      if (!this.amapInstance || typeof window === 'undefined' || !window.AMap) return
-      const AMap = window.AMap
+      const L = window.L
+      if (!this.leafletMap || !L) return
 
       if (this.isOffRoute && this.latestCheckpoint && this.latestCheckpoint.lng != null && this.latestCheckpoint.lat != null) {
-        const offPos = [this.latestCheckpoint.lng, this.latestCheckpoint.lat]
-        const offEl = document.createElement('div')
-        offEl.className = 'child-offroute-marker-bubble'
-        offEl.innerHTML = `⚠️ 偏离路线点：${this.latestCheckpoint.location}`
-
+        const offLatLng = toLeafletLatLng([this.latestCheckpoint.lng, this.latestCheckpoint.lat])
+        const icon = makeMapMarkerIcon(L, {
+          html: `<div class="child-offroute-marker-bubble">⚠️ 偏离路线点：${this.latestCheckpoint.location}</div>`,
+          size: [40, 28],
+        })
         if (!this.offRouteMarker) {
-          this.offRouteMarker = new AMap.Marker({
-            position: offPos,
-            content: offEl,
-            offset: new AMap.Pixel(-60, -32),
-            zIndex: 140,
-          })
-          this.amapInstance.add(this.offRouteMarker)
+          this.offRouteMarker = L.marker(offLatLng, { icon, zIndexOffset: 2000 }).addTo(this.leafletMap)
         } else {
-          this.offRouteMarker.setPosition(offPos)
-          this.offRouteMarker.setContent(offEl)
+          this.offRouteMarker.setLatLng(offLatLng)
+          this.offRouteMarker.setIcon(icon)
         }
       } else if (this.offRouteMarker) {
-        this.amapInstance.remove(this.offRouteMarker)
+        this.leafletMap.removeLayer(this.offRouteMarker)
         this.offRouteMarker = null
       }
     },
@@ -571,7 +620,7 @@ export default {
               const newPos = [cp.lng, cp.lat]
               this.elderCoords = newPos
               if (this.elderMarker) {
-                this.elderMarker.setPosition(newPos)
+                this.elderMarker.setLatLng(toLeafletLatLng(newPos))
               }
             }
             // 增量检查是否有新上报记录
@@ -589,32 +638,6 @@ export default {
         }
       }, 8000)
     },
-    toggleMapExpand() {
-      this.isMapExpanded = !this.isMapExpanded
-      this.$nextTick(() => {
-        if (this.amapInstance) {
-          setTimeout(() => {
-            if (this.routePolyline) {
-              this.amapInstance.setFitView([this.routePolyline])
-            } else {
-              this.amapInstance.setFitView()
-            }
-          }, 200)
-        }
-      })
-    },
-    formatCheckpointTime(ts) {
-      if (!ts) return '刚刚'
-      try {
-        const d = new Date(ts)
-        const hh = String(d.getHours()).padStart(2, '0')
-        const mm = String(d.getMinutes()).padStart(2, '0')
-        const ss = String(d.getSeconds()).padStart(2, '0')
-        return `${hh}:${mm}:${ss}`
-      } catch (e) {
-        return ts
-      }
-    },
     stopPolling() {
       if (this.pollTimer) {
         clearInterval(this.pollTimer)
@@ -622,14 +645,13 @@ export default {
       }
     },
     resetChildMapView() {
-      if (this.amapInstance && this.routePolyline) {
-        this.amapInstance.setFitView([this.routePolyline])
+      if (this.leafletMap && this.routePolyline) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
       }
     },
     focusElderLocation() {
-      if (this.amapInstance && this.elderCoords) {
-        this.amapInstance.setZoomAndCenter(13, this.elderCoords)
-        uni.showToast({ title: '已定位父母当前坐标', icon: 'none' })
+      if (this.leafletMap && this.elderCoords) {
+        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 12)
       }
     },
     callElder() {
@@ -939,114 +961,16 @@ export default {
   overflow: hidden;
   border: 2rpx solid #e2e8f0;
   box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
-}
-.gaode-guard-card.expanded {
-  margin: 0 8rpx $lyj-space-md;
-  border-radius: 24rpx;
-  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.15);
-}
-.elder-live-status-card {
-  padding: 16rpx 20rpx;
-  background: #f8fafc;
-  border-bottom: 2rpx solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-.live-status-main {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  flex: 1;
-  min-width: 0;
-}
-.live-avatar-box {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 50%;
-  background: #e0f2fe;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36rpx;
-  flex-shrink: 0;
-}
-.live-info-box {
-  flex: 1;
-  min-width: 0;
-}
-.live-place-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-wrap: wrap;
-}
-.live-place-name {
-  font-size: 28rpx;
-  font-weight: 800;
-  color: #0f172a;
-}
-.live-status-tag {
-  font-size: 22rpx;
-  font-weight: 700;
-  padding: 2rpx 12rpx;
-  border-radius: 12rpx;
-  background: #dcfce7;
-  color: #15803d;
-}
-.live-status-tag.off_route {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-.live-status-tag.arrived {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-.live-note {
-  display: block;
-  font-size: 22rpx;
-  color: #64748b;
-  margin-top: 4rpx;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.live-time {
-  display: block;
-  font-size: 20rpx;
-  color: #94a3b8;
-  margin-top: 2rpx;
-}
-.live-focus-btn {
-  background: #2563eb;
-  color: #ffffff;
-  font-size: 22rpx;
-  font-weight: 700;
-  border-radius: 24rpx;
-  border: none;
-  padding: 6rpx 20rpx;
-  flex-shrink: 0;
 }
 .child-amap-canvas {
   width: 100%;
-  height: 760rpx;
+  height: 58vh;
+  min-height: 540rpx;
   background: #f1f5f9;
-  transition: height 0.3s ease;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.child-amap-canvas.expanded {
+.gaode-guard-card.expanded .child-amap-canvas {
   height: 82vh;
-  min-height: 600px;
-}
-@media (min-width: 768px) {
-  .child-amap-canvas {
-    height: 540px;
-  }
-  .child-amap-canvas.expanded {
-    height: 80vh;
-    min-height: 680px;
-  }
 }
 .map-loading-overlay {
   position: absolute;
@@ -1056,13 +980,25 @@ export default {
   bottom: 0;
   background: rgba(255, 255, 255, 0.85);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16rpx;
 }
 .map-loading-text {
   font-size: 26rpx;
   color: #475569;
   font-weight: 600;
+}
+.map-retry-btn {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+  border: none;
+  border-radius: 24rpx;
+  padding: 4rpx 24rpx;
+  margin: 0;
 }
 
 /* 偏航预警悬浮气泡 */
@@ -1071,7 +1007,7 @@ export default {
   top: 16rpx;
   left: 16rpx;
   right: 16rpx;
-  z-index: 100;
+  z-index: 1300;
   background: #fef2f2;
   border: 2rpx solid #ef4444;
   border-radius: 16rpx;
@@ -1170,12 +1106,6 @@ export default {
   font-weight: 700;
   padding: 4rpx 16rpx;
   margin: 0;
-  cursor: pointer;
-}
-.ctrl-btn.expand {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #1d4ed8;
 }
 
 /* 模拟操作栏 */
@@ -1430,69 +1360,7 @@ export default {
 }
 </style>
 
-<!-- 高德地图 Marker DOM 样式 -->
-<style lang="scss">
-.child-map-station-badge {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffffff;
-  white-space: nowrap;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  pointer-events: auto;
-}
-
-/* 子女端长辈位置呼吸波纹动效 Marker */
-.child-elder-breathe-marker {
-  position: relative;
-  width: 90px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.child-elder-breathe-marker .breathe-wave {
-  position: absolute;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(37, 99, 235, 0.35);
-  animation: childBreatheWave 1.6s infinite ease-out;
-}
-@keyframes childBreatheWave {
-  0% { transform: scale(0.6); opacity: 1; }
-  100% { transform: scale(2.0); opacity: 0; }
-}
-.child-elder-breathe-marker .breathe-core {
-  position: relative;
-  z-index: 2;
-  background: #1d4ed8;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 12px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  white-space: nowrap;
-}
-
-.child-offroute-marker-bubble {
-  background: #ef4444;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 4px 10px;
-  border-radius: 14px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
-  white-space: nowrap;
-  animation: offrouteBounce 0.8s infinite alternate;
-}
-@keyframes offrouteBounce {
-  from { transform: translateY(0); }
-  to { transform: translateY(-4px); }
-}
-</style>
+<!-- 高德 Marker 的自定义 DOM 样式统一在 utils/amap.js 的 ensureAmapMarkerStyles()
+     里以文档级 <style> 注入（子女端 .child-map-station-badge / .child-elder-breathe-marker
+     / .child-offroute-marker-bubble 及其动效都在那里）。高德 Marker 是运行时插进它
+     自己容器的，uni-app H5 的作用域标记会让写在这里的规则命中不到，故此处不再重复声明。 -->

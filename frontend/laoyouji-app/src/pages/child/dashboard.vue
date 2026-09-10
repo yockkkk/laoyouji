@@ -710,10 +710,10 @@ export default {
 }
 .elder-location-section {
   background: #ffffff;
-  border: 2rpx solid #bfdbfe;
-  border-left: 8rpx solid #2563eb;
+  border: 2rpx solid #d5e5f7;
+  border-left: 8rpx solid #2A82E4;
   border-radius: $lyj-radius-lg;
-  box-shadow: 0 4rpx 16rpx rgba(37, 99, 235, 0.08);
+  box-shadow: 0 4rpx 16rpx rgba(42, 130, 228, 0.08);
 }
 .location-head {
   display: flex;
@@ -739,7 +739,7 @@ export default {
   100% { transform: scale(0.9); opacity: 0.7; }
 }
 .location-title {
-  color: #1e3a8a;
+  color: #1a2838;
   font-weight: 800;
 }
 .location-refresh-time {
@@ -758,7 +758,7 @@ export default {
   width: 68rpx;
   height: 68rpx;
   border-radius: 50%;
-  background: #eff6ff;
+  background: #ebf4fe;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -778,7 +778,7 @@ export default {
 .loc-name {
   font-size: 32rpx;
   font-weight: 800;
-  color: #0f172a;
+  color: #1a2838;
 }
 .loc-tag {
   font-size: 22rpx;
@@ -801,9 +801,9 @@ export default {
 .loc-note {
   display: block;
   font-size: 24rpx;
-  color: #0284c7;
+  color: #1967c2;
   margin-top: 6rpx;
-  background: #f0f9ff;
+  background: #ebf4fe;
   padding: 8rpx 14rpx;
   border-radius: 10rpx;
 }
@@ -812,7 +812,7 @@ export default {
 }
 .loc-map-btn {
   width: 100%;
-  background: #2563eb;
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   color: #ffffff;
   font-size: 28rpx;
   font-weight: 700;
@@ -820,7 +820,7 @@ export default {
   border: none;
   padding: 12rpx 0;
   cursor: pointer;
-  box-shadow: 0 4rpx 12rpx rgba(37, 99, 235, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
 }
 .location-empty-box {
   padding: 16rpx 0;
@@ -835,7 +835,7 @@ export default {
 }
 .loc-map-btn-sm {
   background: #f1f5f9;
-  color: #2563eb;
+  color: #2A82E4;
   border: 2rpx solid #bfdbfe;
   font-size: 26rpx;
   font-weight: 700;
@@ -1152,15 +1152,5 @@ export default {
 .sections-grid {
   display: flex;
   flex-direction: column;
-}
-
-/* 电脑端宽屏自适应：只剩 2 个 section 后两列网格会把每张卡压成半宽长条，
-   布局失衡 —— 大屏维持单列、限宽居中即可。 */
-@media screen and (min-width: 768px) {
-  .dash {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 30rpx 32rpx 100rpx;
-  }
 }
 </style>

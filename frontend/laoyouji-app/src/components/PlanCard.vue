@@ -364,18 +364,20 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 16rpx;
-  background: linear-gradient(135deg, #e8541e 0%, #ff7836 100%);
+  background: linear-gradient(135deg, $lyj-primary 0%, #3B99FC 100%);
   color: #ffffff;
   border: none;
   border-radius: 48rpx;
-  box-shadow: 0 6rpx 16rpx rgba(232, 84, 30, 0.28);
+  box-shadow: 0 8rpx 24rpx rgba(42, 130, 228, 0.32);
   cursor: pointer;
   padding: 0 32rpx;
   box-sizing: border-box;
+  transition: all 0.2s ease;
 }
 .btn-route-action-active {
   transform: scale(0.98);
-  opacity: 0.92;
+  background: linear-gradient(135deg, $lyj-primary-dark 0%, $lyj-primary 100%);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
 }
 .route-icon {
   font-size: 38rpx;

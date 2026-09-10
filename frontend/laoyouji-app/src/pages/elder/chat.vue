@@ -247,8 +247,8 @@ export default {
       scrollTop: 0,
       anchor: '',
       inputMode: 'voice', // voice (按住说话) | text (打字输入)
-      isDesktop: true, // 响应式分屏判断 (R1)
-      treeExpanded: true, // 桌面端右侧执行树展开状态
+      isDesktop: false, // 手机端原生架构模式
+      treeExpanded: false, // 桌面分屏停用
       treeDrawerVisible: false, // 移动端执行树抽屉显示状态
       _handleResize: null,
       _lastToggleAt: 0,
@@ -307,6 +307,20 @@ export default {
           } else {
             result.push(m)
           }
+        } else if (m.kind === 'suspend') {
+          // 挂起卡去重（展示层兜底）：同一笔确认只留一张。confirmationId 优先，缺 id 时
+          // 退而求其次同 tool。断线重放已在 case 'suspended' 拦住，这里再挡住后端历史
+          // 水合(routes_chat.py 按每条 CONFIRM_SUSPENDED 各生成一张)那条路径。保留最早
+          // 那张——_resolveCard 按 confirmationId 命中并原地改写的也是它，家人点同意后
+          // 这张卡的状态能正确从"待确认"翻到"已办好"。
+          const key = m.confirmationId || ''
+          const dup = result.some(
+            (ex) =>
+              ex.kind === 'suspend' &&
+              ((key && ex.confirmationId === key) ||
+                (!key && ex.tool && ex.tool === m.tool)),
+          )
+          if (!dup) result.push(m)
         } else {
           result.push(m)
         }
@@ -429,18 +443,9 @@ export default {
   },
   methods: {
     _updateViewport() {
-      const wasDesktop = this.isDesktop
-      if (typeof window !== 'undefined') {
-        this.isDesktop = window.innerWidth >= 768
-      } else {
-        try {
-          const info = uni.getSystemInfoSync()
-          this.isDesktop = (info.windowWidth || 0) >= 768
-        } catch (e) {}
-      }
-      if (!wasDesktop && this.isDesktop) {
-        this.closeDrawer()
-      }
+      // 手机端原生模式：聊天流单列全宽，执行链路统一收敛于底部上滑抽屉 (Bottom Sheet)
+      this.isDesktop = false
+      this.treeExpanded = false
     },
 
     normalizeAgent(agent) {
@@ -854,9 +859,14 @@ export default {
 
         case 'delta': {
           // 打字预览。后端 persist=False，不进事件日志、不进模型历史。
-          if (!bubble.text) openBubble(true)
+          //
+          // 老人主对话框只该出现主智能体**最终定稿**的一句总结，规划过程一律只进
+          // 右侧链路。所以这里：①子智能体(银发导航/安康助手/邻里帮)的流式内容直接丢弃，
+          // 不进主框；②主智能体的预览只**缓冲**、预览期**不显现气泡**——中间规划步骤
+          // 的话术会被随后的 tool_call 清掉（见下），只有不再跟工具调用的最终总结，
+          // 才由 agent_msg / final 定稿时显现。这样从根上消除了"规划话术闪一下又没了"。
+          if (!this.isMainAgent(d.agent)) break
           bubble.text += d.text || ''
-          this._scrollBottom()
           break
         }
 
@@ -868,9 +878,14 @@ export default {
            * provider 内部逐片推的、比改写更早到前端。所以预览可能是**未审的原话**，
            * 而 agent_msg 才是审过的那一份。见 docs/DESIGN.md §6.1 与
            * test_medical_safety.py::test_the_streaming_preview_is_not_the_authoritative_text。
+           *
+           * 只认主智能体的定稿：子智能体(agent=health/travel/community)那句"最终答复"
+           * 是内部回给主智能体的中间产物，绝不该顶进老人主对话框——子智能体的工作已在
+           * 右侧链路以工具节点呈现。delta 预览期不开气泡，最终定稿在这里补上开启。
            */
-          if (!bubble.text) openBubble(true)
+          if (!this.isMainAgent(d.agent)) break
           bubble.text = d.text ?? ''
+          if (bubble.text) openBubble(true)
           break
         }
 
@@ -879,15 +894,29 @@ export default {
           if (bubble && bubble.text) {
             bubble.text = ''
           }
-          this.messages.push({
-            kind: 'tool',
-            callId: d.call_id,
-            tool: d.tool || '',
-            agent: d.agent || '',
-            args: d.args || {},
-            status: 'running',
-            summary: d.summary || d.tool,
-          })
+          // 幂等：同一 call_id 可能重复到达 —— SSE 断线转轮询时 pollEvents 从
+          // afterSeq=0 起把本轮事件整段重放，其中的 tool_call 已在实时流里推过一遍。
+          // 原来这里无条件 push，于是断线那一下之前见过的每个工具都叠成两张卡。
+          // 已存在同 call_id 就地更新，不再新增；已办结的状态不回退成 running。
+          const existingTool = d.call_id
+            ? this.messages.find((m) => m.kind === 'tool' && m.callId === d.call_id)
+            : null
+          if (existingTool) {
+            if (d.tool) existingTool.tool = d.tool
+            if (d.agent) existingTool.agent = d.agent
+            if (d.args && Object.keys(d.args).length) existingTool.args = d.args
+            if (d.summary) existingTool.summary = d.summary
+          } else {
+            this.messages.push({
+              kind: 'tool',
+              callId: d.call_id,
+              tool: d.tool || '',
+              agent: d.agent || '',
+              args: d.args || {},
+              status: 'running',
+              summary: d.summary || d.tool,
+            })
+          }
           this._scrollBottom()
           break
         }
@@ -923,22 +952,40 @@ export default {
           this._scrollBottom()
           break
 
-        case 'suspended':
-          this.messages.push({
-            kind: 'suspend',
-            tool: d.tool || '',
-            // confirmationId 是这张卡后来能被改写的唯一钥匙（见下面
-            // confirmation_resolved）。少了它，家人点完同意，这张黄卡就永远
-            // 停在"等他点同意"上。
-            confirmationId: d.confirmation_id || '',
-            message: d.message || '已经发给家人确认啦',
-            summary: d.summary || '',
-            amount: d.amount || 0,
-            expiresAt: d.expires_at || '',
-            status: 'pending',
-          })
+        case 'suspended': {
+          // 幂等：同一笔挂起可能到达两次 —— SSE 断线转 pollEvents 会从 afterSeq=0 把本轮
+          // 事件整段重放，其中的 suspended 已在实时流里推过一遍（隔壁 tool_call 早就这么
+          // 防了，这个 case 之前漏了，于是断线那一下黄卡叠成两张，就是"¥680 出现两张卡"）。
+          // confirmationId 是这张卡后来能被 confirmation_resolved 改写的唯一钥匙；已存在
+          // 同 confirmationId（缺 id 时退而求其次同 tool 且仍 pending）就地更新，不再新增。
+          const cid = d.confirmation_id || ''
+          const dupSuspend = this.messages.find(
+            (m) =>
+              m.kind === 'suspend' &&
+              ((cid && m.confirmationId === cid) ||
+                (!cid && m.tool && m.tool === (d.tool || '') && m.status === 'pending')),
+          )
+          if (dupSuspend) {
+            if (d.message) dupSuspend.message = d.message
+            if (d.summary) dupSuspend.summary = d.summary
+            if (d.amount) dupSuspend.amount = d.amount
+            if (d.expires_at) dupSuspend.expiresAt = d.expires_at
+            if (!dupSuspend.confirmationId && cid) dupSuspend.confirmationId = cid
+          } else {
+            this.messages.push({
+              kind: 'suspend',
+              tool: d.tool || '',
+              confirmationId: cid,
+              message: d.message || '已经发给家人确认啦',
+              summary: d.summary || '',
+              amount: d.amount || 0,
+              expiresAt: d.expires_at || '',
+              status: 'pending',
+            })
+          }
           this._scrollBottom()
           break
+        }
 
         /**
          * 家人在手机上点完了（confirmation.py:216）。**这条事件原来没接** ——
@@ -986,11 +1033,12 @@ export default {
           this.messages = this.messages.filter(
             (m) => !(m.kind === 'status' && m.text && m.text.includes('正在处理')),
           )
-          // 定稿兜底，与 agent_msg 同语义：只在一句话都没出来时补上
-          if (d.text && !bubble.text) {
-            bubble.text = d.text
-            openBubble(true)
-          }
+          // 定稿兜底，与 agent_msg 同语义：只在一句话都没出来时补上（保持审过版优先）。
+          // 关键改动：delta 预览期不再开气泡，最终文本可能已由 agent_msg 落进 bubble.text
+          // 或仍停在 delta 缓冲里——无论哪种，只要有内容就在这里确保气泡显现，
+          // 不能再靠 delta 去开气泡了。
+          if (d.text && !bubble.text) bubble.text = d.text
+          if (bubble.text) openBubble(true)
           this._scrollBottom(true)
           break
 
@@ -1139,6 +1187,9 @@ export default {
         if (ev.event === 'confirmation_resolved') {
           this._resolveCard(d.confirmation_id, d.status, d.ok)
         } else if (ev.event === 'agent_msg' && d.text) {
+          // 只补主智能体的定稿播报：子智能体(health/travel/community)那句"最终答复"是
+          // 内部回给主智能体的中间产物，既不该显示、更不该被 speak() 念出来。
+          if (!this.isMainAgent(d.agent)) continue
           // 过滤带工具调用的中间思考独白
           if (ev._row && ev._row.payload && Array.isArray(ev._row.payload.tool_calls) && ev._row.payload.tool_calls.length > 0) {
             continue
@@ -1263,6 +1314,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   /* #endif */
   /* #ifndef H5 */
   height: 100vh;
@@ -1442,6 +1495,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   background: rgba($lyj-text, 0.45);
   display: flex;
   align-items: center;
@@ -1620,7 +1675,9 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.55);
+  max-width: 430px;
+  margin: 0 auto;
+  background: rgba(19, 36, 56, 0.55);
   z-index: 150;
   display: flex;
   flex-direction: column;
@@ -1632,23 +1689,24 @@ export default {
 .mobile-drawer-panel {
   width: 100%;
   height: 86vh;
-  background: #f8fafc;
-  border-top-left-radius: 28rpx;
-  border-top-right-radius: 28rpx;
-  box-shadow: 0 -16rpx 48rpx rgba(0, 0, 0, 0.25);
+  background: #F4F8FD;
+  border-top-left-radius: 36rpx;
+  border-top-right-radius: 36rpx;
+  box-shadow: 0 -16rpx 48rpx rgba(19, 36, 56, 0.25);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-top: 2rpx solid $lyj-line;
 }
 
 .drawer-drag-bar {
-  padding: 16rpx 0 10rpx;
+  padding: 18rpx 0 12rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6rpx;
-  background: #0f172a;
+  gap: 8rpx;
+  background: #132438;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -1658,12 +1716,12 @@ export default {
   width: 80rpx;
   height: 8rpx;
   border-radius: 999rpx;
-  background: #475569;
+  background: #3D5369;
 }
 
 .drawer-drag-tip {
-  font-size: 20rpx;
-  color: #94a3b8;
+  font-size: 22rpx;
+  color: #8B9EAF;
   line-height: 1;
 }
 
@@ -1675,81 +1733,6 @@ export default {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-/* 电脑端宽屏自适应：双栏工作台架构 (R1) */
-@media screen and (min-width: 768px) {
-  .chat-page {
-    max-width: 960px;
-    left: 0 !important;
-    right: 0 !important;
-    margin: 0 auto !important;
-    border-left: 2rpx solid $lyj-line;
-    border-right: 2rpx solid $lyj-line;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
-    transition: max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .chat-page.split-mode {
-    max-width: 1600px !important;
-    width: 98vw;
-  }
-
-  .workbench-body.workbench-split {
-    display: flex;
-    flex-direction: row;
-  }
-
-  .workbench-body.workbench-split .workbench-chat-pane {
-    flex: 1.15;
-    border-right: 2rpx solid $lyj-line;
-    max-width: 58%;
-    min-width: 340px;
-  }
-
-  .workbench-tree-pane {
-    flex: 1;
-    min-width: 380px;
-    max-width: 50%;
-    height: 100%;
-    overflow: hidden;
-    background: #ffffff;
-    box-shadow: -4rpx 0 20rpx rgba(0, 0, 0, 0.03);
-    animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @media screen and (max-width: 1024px) {
-    .workbench-body.workbench-split .workbench-chat-pane {
-      flex: 1;
-      min-width: 300px;
-      max-width: 54%;
-    }
-    .workbench-tree-pane {
-      flex: 1;
-      min-width: 320px;
-      max-width: 50%;
-    }
-  }
-
-  .topbar {
-    padding: 24rpx 32rpx;
-  }
-  .stream-inner {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 24rpx 20rpx 40rpx;
-  }
-  .input-bar {
-    max-width: 860px;
-    margin: 0 auto;
-  }
-}
-
-/* 超宽 4K 屏幕优化：适度延展双栏宽度 */
-@media screen and (min-width: 2560px) {
-  .chat-page.split-mode {
-    max-width: 1800px !important;
-  }
 }
 
 /* 移动端狭窄屏自适应 (< 480px / 375px / 360px)：防止顶栏按钮折行和截断 */

@@ -450,12 +450,4 @@ export default {
   font-weight: 600;
   color: $lyj-text;
 }
-
-@media screen and (min-width: 768px) {
-  .profile-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 20rpx 40rpx 120rpx;
-  }
-}
 </style>

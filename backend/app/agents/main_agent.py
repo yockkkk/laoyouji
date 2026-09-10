@@ -109,8 +109,12 @@ class MainAgent(BaseAgent):
     display_name = "老友记"
     description = "总智能体：理解指令、规划任务、并行调度子助理、聚合交付物"
     system_prompt = SYSTEM_PROMPT
+    # get_weather 只由 travel 子智能体持有（见 travel_agent.py 与本类 SYSTEM_PROMPT
+    # 第 58 行的调度约定）。此前主、travel 两处都注册，一次出行请求里主链路与
+    # travel 会各查一遍天气，入参完全相同却是两个不同 call_id —— 老人端就看到
+    # 两张一模一样的 get_weather 卡。天气归 travel 独有，从主智能体摘掉，从源头消重。
     tool_names = ["todo_write", "delegate", "compose_deliverable", "ask_user",
-                  "get_weather", "plain_say"]
+                  "plain_say"]
 
 
 # ------------------------------------------------------------------ 主智能体专属工具

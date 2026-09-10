@@ -40,18 +40,20 @@
       </view>
     </view>
 
-    <!-- 适老高德地图视窗 (真实高德 JS API 2.0 Canvas 渲染) -->
-    <view class="map-section" :class="{ expanded: isExpandedMap }">
-      <div id="elder-amap-container" class="amap-box" :class="{ expanded: isExpandedMap }"></div>
+    <!-- 适老地图视窗 (Leaflet 渲染高德栅格瓦片，坐标 GCJ-02) -->
+    <view class="map-section">
+      <div id="elder-amap-container" class="amap-box"></div>
       <view v-if="mapLoading" class="map-loading-mask">
         <text class="loading-icon">⏳</text>
-        <text class="loading-text">高德地图 2.0 画布加载中…</text>
+        <text class="loading-text">高德地图加载中…</text>
+      </view>
+      <view v-else-if="mapFailed" class="map-loading-mask">
+        <text class="loading-icon">🗺️</text>
+        <text class="loading-text">地图暂时没能加载出来</text>
+        <button class="map-retry-btn" @tap="initMap">点我重新加载地图</button>
       </view>
       <!-- 地图工具浮层 -->
       <view class="map-controls">
-        <button class="ctrl-btn expand-btn" @tap="toggleExpandMap">
-          {{ isExpandedMap ? '🗗 恢复标准' : '🔍 放大地图' }}
-        </button>
         <button class="ctrl-btn" @tap="resetView">🗺️ 全览</button>
         <button class="ctrl-btn" @tap="locateElder">📍 我的位置</button>
       </view>
@@ -97,7 +99,15 @@
 </template>
 
 <script>
-import { loadAMap } from '../../utils/amap'
+import {
+  loadLeaflet,
+  ensureAmapMarkerStyles,
+  toLeafletLatLng,
+  makeMapMarkerIcon,
+  AMAP_RASTER_TILE_URL,
+  AMAP_TILE_SUBDOMAINS,
+  AMAP_TILE_ATTRIBUTION,
+} from '../../utils/amap'
 import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { speak } from '../../api/asr'
@@ -114,13 +124,17 @@ export default {
       routeDuration: '约4小时20分',
       routeDistance: '1023公里',
       mapLoading: true,
+      mapFailed: false,
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
       elderCoords: [118.7732, 32.0618], // 默认起点坐标
       elderMarker: null,
       routePolyline: null,
-      amapInstance: null,
+      routeCasing: null,
+      stationMarkers: [],
+      tileLayer: null,
+      leafletMap: null,
       steps: [
         {
           title: '第 1 步：家 ➔ 南京南站',
@@ -149,7 +163,6 @@ export default {
         { name: '北京南站', lng: 116.3789, lat: 39.8652, type: 'station' },
         { name: '北京积水潭医院', lng: 116.3748, lat: 39.9485, type: 'end' },
       ],
-      isExpandedMap: false,
       polylinePath: [],
     }
   },
@@ -163,23 +176,21 @@ export default {
   },
   mounted() {
     this.user = getCurrentUser()
-    if (!this.user || !this.user.id) {
-      this.user = { id: '7db6af27-e478-44f5-8e2a-cde3aa14e91e', name: '张桂芳', role: 'elder' }
-    }
     this.initPage()
   },
   onUnload() {
     this.stopReporting()
-    if (this.amapInstance) {
+    if (this.leafletMap) {
       try {
-        this.amapInstance.destroy()
+        this.leafletMap.remove()
       } catch (e) {}
+      this.leafletMap = null
     }
   },
   methods: {
     async initPage() {
       await this.fetchRouteFromBackend()
-      await this.initAmap()
+      await this.initMap()
       this.startReporting()
     },
     async fetchRouteFromBackend() {
@@ -281,75 +292,125 @@ export default {
         this.polylinePath = this.routePoints.map((p) => [p.lng, p.lat])
       }
     },
-    async initAmap() {
+    async initMap() {
+      this.mapFailed = false
+      this.mapLoading = true
+      let L
       try {
-        const AMap = await loadAMap()
-        const container = document.getElementById('elder-amap-container')
-        if (!container) return
-
-        this.amapInstance = new AMap.Map(container, {
-          zoom: 6,
-          center: [117.5, 35.5],
-          viewMode: '2D',
-          mapStyle: 'amap://styles/normal',
-        })
-
-        // 绘制高亮规划线路 Polyline (适老鲜艳大对比度，粗度8px，箭头标识)
-        this.routePolyline = new AMap.Polyline({
-          path: this.polylinePath,
-          isOutline: true,
-          outlineColor: '#ffffff',
-          borderWeight: 2,
-          strokeColor: '#2563eb', // 沉稳高对比鲜艳蓝
-          strokeOpacity: 0.95,
-          strokeWeight: 8,
-          strokeStyle: 'solid',
-          lineJoin: 'round',
-          lineCap: 'round',
-          showDir: true,
-        })
-        this.amapInstance.add(this.routePolyline)
-
-        // 标注起终点与关键站点
-        this.routePoints.forEach((pt) => {
-          const isStart = pt.type === 'start'
-          const isEnd = pt.type === 'end'
-          const badgeClass = isStart ? 'badge-start' : isEnd ? 'badge-end' : 'badge-station'
-          const labelPrefix = isStart ? '🟢 起点：' : isEnd ? '🔴 终点：' : '🚉 途经：'
-
-          const markerContent = document.createElement('div')
-          markerContent.className = `elder-map-marker ${badgeClass}`
-          markerContent.innerHTML = `<span class="marker-title">${labelPrefix}${pt.name}</span>`
-
-          const marker = new AMap.Marker({
-            position: [pt.lng, pt.lat],
-            content: markerContent,
-            offset: new AMap.Pixel(-50, -36),
-          })
-          this.amapInstance.add(marker)
-        })
-
-        // 绘制长辈当前实时定位 Marker (带呼吸波纹动效)
-        const elderMarkerEl = document.createElement('div')
-        elderMarkerEl.className = 'elder-live-pulse-marker'
-        elderMarkerEl.innerHTML = `
-          <div class="pulse-ring"></div>
-          <div class="pulse-core">👴 当前位置</div>
-        `
-        this.elderMarker = new AMap.Marker({
-          position: this.elderCoords,
-          content: elderMarkerEl,
-          offset: new AMap.Pixel(-30, -30),
-          zIndex: 120,
-        })
-        this.amapInstance.add(this.elderMarker)
-
-        // 自适应视野缩放至全览
-        this.amapInstance.setFitView([this.routePolyline])
-        this.mapLoading = false
+        L = await loadLeaflet()
       } catch (err) {
-        console.error('高德地图初始化失败:', err)
+        console.error('地图库加载失败:', err)
         this.mapLoading = false
+        this.mapFailed = true
+        return
+      }
+      // 保证标记的自定义 DOM 样式已注入 document.head（穿透 uni-app 作用域）
+      ensureAmapMarkerStyles()
+      await this.$nextTick()
+      const container = document.getElementById('elder-amap-container')
+      if (!container) {
+        this.mapLoading = false
+        return
+      }
+
+      try {
+        // 重试路径：先销毁旧实例再重建
+        if (this.leafletMap) {
+          this.leafletMap.remove()
+          this.leafletMap = null
+        }
+
+        this.leafletMap = L.map(container, {
+          // 恢复 +/- 缩放按钮：原来整个关掉，屏幕上没有任何缩放入口，桌面端根本没法
+          // 缩放。zoomControl 默认落在左上角，避开右下角的全览/我的位置浮层，不打架。
+          zoomControl: true,
+          attributionControl: true,
+          // 半级缩放：zoomSnap/zoomDelta 从默认整级(1)收到 0.5，点一下 +/- 或滚一下
+          // 只缩半级，不再"一下子放太大/缩太小"——这才是用户要的「精度缩放」。
+          zoomSnap: 0.5,
+          zoomDelta: 0.5,
+          scrollWheelZoom: true, // 滚轮缩放（配合半级 zoomDelta，不会猛跳）
+        }).setView([35.5, 117.5], 6)
+        if (this.leafletMap.attributionControl) {
+          this.leafletMap.attributionControl.setPrefix(false) // 只留「高德地图 © AutoNavi」，不显示 Leaflet 字样
+          // 归属信息挪到左下角：它默认在右下角、z-index:1000，会盖住同在右下角、又没设
+          // z-index 的全览/我的位置按钮（就是用户截图里"地图把按钮盖住了"）。挪走它，
+          // 再给按钮提层（见 .map-controls z-index），双保险。
+          this.leafletMap.attributionControl.setPosition('bottomleft')
+        }
+
+        // 高德栅格瓦片（GCJ-02，与后端返回坐标同基准，无需转换）。绕开断掉的高德控制面，
+        // 直连数据面 wprd0X.is.autonavi.com 贴图，既出底图又保留高德品牌。
+        this.tileLayer = L.tileLayer(AMAP_RASTER_TILE_URL, {
+          subdomains: AMAP_TILE_SUBDOMAINS,
+          maxZoom: 18,
+          minZoom: 3,
+          attribution: AMAP_TILE_ATTRIBUTION,
+        }).addTo(this.leafletMap)
+
+        this.renderRoute(L)
+        this.mapLoading = false
+        // uni-app H5 容器尺寸可能下一帧才最终确定，强制重算避免灰边/瓦片错位
+        this.$nextTick(() => {
+          setTimeout(() => {
+            if (this.leafletMap) this.leafletMap.invalidateSize()
+          }, 200)
+        })
+      } catch (err) {
+        console.error('地图渲染失败:', err)
+        this.mapLoading = false
+        this.mapFailed = true
+      }
+    },
+    renderRoute(L) {
+      L = L || window.L
+      if (!L || !this.leafletMap) return
+      const latlngs = this.polylinePath.map((p) => toLeafletLatLng(p))
+
+      // 路线：先白色描边打底，再叠高对比蓝线（仿高德 isOutline 的描边效果）
+      this.routeCasing = L.polyline(latlngs, {
+        color: '#ffffff',
+        weight: 11,
+        opacity: 0.9,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(this.leafletMap)
+      this.routePolyline = L.polyline(latlngs, {
+        color: '#2563eb', // 沉稳高对比鲜艳蓝
+        weight: 7,
+        opacity: 0.95,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(this.leafletMap)
+
+      // 标注起终点与关键站点
+      this.stationMarkers = []
+      this.routePoints.forEach((pt) => {
+        const isStart = pt.type === 'start'
+        const isEnd = pt.type === 'end'
+        const badgeClass = isStart ? 'badge-start' : isEnd ? 'badge-end' : 'badge-station'
+        const labelPrefix = isStart ? '🟢 起点：' : isEnd ? '🔴 终点：' : '🚉 途经：'
+        const icon = makeMapMarkerIcon(L, {
+          html: `<div class="elder-map-marker ${badgeClass}"><span class="marker-title">${labelPrefix}${pt.name}</span></div>`,
+          size: [40, 34],
+        })
+        const m = L.marker(toLeafletLatLng(pt), { icon }).addTo(this.leafletMap)
+        this.stationMarkers.push(m)
+      })
+
+      // 绘制长辈当前实时定位 Marker (带呼吸波纹动效)
+      const liveIcon = makeMapMarkerIcon(L, {
+        html: `<div class="elder-live-pulse-marker"><div class="pulse-ring"></div><div class="pulse-core">👴 当前位置</div></div>`,
+        size: [60, 60],
+      })
+      this.elderMarker = L.marker(toLeafletLatLng(this.elderCoords), {
+        icon: liveIcon,
+        zIndexOffset: 1000,
+      }).addTo(this.leafletMap)
+
+      // 自适应视野：Leaflet fitBounds 同步可靠，天然修掉旧代码 setFitView 早于地图 ready 的时序坑
+      if (latlngs.length) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
       }
     },
     startReporting() {
@@ -387,54 +448,40 @@ export default {
         }
       }
     },
-    toggleExpandMap() {
-      this.isExpandedMap = !this.isExpandedMap
-      this.$nextTick(() => {
-        if (this.amapInstance) {
-          setTimeout(() => {
-            if (this.routePolyline) {
-              this.amapInstance.setFitView([this.routePolyline])
-            } else {
-              this.amapInstance.setFitView()
-            }
-          }, 200)
-        }
-      })
-    },
     advanceLocation() {
-      // 模拟老人沿路线前进至下一步并同步家人端
+      // 模拟老人沿路线前进至下一步
       this.currentStepIndex = (this.currentStepIndex + 1) % this.steps.length
       const step = this.steps[this.currentStepIndex]
       if (step && step.coords) {
         this.elderCoords = step.coords
         if (this.elderMarker) {
-          this.elderMarker.setPosition(this.elderCoords)
+          this.elderMarker.setLatLng(toLeafletLatLng(this.elderCoords))
         }
-        if (this.amapInstance) {
-          this.amapInstance.panTo(this.elderCoords)
+        if (this.leafletMap) {
+          this.leafletMap.panTo(toLeafletLatLng(this.elderCoords))
         }
         uni.showToast({
-          title: `已更新位置：${step.title}（已同步家人）`,
+          title: `已行进至：${step.title}`,
           icon: 'none',
         })
         this.doReportLocation()
       }
     },
     resetView() {
-      if (this.amapInstance && this.routePolyline) {
-        this.amapInstance.setFitView([this.routePolyline])
+      if (this.leafletMap && this.routePolyline) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
       }
     },
     locateElder() {
-      if (this.amapInstance && this.elderCoords) {
-        this.amapInstance.setZoomAndCenter(12, this.elderCoords)
+      if (this.leafletMap && this.elderCoords) {
+        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 12)
       }
     },
     highlightStep(index) {
       this.currentStepIndex = index
       const step = this.steps[index]
-      if (step && step.coords && this.amapInstance) {
-        this.amapInstance.setZoomAndCenter(10, step.coords)
+      if (step && step.coords && this.leafletMap) {
+        this.leafletMap.setView(toLeafletLatLng(step.coords), 10)
       }
     },
     speakFullRoute() {
@@ -474,7 +521,7 @@ export default {
 
 .route-page {
   min-height: 100vh;
-  background: #faf6f0;
+  background: $lyj-bg;
   padding-bottom: 60rpx;
   box-sizing: border-box;
 }
@@ -486,7 +533,7 @@ export default {
   justify-content: space-between;
   padding: 24rpx 24rpx 16rpx;
   background: #ffffff;
-  border-bottom: 2rpx solid #e2dcd5;
+  border-bottom: 2rpx solid $lyj-line;
   min-height: 100rpx;
 }
 .nav-back-btn {
@@ -495,8 +542,8 @@ export default {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #f1ede6;
-  color: #1e293b;
+  background: $lyj-field;
+  color: $lyj-text;
   border-radius: 48rpx;
   border: none;
   padding: 0 24rpx;
@@ -515,17 +562,17 @@ export default {
 .nav-title {
   font-size: 38rpx;
   font-weight: 800;
-  color: #1e293b;
+  color: $lyj-text;
 }
 .nav-speak-btn {
   min-height: 96rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #fff3eb;
-  color: #e8541e;
+  background: $lyj-primary-soft;
+  color: $lyj-primary;
   border-radius: 48rpx;
-  border: 2rpx solid #ffccb3;
+  border: 2rpx solid $lyj-line;
   padding: 0 28rpx;
   margin: 0;
   cursor: pointer;
@@ -636,33 +683,18 @@ export default {
   margin: 0 24rpx 24rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.08);
   border: 2rpx solid #e2e8f0;
-  transition: all 0.3s ease;
-}
-.map-section.expanded {
-  margin: 0 12rpx 24rpx;
-  border-radius: 28rpx;
-  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.15);
 }
 .amap-box {
   width: 100%;
-  height: 680rpx;
+  height: 58vh;
+  min-height: 520rpx;
   background: #e2e8f0;
-  transition: height 0.3s ease;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.amap-box.expanded {
-  height: 78vh;
-  min-height: 560px;
-}
-@media (min-width: 768px) {
-  .amap-box {
-    height: 480px;
-  }
-  .amap-box.expanded {
-    height: 76vh;
-    min-height: 620px;
-  }
+.map-section.expanded .amap-box {
+  height: 82vh;
 }
 .map-loading-mask {
   position: absolute;
@@ -685,30 +717,38 @@ export default {
   color: #475569;
   font-weight: 600;
 }
+.map-retry-btn {
+  margin-top: 16rpx;
+  min-height: 72rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 700;
+  border: none;
+  border-radius: 40rpx;
+  padding: 0 36rpx;
+}
 .map-controls {
   position: absolute;
   right: 20rpx;
-  bottom: 24rpx;
+  bottom: 20rpx;
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
-  z-index: 120;
+  gap: 12rpx;
+  /* Leaflet 的缩放控件/归属信息在容器内是 z-index:1000，这里必须更高，否则右下角的
+     全览/我的位置会被盖住（用户截图里"按钮被地图盖了"）。归属信息已挪到左下角。 */
+  z-index: 1200;
 }
 .ctrl-btn {
   background: #ffffff;
   color: #1e293b;
   border: 1rpx solid #cbd5e1;
-  border-radius: 36rpx;
-  font-size: 26rpx;
+  border-radius: 30rpx;
+  font-size: 24rpx;
   font-weight: 700;
-  padding: 10rpx 24rpx;
-  box-shadow: 0 6rpx 14rpx rgba(0, 0, 0, 0.12);
+  padding: 8rpx 20rpx;
+  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.1);
   cursor: pointer;
-}
-.ctrl-btn.expand-btn {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #1d4ed8;
 }
 
 /* 换乘步骤大字卡片 */
@@ -826,61 +866,8 @@ export default {
 }
 </style>
 
-<!-- 高德地图 Marker 自定义 DOM 样式（必须为全局样式以穿透 Canvas 层） -->
-<style lang="scss">
-.elder-map-marker {
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
-  border: 2px solid #ffffff;
-  color: #ffffff;
-  pointer-events: auto;
-}
-.elder-map-marker.badge-start {
-  background: #10b981;
-}
-.elder-map-marker.badge-station {
-  background: #2563eb;
-}
-.elder-map-marker.badge-end {
-  background: #ef4444;
-}
+<!-- 地图标记的自定义 DOM 样式统一在 utils/amap.js 的 ensureAmapMarkerStyles()
+     里以文档级 <style> 注入：Leaflet DivIcon 是运行时插进地图图层容器的，uni-app H5
+     会给页面样式加作用域标记，写在这里的非 scoped 规则也命中不到，站点标签会退化成
+     竖排黑字。故此处不再重复声明，避免"看似有样式其实不生效"的误导。 -->
 
-/* 呼吸动效 Marker */
-.elder-live-pulse-marker {
-  position: relative;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.elder-live-pulse-marker .pulse-ring {
-  position: absolute;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: rgba(232, 84, 30, 0.35);
-  animation: elderBreathe 1.8s infinite ease-out;
-}
-@keyframes elderBreathe {
-  0% { transform: scale(0.6); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-.elder-live-pulse-marker .pulse-core {
-  position: relative;
-  z-index: 2;
-  background: #e8541e;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 800;
-  padding: 4px 8px;
-  border-radius: 14px;
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  white-space: nowrap;
-}
-</style>

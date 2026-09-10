@@ -562,15 +562,15 @@ export default {
 }
 
 .elder-btn {
-  background: #FF6B35;
+  background: #2A82E4;
   color: #FFFFFF;
-  box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.28);
 }
 
 .child-btn {
-  background: #334155;
+  background: #132438;
   color: #FFFFFF;
-  box-shadow: 0 4rpx 12rpx rgba(51, 65, 85, 0.2);
+  box-shadow: 0 4rpx 12rpx rgba(19, 36, 56, 0.2);
 }
 
 .btn-arrow {
@@ -617,8 +617,8 @@ export default {
 
 .input-wrapper.focused {
   background: #FFFFFF;
-  border-color: #FF6B35;
-  box-shadow: 0 0 0 6rpx rgba(255, 107, 53, 0.14);
+  border-color: #2A82E4;
+  box-shadow: 0 0 0 6rpx rgba(42, 130, 228, 0.16);
 }
 
 .input-icon {
@@ -690,7 +690,7 @@ export default {
 .prompt-link {
   font-size: 28rpx;
   font-weight: 700;
-  color: #FF6B35;
+  color: #2A82E4;
   cursor: pointer;
 }
 

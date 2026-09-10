@@ -18,7 +18,7 @@ from app.providers.external.amap_service import (
     min_distance_to_corridor_m,
 )
 from app.safety.privacy import filter_checkpoint
-from app.shared.plan_helpers import extract_destination
+from app.shared.plan_helpers import extract_destination, is_same_plan, trip_dedup_key
 
 router = APIRouter(prefix="/api/trips", tags=["guardian"])
 
@@ -146,15 +146,19 @@ async def list_trips(elder_id: str | None = None, limit: int = 20):
     """查询行程列表，支持子女端行程选择器切换多行程与历史行程。"""
     ctx = get_ctx()
     where = {"elder_id": elder_id} if elder_id else {}
-    trips = await ctx.repos.list("trips", where=where, order="-created_at", limit=limit)
-    for t in trips:
-        cps = await ctx.repos.list("trip_checkpoints", where={"trip_id": t["id"]}, order="-created_at", limit=1)
-        if cps:
-            t["has_checkpoints"] = True
-            t["latest_location"] = cps[0].get("location")
-            t["latest_checkpoint_at"] = cps[0].get("created_at")
-        else:
-            t["has_checkpoints"] = False
+    # 多取一批再按 (长辈 + 去重键) 在内存折叠：同一趟进行中行程只留最新一条，
+    # 避免子女端行程选择器被"前往XX医院 进行中"重复项占满（终态行程各自保留不合并）。
+    raw = await ctx.repos.list("trips", where=where, order="-created_at", limit=max(limit * 6, 60))
+    seen: set[str] = set()
+    trips: list[dict[str, Any]] = []
+    for t in raw:
+        key = f"{t.get('elder_id') or ''}::{trip_dedup_key(t)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        trips.append(t)
+        if len(trips) >= limit:
+            break
     return {"trips": trips, "count": len(trips)}
 
 
@@ -169,19 +173,21 @@ async def direct_route(origin: str = "家（南京鼓楼区）", destination: st
 async def create_quick_trip(body: QuickTripIn):
     """长辈进入路线规划时若无现存 trip_id，自动建立关联行程，打通定时上报闭环。"""
     ctx = get_ctx()
-    elder_id = body.elder_id
-    if not elder_id:
-        elders = await ctx.repos.list("users", where={"role": "elder", "status": "active"}, limit=1)
-        if elders:
-            elder_id = elders[0]["id"]
-    trip = await ctx.repos.insert("trips", {
-        "elder_id": elder_id,
+    candidate = {
+        "elder_id": body.elder_id,
         "purpose": body.purpose or f"前往{body.destination}就医出行",
         "status": "ongoing",
         "origin": body.origin,
         "destination": body.destination,
-        "started_at": _now(),
-    })
+    }
+    # 幂等护栏：同一长辈已有进行中/待出发的同一趟行程时直接复用，
+    # 否则长辈每次进入路线规划都会新建一条 → 子女端"同时这么多计划"。
+    where = {"elder_id": body.elder_id} if body.elder_id else {}
+    existing = await ctx.repos.list("trips", where=where, order="-created_at", limit=50)
+    for t in existing:
+        if t.get("status") in ("planned", "ongoing") and is_same_plan(t, candidate):
+            return {"ok": True, "trip": t, "reused": True}
+    trip = await ctx.repos.insert("trips", {**candidate, "started_at": _now()})
     return {"ok": True, "trip": trip}
 
 

@@ -1476,46 +1476,71 @@ export default {
     },
 
     highRiskTools() {
-      const tools = []
-      const seen = new Set()
+      // 一笔挂起的高危操作，会在事件流里同时留下两条来源：①工具节点(tool_call/
+      // tool_result)，②挂起卡(suspended)。两者金额口径还不一样——节点读到的常是每晚
+      // 单价，挂起卡带的是担保计算的总额。更糟的是真实模型偶尔把同一笔操作换个入参
+      // 再下一遍，后端精确入参去重漏网时会冒出第二个确认任务。任凭哪种，对老人和家人
+      // 来说都只是"办这一件事"，必须收敛成一张卡、一个金额。
+      //
+      // 本 App 的业务前提：同一会话对每个高危工具至多一笔在办操作（后端
+      // _find_pending_duplicate 已按工具粒度收敛），所以这里也按【工具名】归并最稳，
+      // 并优先采用担保总额与家人可读摘要。
+      const byName = new Map()
+      // 状态择优：completed(已办结) > suspended(等确认) > running > rejected/failed
+      const rank = { completed: 4, suspended: 3, running: 2, rejected: 1, failed: 1 }
 
-      // 1. 优先取自已严格去重好的 allTools
-      for (const t of this.allTools.filter((t) => t.isHighRisk)) {
-        const key = t.confirmationId || t.callId || t.key || `${t.name}:${JSON.stringify(t.args || {})}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          if (t.confirmationId) seen.add(t.confirmationId)
-          if (t.callId) seen.add(t.callId)
-          tools.push({ ...t })
+      const upsert = (card) => {
+        const key = card.name || 'high_risk_op'
+        const prev = byName.get(key)
+        if (!prev) {
+          byName.set(key, { ...card, key: card.key || key })
+          return
         }
+        // 金额：首个非空的胜出（挂起卡先处理，担保总额优先落位；单价节点不再覆盖它）
+        if (prev.amount == null && card.amount != null) prev.amount = card.amount
+        // 摘要：家人可读的详细说明 > 工具名
+        if (card.summary && card.summary !== card.name &&
+            (!prev.summary || prev.summary === prev.name)) {
+          prev.summary = card.summary
+        }
+        if (card.desc && !prev.desc) prev.desc = card.desc
+        if (card.confirmationId && !prev.confirmationId) prev.confirmationId = card.confirmationId
+        if (card.result && !prev.result) prev.result = card.result
+        if (card.resultText && !prev.resultText) prev.resultText = card.resultText
+        if ((rank[card.status] || 0) > (rank[prev.status] || 0)) prev.status = card.status
       }
 
-      // 2. 补充独立的 suspend 提示卡（若已有对应工具，则不重复追加）
-      const suspends = this.safeMessages.filter((m) => m.kind === 'suspend')
-      suspends.forEach((s, idx) => {
-        const cid = s.confirmationId || ''
-        const toolName = s.tool || 'high_risk_op'
-        if (cid && seen.has(cid)) return
-        if (toolName && tools.some((t) => t.name === toolName && (!t.confirmationId || t.confirmationId === cid))) return
-
-        const k = cid || `suspend_${toolName}_${idx}`
-        seen.add(k)
-        if (cid) seen.add(cid)
-        tools.push({
-          key: k,
-          name: toolName,
-          summary: s.summary || s.message || toolName,
-          status: s.status === 'executed' || s.status === 'completed' ? 'completed' : (s.status === 'rejected' ? 'rejected' : 'suspended'),
-          args: {},
-          result: '',
-          resultText: '',
-          isHighRisk: true,
-          amount: s.amount ? Number(s.amount).toFixed(2) : null,
-          desc: s.message || s.summary || '',
-          confirmationId: cid,
+      // 1. 先放挂起卡：它带的是担保总额与家人可读摘要，是一笔挂起高危操作最准确的表示
+      this.safeMessages
+        .filter((m) => m.kind === 'suspend')
+        .forEach((s, idx) => {
+          const cid = s.confirmationId || ''
+          upsert({
+            key: cid || `suspend_${s.tool || 'op'}_${idx}`,
+            name: s.tool || 'high_risk_op',
+            summary: s.summary || s.message || s.tool || 'high_risk_op',
+            status:
+              s.status === 'executed' || s.status === 'completed'
+                ? 'completed'
+                : s.status === 'rejected'
+                ? 'rejected'
+                : 'suspended',
+            args: {},
+            result: '',
+            resultText: '',
+            isHighRisk: true,
+            amount: s.amount ? Number(s.amount).toFixed(2) : null,
+            desc: s.message || s.summary || '',
+            confirmationId: cid,
+          })
         })
-      })
-      return tools
+
+      // 2. 再并入高危工具节点：同名已被挂起卡覆盖的，只做状态/结果融合，不另起一张卡。
+      //    金额已在 parseTools 里优先取担保总额，这里首个非空胜出的规则也保证不会被
+      //    单价回填。未挂起的高危工具（如无需确认即已执行完成的）独立成卡。
+      this.allTools.filter((t) => t.isHighRisk).forEach((t) => upsert({ ...t }))
+
+      return Array.from(byName.values())
     },
 
     highRiskAmountTotal() {
@@ -1885,7 +1910,7 @@ export default {
     parseTools(agentPrefixes) {
       const msgs = this.safeMessages
       const suspends = msgs.filter((m) => m.kind === 'suspend')
-      return msgs
+      const rawTools = msgs
         .filter(
           (m) =>
             m.kind === 'tool' &&
@@ -1916,9 +1941,17 @@ export default {
             }
           }
           if (!args || typeof args !== 'object') args = {}
-          const rawAmount =
-            args.fee || args.price || args.total_amount || args.amount ||
-            (suspend ? suspend.amount : null)
+          // 金额口径：担保计算的总额(price×nights 等，权威，随 suspended 事件下发) 优先，
+          // 其次显式总额字段，最后才用 单价×数量 兜底。绝不把"每晚单价"直接当总额显示——
+          // 否则订 2 晚 ¥340/晚 会错显成 ¥340（这正是老人看到 ¥340/¥680 两笔的根由）。
+          let rawAmount = suspend && suspend.amount ? suspend.amount : null
+          if (rawAmount == null) {
+            rawAmount = args.total_amount || args.total || args.fee || args.amount || null
+          }
+          if (rawAmount == null && args.price != null && args.price !== '') {
+            const qty = Number(args.nights || args.quantity || args.count || 1)
+            rawAmount = Number(args.price) * (qty > 0 ? qty : 1)
+          }
           const amount = Number(rawAmount)
           return {
             key: m.callId || `${toolName}#${idx}`,
@@ -1936,33 +1969,47 @@ export default {
           }
         })
 
-      // 严格去重与状态融合：避免历史会话或多次事件流推送导致的重复工具卡片
+      // 严格去重与状态融合：避免历史会话或多次事件流推送导致的重复工具卡片。
+      // 后端不会把"一次调用"发两遍，但同一笔逻辑操作会因三种情况产生多个不同
+      // call_id 的事件：①同名读工具挂在两个子智能体上各查一遍；②真实模型在
+      // 后续步骤重发同名同参调用（suspended 结果读起来像"没办成"）；③SSE 断线
+      // 转轮询时从头回放。因此不能只按 call_id 去重——还要按「工具名+入参」签名
+      // 合并，才能把入参完全一致的重复卡收成一张。命中 callId / confirmationId /
+      // 签名任一相同即视为同一张卡，终态与详细摘要向已存在的那张融合。
       const deduped = []
-      const seen = new Map()
+      const byKey = new Map()
       for (const item of rawTools) {
-        let key = item.callId || ''
-        if (!key && item.confirmationId) key = item.confirmationId
-        if (!key) {
-          try {
-            key = `${item.name}:${JSON.stringify(item.args)}`
-          } catch (e) {
-            key = `${item.name}:${item.summary}`
-          }
+        let sig
+        try {
+          sig = `${item.name}:${JSON.stringify(item.args || {})}`
+        } catch (e) {
+          sig = `${item.name}:${item.summary || ''}`
         }
-        if (seen.has(key)) {
-          const prev = seen.get(key)
-          // 状态优先级：rejected/completed/suspended > running
+        const prev =
+          (item.callId && byKey.get('c:' + item.callId)) ||
+          (item.confirmationId && byKey.get('f:' + item.confirmationId)) ||
+          byKey.get('s:' + sig) ||
+          null
+        if (prev) {
+          // 状态优先级：终态（completed/failed/rejected/suspended）覆盖 running
           if (item.status && item.status !== 'running') prev.status = item.status
           // 摘要优先级：详细中文说明 > 工具名
           if (item.summary && item.summary !== item.name) prev.summary = item.summary
           if (item.result) prev.result = item.result
           if (item.resultText) prev.resultText = item.resultText
           if (item.confirmationId && !prev.confirmationId) prev.confirmationId = item.confirmationId
+          if (item.callId && !prev.callId) prev.callId = item.callId
           if (item.amount && !prev.amount) prev.amount = item.amount
           if (item.desc && !prev.desc) prev.desc = item.desc
+          // 补登记键：让后续相同 callId / confirmationId / 签名都命中这张已存在的卡
+          if (item.callId) byKey.set('c:' + item.callId, prev)
+          if (item.confirmationId) byKey.set('f:' + item.confirmationId, prev)
+          byKey.set('s:' + sig, prev)
         } else {
-          seen.set(key, item)
           deduped.push(item)
+          if (item.callId) byKey.set('c:' + item.callId, item)
+          if (item.confirmationId) byKey.set('f:' + item.confirmationId, item)
+          byKey.set('s:' + sig, item)
         }
       }
       return deduped
@@ -2490,7 +2537,7 @@ export default {
 .agent-monologue-card {
   background: #fffbf5;
   border: 2rpx solid #fde68a;
-  border-left: 6rpx solid #FF6B35;
+  border-left: 6rpx solid #2A82E4;
   border-radius: 16rpx;
   padding: 16rpx 20rpx;
   margin-top: 16rpx;
@@ -2815,7 +2862,7 @@ export default {
 
 .trunk-line-vertical.flow-active,
 .trunk-horizontal-bar.flow-active {
-  background: linear-gradient(90deg, #10b981, #FF6B35, #2563eb);
+  background: linear-gradient(90deg, #10b981, #2A82E4, #1967C2);
 }
 
 /* 子智能体分支容器 */
@@ -3590,7 +3637,7 @@ export default {
 .page-badge {
   font-size: 20rpx;
   font-weight: 800;
-  background: #FF6B35;
+  background: #2A82E4;
   color: #ffffff;
   padding: 2rpx 12rpx;
   border-radius: 999rpx;
@@ -3652,7 +3699,7 @@ export default {
 }
 
 .footer-btn.primary {
-  background: #FF6B35;
+  background: #2A82E4;
   color: #ffffff;
   border: none;
 }
