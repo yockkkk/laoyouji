@@ -1,85 +1,133 @@
 /**
- * 高德地图 JS API 2.0 异步加载与地图辅助工具库
- * 包含：
- * 1. 凭据与安全密钥预注入
- * 2. 浏览器环境动态脚本加载（全端兼容防御）
- * 3. 距离与经纬度计算工具
+ * 地图加载与辅助工具库（Leaflet + 高德栅格瓦片方案）
+ *
+ * 为什么不再用高德 JS SDK：本机浏览器连不上高德「控制面」域名
+ * （jsapi.amap.com/web/init、vdata.amap.com/style、restapi.amap.com），
+ * SDK 在贴底图前的鉴权/取样式请求被直接 reset，于是「有路线折线、没有底图」
+ * —— 正是之前整片灰白的现象。而高德「数据面」的栅格瓦片域名
+ * wprd0{1..4}.is.autonavi.com 可以直连，所以改用 Leaflet 直接贴高德栅格瓦片，
+ * 既绕开了断掉的控制面，又保留「高德地图 © AutoNavi」的底图与品牌。
+ *
+ * 坐标基准：高德栅格瓦片是 GCJ-02；后端高德 webservice 返回的经纬度也是 GCJ-02，
+ * 两者同基准，Leaflet（Web 墨卡托）直接用即可，无需 WGS84↔GCJ-02 转换。
+ * 注意：Leaflet 用 [lat, lng] 顺序，与高德 [lng, lat] 相反，统一走 toLeafletLatLng 翻转。
  */
 
+// 高德凭据（保留：后端与潜在 REST 调用仍用同一套 Key/安全码；前端底图已改走瓦片直连）
 export const AMAP_JS_KEY = '706804e5a0a33cdf140126d75bedd3ac'
 export const AMAP_SECURITY_CODE = '6c6e8eddf72527878c4eb76d7273e380'
 
-let amapLoadPromise = null
+// 高德栅格瓦片（数据面，可直连）。style=7 标准路网图，size=1/scl=1 为 256px 瓦片，lang=zh_cn 中文注记。
+export const AMAP_RASTER_TILE_URL =
+  'https://wprd0{s}.is.autonavi.com/appmaptile?x={x}&y={y}&z={z}&lang=zh_cn&size=1&scl=1&style=7'
+export const AMAP_TILE_SUBDOMAINS = ['1', '2', '3', '4']
+export const AMAP_TILE_ATTRIBUTION = '高德地图 © AutoNavi'
 
-export function loadAMap() {
+// Leaflet 运行时（公共 CDN cdnjs，本机可直连；诊断已验证能出图）
+export const LEAFLET_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'
+export const LEAFLET_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'
+
+let leafletLoadPromise = null
+
+/**
+ * 动态加载 Leaflet（CSS + JS，幂等）。
+ * 修复旧 loadAMap 的坑：加载失败后不再缓存「被拒 Promise」，允许「重试」按钮
+ * 直接重装，不必刷新整页。
+ */
+export function loadLeaflet() {
   if (typeof window === 'undefined') {
-    return Promise.reject(new Error('非浏览器环境无法加载高德地图 JS API'))
+    return Promise.reject(new Error('非浏览器环境无法加载 Leaflet 地图库'))
+  }
+  if (window.L) {
+    return Promise.resolve(window.L)
+  }
+  if (leafletLoadPromise) {
+    return leafletLoadPromise
   }
 
-  if (window.AMap) {
-    return Promise.resolve(window.AMap)
-  }
-
-  if (amapLoadPromise) {
-    return amapLoadPromise
-  }
-
-  // 注入安全配置（必须在脚本加载之前）
-  window._AMapSecurityConfig = {
-    securityJsCode: AMAP_SECURITY_CODE,
-  }
-
-  amapLoadPromise = new Promise((resolve, reject) => {
-    if (window.AMap) {
-      resolve(window.AMap)
-      return
+  const promise = new Promise((resolve, reject) => {
+    // 样式表（幂等）
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link')
+      link.id = 'leaflet-css'
+      link.rel = 'stylesheet'
+      link.href = LEAFLET_CSS_URL
+      document.head.appendChild(link)
     }
 
-    const existingScript = document.querySelector('script[src*="webapi.amap.com/maps"]')
-    if (existingScript) {
+    // 已有脚本在加载中：轮询等待 window.L
+    const existing = document.querySelector('script[data-leaflet]')
+    if (existing) {
       let checkCount = 0
       const timer = setInterval(() => {
-        if (window.AMap) {
+        if (window.L) {
           clearInterval(timer)
-          resolve(window.AMap)
-        } else if (++checkCount > 50) {
+          resolve(window.L)
+        } else if (++checkCount > 80) {
           clearInterval(timer)
-          reject(new Error('高德地图脚本加载超时'))
+          reject(new Error('Leaflet 脚本加载超时'))
         }
       }, 100)
       return
     }
 
     const script = document.createElement('script')
-    script.type = 'text/javascript'
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${AMAP_JS_KEY}&plugin=AMap.Scale,AMap.ToolBar,AMap.MoveAnimation`
+    script.src = LEAFLET_JS_URL
     script.async = true
+    script.setAttribute('data-leaflet', '1')
     script.onload = () => {
-      if (window.AMap) {
-        resolve(window.AMap)
-      } else {
-        reject(new Error('高德地图脚本已加载但 AMap 对象不存在'))
-      }
+      if (window.L) resolve(window.L)
+      else reject(new Error('Leaflet 脚本已加载但 L 对象不存在'))
     }
-    script.onerror = (e) => {
-      reject(new Error('高德地图 JS API 脚本网络请求失败'))
-    }
+    script.onerror = () => reject(new Error('Leaflet 脚本网络请求失败'))
     document.head.appendChild(script)
   })
 
-  return amapLoadPromise
+  leafletLoadPromise = promise
+  // 失败即清缓存并摘掉坏脚本，让重试能重新走一遍完整加载
+  promise.catch(() => {
+    leafletLoadPromise = null
+    const s = document.querySelector('script[data-leaflet]')
+    if (s && !window.L) s.remove()
+  })
+  return leafletLoadPromise
 }
 
 /**
- * 注入高德自定义 Marker 的全局样式（幂等，仅注一次）。
+ * 高德 [lng, lat] / {lng, lat} → Leaflet [lat, lng]。
+ * 全项目坐标都以高德顺序存储，贴到 Leaflet 前统一在这里翻转，避免各处手滑写反。
+ */
+export function toLeafletLatLng(p) {
+  if (!p) return null
+  if (Array.isArray(p)) return [p[1], p[0]]
+  return [p.lat, p.lng]
+}
+
+/**
+ * 生成承载自定义 HTML 的 Leaflet DivIcon。
+ * className 统一叠加 lyj-divicon（透明底、flex 居中、overflow 可见），
+ * 这样即便药丸文字比 iconSize 宽，也会以中心对齐锚点、完整显示不被裁切。
+ */
+export function makeMapMarkerIcon(L, { html, className = '', size = [40, 40], anchor } = {}) {
+  const w = size[0]
+  const h = size[1]
+  return L.divIcon({
+    html,
+    className: ('lyj-divicon ' + className).trim(),
+    iconSize: [w, h],
+    iconAnchor: anchor || [Math.round(w / 2), Math.round(h / 2)],
+  })
+}
+
+/**
+ * 注入地图自定义 Marker 的全局样式（幂等，仅注一次）。
  *
- * 为什么不放在页面 .vue 的 <style> 里：高德的 Marker DOM 是 AMap 通过
- * document.createElement 动态插进它自己的容器的，uni-app H5 会给页面样式加
- * data-v 作用域标记（即便写了非 scoped，编译期也可能被限定域），于是
- * `.elder-map-marker` 这类选择器根本命中不到高德插进来的节点 —— 结果就是
- * 站点标签退化成没有底色、没有内边距、逐字竖排的黑色文字。
- * 这里用 JS 直接往 document.head 塞一段无作用域的 <style>，是文档级样式，
- * 一定能命中高德的 Marker 节点。长辈端与子女端两套地图的标记样式都在这里。
+ * 为什么不放在页面 .vue 的 <style> 里：地图库的标记 DOM（Leaflet DivIcon）是
+ * 运行时插进地图自己的图层容器里的，uni-app H5 会给页面样式加 data-v 作用域标记
+ * （即便写了非 scoped，编译期也可能被限定域），于是 `.elder-map-marker` 这类
+ * 选择器根本命中不到地图插进来的节点 —— 结果就是站点标签退化成没有底色、没有
+ * 内边距、逐字竖排的黑色文字。这里用 JS 直接往 document.head 塞一段无作用域的
+ * <style>，是文档级样式，一定能命中标记节点。长辈端与子女端两套地图共用这份样式。
  */
 let markerStylesInjected = false
 export function ensureAmapMarkerStyles() {
@@ -92,6 +140,9 @@ export function ensureAmapMarkerStyles() {
   style.id = 'amap-marker-styles'
   style.type = 'text/css'
   style.textContent = `
+/* —— Leaflet DivIcon 容器复位（去掉默认白底/边框，改为透明并居中承载自定义内容）—— */
+.leaflet-div-icon{background:transparent;border:0;}
+.lyj-divicon{background:transparent;border:0;display:flex;align-items:center;justify-content:center;overflow:visible;}
 /* —— 长辈端 route-map 标记 —— */
 .elder-map-marker{display:inline-block;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,.2);border:2px solid #fff;color:#fff;pointer-events:auto;}
 .elder-map-marker.badge-start{background:#10b981;}

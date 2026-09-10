@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-console.log('=== Running Frontend Verification for Gaode Map 2.0 Integration ===\n')
+console.log('=== Running Frontend Verification for Leaflet + 高德栅格瓦片 Map Integration ===\n')
 
-// 1. Verify index.html Gaode credentials and security config
-console.log('Test 1: index.html Gaode JS API 2.0 and Security Config')
+// 1. Verify index.html no longer statically loads the (unreachable) Gaode JS SDK.
+//    底图改由 utils/amap.js 的 loadLeaflet() 动态加载 Leaflet + 高德栅格瓦片，
+//    所以 index.html 不该再出现高德 JS SDK <script> 与 _AMapSecurityConfig。
+console.log('Test 1: index.html drops the unreachable Gaode JS SDK (Leaflet loads dynamically)')
 const htmlContent = fs.readFileSync('frontend/laoyouji-app/index.html', 'utf-8')
-assert.ok(htmlContent.includes('6c6e8eddf72527878c4eb76d7273e380'), 'index.html must declare securityJsCode')
-assert.ok(htmlContent.includes('706804e5a0a33cdf140126d75bedd3ac'), 'index.html must declare JS API key')
-assert.ok(htmlContent.includes('webapi.amap.com/maps?v=2.0'), 'index.html must load Gaode 2.0 script')
-console.log('✓ Passed: index.html security and API credentials valid')
+assert.ok(!htmlContent.includes('webapi.amap.com/maps'), 'index.html must NOT statically load the Gaode JS SDK')
+assert.ok(!htmlContent.includes('_AMapSecurityConfig'), 'index.html must NOT inject _AMapSecurityConfig')
+assert.ok(htmlContent.includes('loadLeaflet'), 'index.html comment must explain Leaflet loads dynamically via loadLeaflet()')
+assert.ok(htmlContent.includes('<div id="app">'), 'index.html must keep the app mount node')
+console.log('✓ Passed: index.html no longer depends on the broken Gaode control-plane SDK')
 
 // 2. Verify pages.json page registration
 console.log('Test 2: pages.json registration of pages/elder/route-map')
@@ -31,11 +34,15 @@ assert.ok(planCardContent.includes('if (!destination)'), 'goToRouteMap must not 
 assert.ok(planCardContent.includes('if (hospital)'), 'goToRouteMap must prioritize hospital destination over train station arrival')
 console.log('✓ Passed: PlanCard.vue elder button, touch target, and destination preservation verified')
 
-// 4. Verify route-map.vue structure, dynamic points/steps, and 10s reporting loop
-console.log('Test 4: pages/elder/route-map.vue Elder Map and 10s Reporting')
+// 4. Verify route-map.vue structure, Leaflet route, dynamic points/steps, and 10s reporting loop
+console.log('Test 4: pages/elder/route-map.vue Leaflet Map and 10s Reporting')
 const routeMapContent = fs.readFileSync('frontend/laoyouji-app/src/pages/elder/route-map.vue', 'utf-8')
 assert.ok(routeMapContent.includes('elder-amap-container'), 'route-map.vue must contain elder-amap-container DOM mount')
-assert.ok(routeMapContent.includes('AMap.Polyline'), 'route-map.vue must render AMap.Polyline route')
+assert.ok(routeMapContent.includes('loadLeaflet'), 'route-map.vue must load Leaflet dynamically')
+assert.ok(routeMapContent.includes('AMAP_RASTER_TILE_URL'), 'route-map.vue must lay down Gaode raster tiles')
+assert.ok(routeMapContent.includes('L.polyline'), 'route-map.vue must render the route as a Leaflet polyline')
+assert.ok(routeMapContent.includes('toLeafletLatLng'), 'route-map.vue must convert Gaode [lng,lat] to Leaflet [lat,lng]')
+assert.ok(routeMapContent.includes('fitBounds'), 'route-map.vue must fit the map to the route bounds')
 assert.ok(routeMapContent.includes('elder-live-pulse-marker'), 'route-map.vue must render elder breathing marker')
 assert.ok(routeMapContent.includes('setInterval'), 'route-map.vue must run periodic interval')
 assert.ok(routeMapContent.includes('10000'), 'route-map.vue must report every 10 seconds')
@@ -45,9 +52,9 @@ assert.ok(routeMapContent.includes('r.points.map'), 'route-map.vue must dynamica
 assert.ok(routeMapContent.includes('r.steps.map'), 'route-map.vue must dynamically populate steps from backend')
 assert.ok(routeMapContent.includes('/api/trips/route/direct'), 'route-map.vue must query direct route planning')
 assert.ok(routeMapContent.includes('/api/trips/quick'), 'route-map.vue must auto-create quick trip for reporting loop')
-assert.ok(routeMapContent.includes('.nav-back-btn {\n  min-height: 96rpx'), 'Elder back button must have min-height 96rpx')
-assert.ok(routeMapContent.includes('.nav-speak-btn {\n  min-height: 96rpx'), 'Elder speak button must have min-height 96rpx')
-console.log('✓ Passed: route-map.vue elder map, dynamic steps, touch targets, and 10s periodic reporting verified')
+assert.ok(/\.nav-back-btn\s*\{\s*min-height:\s*96rpx/.test(routeMapContent), 'Elder back button must have min-height 96rpx')
+assert.ok(/\.nav-speak-btn\s*\{\s*min-height:\s*96rpx/.test(routeMapContent), 'Elder speak button must have min-height 96rpx')
+console.log('✓ Passed: route-map.vue Leaflet map, dynamic steps, touch targets, and 10s periodic reporting verified')
 
 // 5. Verify guardian.vue child map, trip switcher, and off-track alert
 console.log('Test 5: pages/child/guardian.vue Child Map, Trip Switcher & Off-Route Alert')
@@ -57,20 +64,23 @@ assert.ok(guardianContent.includes('trip-selector-box'), 'guardian.vue must have
 assert.ok(guardianContent.includes('switchTrip'), 'guardian.vue must have switchTrip method')
 assert.ok(guardianContent.includes('offroute-alert-bubble'), 'guardian.vue must render offroute-alert-bubble')
 assert.ok(guardianContent.includes('child-elder-breathe-marker'), 'guardian.vue must render breathing marker')
-assert.ok(guardianContent.includes('AMap.Polyline'), 'guardian.vue must render dynamic Polyline')
+assert.ok(guardianContent.includes('L.polyline'), 'guardian.vue must render the dynamic route as a Leaflet polyline')
 assert.ok(guardianContent.includes('pollTimer'), 'guardian.vue must run real-time polling timer')
 assert.ok(guardianContent.includes('_switchSeq'), 'guardian.vue must guard trip switching against race condition')
 assert.ok(guardianContent.includes('updateOffRouteMarker'), 'guardian.vue must sync off-route marker during polling')
-assert.ok(guardianContent.includes('this.offRouteMarker.setContent(offEl)'), 'guardian.vue must update marker content with official setContent API')
+assert.ok(guardianContent.includes('this.offRouteMarker.setIcon(icon)'), 'guardian.vue must refresh the off-route marker via Leaflet setIcon API')
 assert.ok(guardianContent.includes('.alert-action-btn'), 'guardian.vue must style alert-action-btn for off-route call')
 console.log('✓ Passed: guardian.vue child map, trip switcher, race guard, and alert bubble verified')
 
-// 6. Verify amap.js utilities
+// 6. Verify amap.js utilities (Leaflet loader + Gaode raster tiles)
 console.log('Test 6: src/utils/amap.js utilities')
 const amapJsContent = fs.readFileSync('frontend/laoyouji-app/src/utils/amap.js', 'utf-8')
-assert.ok(amapJsContent.includes('loadAMap'), 'amap.js must export loadAMap')
+assert.ok(amapJsContent.includes('export function loadLeaflet'), 'amap.js must export loadLeaflet')
+assert.ok(!amapJsContent.includes('export function loadAMap'), 'amap.js must no longer export loadAMap')
+assert.ok(amapJsContent.includes('toLeafletLatLng'), 'amap.js must export toLeafletLatLng')
+assert.ok(amapJsContent.includes('wprd0{s}.is.autonavi.com'), 'amap.js must point tiles at the reachable Gaode data-plane')
 assert.ok(amapJsContent.includes('calcDistanceMeters'), 'amap.js must export calcDistanceMeters')
-assert.ok(amapJsContent.includes('6c6e8eddf72527878c4eb76d7273e380'), 'amap.js must contain securityJsCode')
+assert.ok(amapJsContent.includes('6c6e8eddf72527878c4eb76d7273e380'), 'amap.js must retain securityJsCode for backend/REST use')
 
 // Test distance function mathematically
 const R = 6371000
@@ -87,7 +97,7 @@ function calcDist(p1, p2) {
 }
 const d = calcDist([118.7981, 31.9696], [116.3748, 39.9485])
 assert.ok(d > 800_000 && d < 1_100_000, 'Distance should be approx 900+ km')
-console.log('✓ Passed: amap.js math and security verified')
+console.log('✓ Passed: amap.js Leaflet loader, tile source, math, and security verified')
 
 // 7. Verify PlanCard tripId propagation in dashboard.vue and chat.vue
 console.log('Test 7: tripId propagation in dashboard.vue and chat.vue')
@@ -98,5 +108,5 @@ assert.ok(chatContent.includes(':trip-id="m.tripId || \'\'"'), 'chat.vue must pa
 console.log('✓ Passed: PlanCard tripId propagation verified in dashboard.vue and chat.vue')
 
 console.log('\n======================================================')
-console.log('ALL GAODE MAP FRONTEND INTEGRATION CHECKS PASSED!')
+console.log('ALL LEAFLET + 高德栅格瓦片 FRONTEND INTEGRATION CHECKS PASSED!')
 console.log('======================================================')

@@ -112,7 +112,7 @@
     </view>
 
     <template v-else-if="trip && !locationOff">
-      <!-- 真实高德地图行程守护视窗 (高德 JS API 2.0 Canvas 渲染) -->
+      <!-- 真实高德地图行程守护视窗 (Leaflet + 高德栅格瓦片渲染) -->
       <view class="gaode-guard-card">
         <!-- 偏航警报气泡 (长辈偏离路线时醒目显示) -->
         <view v-if="isOffRoute" class="offroute-alert-bubble">
@@ -130,7 +130,11 @@
         <div id="child-gaode-map" class="child-amap-canvas"></div>
 
         <view v-if="mapLoading" class="map-loading-overlay">
-          <text class="map-loading-text">高德地图 2.0 视窗渲染中…</text>
+          <text class="map-loading-text">高德地图加载中…</text>
+        </view>
+        <view v-else-if="mapFailed" class="map-loading-overlay">
+          <text class="map-loading-text">地图加载失败，请检查网络后重试</text>
+          <button class="map-retry-btn" size="mini" @tap="initChildMap">重新加载地图</button>
         </view>
 
         <!-- 地图浮动工具条 -->
@@ -188,7 +192,15 @@
 
 <script>
 import LyjSegment from '../../components/LyjSegment.vue'
-import { loadAMap, ensureAmapMarkerStyles } from '../../utils/amap'
+import {
+  loadLeaflet,
+  ensureAmapMarkerStyles,
+  toLeafletLatLng,
+  makeMapMarkerIcon,
+  AMAP_RASTER_TILE_URL,
+  AMAP_TILE_SUBDOMAINS,
+  AMAP_TILE_ATTRIBUTION,
+} from '../../utils/amap'
 import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { publishPendingCount } from '../../store/pendingBadge'
@@ -219,11 +231,14 @@ export default {
       precision: '',
       loaded: false,
       mapLoading: true,
+      mapFailed: false,
       pendingConfirmations: [],
       actionLoading: {},
       pollTimer: null,
-      amapInstance: null,
+      leafletMap: null,
+      tileLayer: null,
       routePolyline: null,
+      routeCasing: null,
       elderMarker: null,
       offRouteMarker: null,
       waypointMarkers: [],
@@ -296,10 +311,11 @@ export default {
   },
   onUnload() {
     this.stopPolling()
-    if (this.amapInstance) {
+    if (this.leafletMap) {
       try {
-        this.amapInstance.destroy()
+        this.leafletMap.remove()
       } catch (e) {}
+      this.leafletMap = null
     }
   },
   methods: {
@@ -312,7 +328,7 @@ export default {
     },
     async initData() {
       await this.loadTripsAndDetail()
-      await this.initChildAmap()
+      await this.initChildMap()
       this.startPolling()
     },
     async loadTripsAndDetail() {
@@ -396,71 +412,101 @@ export default {
         this.switchTrip(this.tripOptions[idx].value)
       }
     },
-    async initChildAmap() {
+    async initChildMap() {
+      let L
       try {
-        const AMap = await loadAMap()
-        // 高德 Marker 的自定义 DOM 样式必须走文档级注入才能命中（穿透 uni-app 作用域），
-        // 否则站点/偏航气泡会退化成竖排黑字。与长辈端 route-map 共用同一份样式。
-        ensureAmapMarkerStyles()
-        const container = document.getElementById('child-gaode-map')
-        if (!container) return
+        L = await loadLeaflet()
+      } catch (err) {
+        console.error('子女端地图库加载失败:', err)
+        this.mapLoading = false
+        this.mapFailed = true
+        return
+      }
+      // 标记的自定义 DOM 样式必须走文档级注入才能命中（穿透 uni-app 作用域），
+      // 否则站点/偏航气泡会退化成竖排黑字。与长辈端 route-map 共用同一份样式。
+      ensureAmapMarkerStyles()
+      await this.$nextTick()
+      const container = document.getElementById('child-gaode-map')
+      if (!container) {
+        this.mapLoading = false
+        return
+      }
 
-        if (!this.amapInstance) {
-          this.amapInstance = new AMap.Map(container, {
-            zoom: 6,
-            center: [117.5, 35.5],
-            viewMode: '2D',
-            // 不显式设 mapStyle：'amap://styles/normal' 会强制走「个性化地图」服务，
-            // 该服务未在此 key 开通时底图瓦片整片灰白（路线/标记却仍能画出来，
-            // 正是之前"有蓝线没底图"的现象）。留空即用默认标准图，最稳。
-            resizeEnable: true,
-          })
+      try {
+        this.mapFailed = false
+        if (!this.leafletMap) {
+          this.leafletMap = L.map(container, {
+            zoomControl: false,
+            attributionControl: true,
+            scrollWheelZoom: false,
+          }).setView([35.5, 117.5], 6)
+          if (this.leafletMap.attributionControl) {
+            this.leafletMap.attributionControl.setPrefix(false)
+          }
+          // 高德栅格瓦片（GCJ-02，与后端坐标同基准）。绕开断掉的高德控制面，直连数据面贴图。
+          this.tileLayer = L.tileLayer(AMAP_RASTER_TILE_URL, {
+            subdomains: AMAP_TILE_SUBDOMAINS,
+            maxZoom: 18,
+            minZoom: 3,
+            attribution: AMAP_TILE_ATTRIBUTION,
+          }).addTo(this.leafletMap)
         }
         this.renderTripOnMap()
         this.mapLoading = false
+        this.$nextTick(() => {
+          setTimeout(() => {
+            if (this.leafletMap) this.leafletMap.invalidateSize()
+          }, 200)
+        })
       } catch (err) {
-        console.error('子女端高德地图初始化失败:', err)
+        console.error('子女端地图初始化失败:', err)
         this.mapLoading = false
+        this.mapFailed = true
       }
     },
     renderTripOnMap() {
-      if (!this.amapInstance || typeof window === 'undefined' || !window.AMap) return
-      const AMap = window.AMap
+      const L = window.L
+      if (!this.leafletMap || !L) return
 
       // 清除旧图层与站点标记
+      if (this.routeCasing) {
+        this.leafletMap.removeLayer(this.routeCasing)
+        this.routeCasing = null
+      }
       if (this.routePolyline) {
-        this.amapInstance.remove(this.routePolyline)
+        this.leafletMap.removeLayer(this.routePolyline)
         this.routePolyline = null
       }
       if (this.waypointMarkers.length) {
-        this.amapInstance.remove(this.waypointMarkers)
+        this.waypointMarkers.forEach((m) => this.leafletMap.removeLayer(m))
         this.waypointMarkers = []
       }
       if (this.offRouteMarker) {
-        this.amapInstance.remove(this.offRouteMarker)
+        this.leafletMap.removeLayer(this.offRouteMarker)
         this.offRouteMarker = null
       }
 
       // 如果未获取到详细 polyline，使用途经点连线兜底
-      const polyPath = this.routeCoords.length
+      const polyLngLat = this.routeCoords.length
         ? this.routeCoords
         : this.routePointsData.map((p) => [p.lng, p.lat])
+      const latlngs = polyLngLat.map((p) => toLeafletLatLng(p))
 
-      // 绘制行程真实路线轨迹 Polyline
-      this.routePolyline = new AMap.Polyline({
-        path: polyPath,
-        isOutline: true,
-        outlineColor: '#ffffff',
-        borderWeight: 2,
-        strokeColor: '#2563eb', // 专业沉稳高德蓝
-        strokeOpacity: 0.92,
-        strokeWeight: 7,
-        strokeStyle: 'solid',
+      // 行程真实路线轨迹：白色描边打底 + 高德蓝主线
+      this.routeCasing = L.polyline(latlngs, {
+        color: '#ffffff',
+        weight: 10,
+        opacity: 0.9,
         lineJoin: 'round',
         lineCap: 'round',
-        showDir: true,
-      })
-      this.amapInstance.add(this.routePolyline)
+      }).addTo(this.leafletMap)
+      this.routePolyline = L.polyline(latlngs, {
+        color: '#2563eb', // 专业沉稳高德蓝
+        weight: 7,
+        opacity: 0.92,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(this.leafletMap)
 
       // 绘制途经打点 Markers
       this.routePointsData.forEach((pt) => {
@@ -468,70 +514,54 @@ export default {
         const isEnd = pt.type === 'end'
         const badgeColor = isStart ? '#10b981' : isEnd ? '#ef4444' : '#3b82f6'
         const prefix = isStart ? '起·' : isEnd ? '终·' : '站·'
-
-        const markerEl = document.createElement('div')
-        markerEl.className = 'child-map-station-badge'
-        markerEl.style.backgroundColor = badgeColor
-        markerEl.innerText = `${prefix}${pt.name}`
-
-        const marker = new AMap.Marker({
-          position: [pt.lng, pt.lat],
-          content: markerEl,
-          offset: new AMap.Pixel(-40, -28),
+        const icon = makeMapMarkerIcon(L, {
+          html: `<div class="child-map-station-badge" style="background-color:${badgeColor}">${prefix}${pt.name}</div>`,
+          size: [40, 26],
         })
+        const marker = L.marker(toLeafletLatLng(pt), { icon }).addTo(this.leafletMap)
         this.waypointMarkers.push(marker)
-        this.amapInstance.add(marker)
       })
 
       // 绘制/更新长辈当前位置呼吸 Marker
       if (!this.elderMarker) {
-        const liveEl = document.createElement('div')
-        liveEl.className = 'child-elder-breathe-marker'
-        liveEl.innerHTML = `
-          <div class="breathe-wave"></div>
-          <div class="breathe-core">👴 父母实时位置</div>
-        `
-        this.elderMarker = new AMap.Marker({
-          position: this.elderCoords,
-          content: liveEl,
-          offset: new AMap.Pixel(-45, -20),
-          zIndex: 130,
+        const liveIcon = makeMapMarkerIcon(L, {
+          html: `<div class="child-elder-breathe-marker"><div class="breathe-wave"></div><div class="breathe-core">👴 父母实时位置</div></div>`,
+          size: [90, 40],
         })
-        this.amapInstance.add(this.elderMarker)
+        this.elderMarker = L.marker(toLeafletLatLng(this.elderCoords), {
+          icon: liveIcon,
+          zIndexOffset: 1000,
+        }).addTo(this.leafletMap)
       } else {
-        this.elderMarker.setPosition(this.elderCoords)
+        this.elderMarker.setLatLng(toLeafletLatLng(this.elderCoords))
       }
 
       // 同步偏航警告点标记
       this.updateOffRouteMarker()
 
       // 自适应视野缩放
-      this.amapInstance.setFitView([this.routePolyline])
+      if (latlngs.length) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
+      }
     },
     updateOffRouteMarker() {
-      if (!this.amapInstance || typeof window === 'undefined' || !window.AMap) return
-      const AMap = window.AMap
+      const L = window.L
+      if (!this.leafletMap || !L) return
 
       if (this.isOffRoute && this.latestCheckpoint && this.latestCheckpoint.lng != null && this.latestCheckpoint.lat != null) {
-        const offPos = [this.latestCheckpoint.lng, this.latestCheckpoint.lat]
-        const offEl = document.createElement('div')
-        offEl.className = 'child-offroute-marker-bubble'
-        offEl.innerHTML = `⚠️ 偏离路线点：${this.latestCheckpoint.location}`
-
+        const offLatLng = toLeafletLatLng([this.latestCheckpoint.lng, this.latestCheckpoint.lat])
+        const icon = makeMapMarkerIcon(L, {
+          html: `<div class="child-offroute-marker-bubble">⚠️ 偏离路线点：${this.latestCheckpoint.location}</div>`,
+          size: [40, 28],
+        })
         if (!this.offRouteMarker) {
-          this.offRouteMarker = new AMap.Marker({
-            position: offPos,
-            content: offEl,
-            offset: new AMap.Pixel(-60, -32),
-            zIndex: 140,
-          })
-          this.amapInstance.add(this.offRouteMarker)
+          this.offRouteMarker = L.marker(offLatLng, { icon, zIndexOffset: 2000 }).addTo(this.leafletMap)
         } else {
-          this.offRouteMarker.setPosition(offPos)
-          this.offRouteMarker.setContent(offEl)
+          this.offRouteMarker.setLatLng(offLatLng)
+          this.offRouteMarker.setIcon(icon)
         }
       } else if (this.offRouteMarker) {
-        this.amapInstance.remove(this.offRouteMarker)
+        this.leafletMap.removeLayer(this.offRouteMarker)
         this.offRouteMarker = null
       }
     },
@@ -548,7 +578,7 @@ export default {
               const newPos = [cp.lng, cp.lat]
               this.elderCoords = newPos
               if (this.elderMarker) {
-                this.elderMarker.setPosition(newPos)
+                this.elderMarker.setLatLng(toLeafletLatLng(newPos))
               }
             }
             // 增量检查是否有新上报记录
@@ -573,13 +603,13 @@ export default {
       }
     },
     resetChildMapView() {
-      if (this.amapInstance && this.routePolyline) {
-        this.amapInstance.setFitView([this.routePolyline])
+      if (this.leafletMap && this.routePolyline) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
       }
     },
     focusElderLocation() {
-      if (this.amapInstance && this.elderCoords) {
-        this.amapInstance.setZoomAndCenter(12, this.elderCoords)
+      if (this.leafletMap && this.elderCoords) {
+        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 12)
       }
     },
     callElder() {
@@ -903,13 +933,25 @@ export default {
   bottom: 0;
   background: rgba(255, 255, 255, 0.85);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16rpx;
 }
 .map-loading-text {
   font-size: 26rpx;
   color: #475569;
   font-weight: 600;
+}
+.map-retry-btn {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+  border: none;
+  border-radius: 24rpx;
+  padding: 4rpx 24rpx;
+  margin: 0;
 }
 
 /* 偏航预警悬浮气泡 */

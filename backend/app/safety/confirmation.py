@@ -46,10 +46,12 @@ class ConfirmationService:
 
         # 幂等护栏：真实模型在等家人确认期间，会把同一笔高危操作再下一遍——因为
         # suspended 结果在它看来像"没办成"（见 tool.py to_model_content：ok=False）。
-        # 同一会话里 (工具 + 完全一致的入参) 仍在 pending 的确认任务只应有一张，否则
-        # 家人会收到重复审批卡，两张都点同意就是重复下单、重复扣费。命中已存在的挂起
-        # 任务：不再新建、不再重复通知、也不再 emit suspended（那张黄卡第一次已发过，
-        # 重发会在两端各叠一张重复卡），只把"已在等确认、别再下单"回给模型让它收手。
+        # 而且它常常换个入参再下（少填 nights、字段顺序变了），所以按"工具粒度"判重：
+        # 同一会话同一高危工具仍在 pending 的确认任务只应有一张，否则家人会收到重复
+        # 审批卡，两张都点同意就是重复下单、重复扣费（订 2 晚酒店冒出 ¥340 + ¥680 那种）。
+        # 命中已存在的挂起任务：不再新建、不再重复通知、也不再 emit suspended（那张黄卡
+        # 第一次已发过，重发会在两端各叠一张重复卡），只把"已在等确认、别再下单"回给
+        # 模型让它收手。判重细节见 _find_pending_duplicate。
         dup = await self._find_pending_duplicate(turn.session_id, tool.name, args)
         if dup:
             rel = dup.get("relation_for_elder") or "家人"
@@ -187,11 +189,23 @@ class ConfirmationService:
 
     async def _find_pending_duplicate(self, session_id: str, tool_name: str,
                                       args: dict) -> dict | None:
-        """同会话内、同工具、入参完全一致且仍 pending 的确认任务（命中取第一张）。
+        """同会话内、同一高危工具、仍 pending 的确认任务即视为重复（命中取最早那张）。
 
-        入参相等放在 Python 层做精确 dict 比较：tool_args 是 JSON 列，各存储后端
-        对 JSON 列的 .eq 过滤行为不一致，只靠 where 不可靠；where 先按标量列
-        (session_id/tool_name/status) 收窄，再在结果里逐行比 args。
+        原来这里要求**入参完全一致**才算重复。但真实模型在等家人确认期间，会把
+        同一笔高危操作换个入参再下一遍——少填了 nights、字段顺序变了、多带了一句
+        备注……精确比对全都漏网。结果：同一件事在家人端叠出**两张审批卡、两笔金额**
+        （订 2 晚酒店同时冒出 ¥340 与 ¥680），两张都点同意就是重复下单、重复扣费。
+        这不是"显示重复"，是真金白银的重复。
+
+        本 App 的业务前提是明确的：同一会话对每个高危工具，至多只应有**一笔**在办
+        确认。所以只要 (会话 + 工具) 上已有 pending 任务，新来的同工具调用一律并回
+        已存在那张——不再新建任务、不再给家人发第二条通知、也不再 emit 第二张挂起
+        卡，只把"已在等确认、别再下单"回给模型让它收手。
+
+        取**最早创建**的那张：家人很可能已经在手机上看着它了，命中同一张才不会
+        让审批目标在两条记录间跳。``args`` 形参保留：日后若需支持"一次会话内并行
+        办两笔同工具的不同订单"，可在此按核心字段（酒店名 / 车次 / 医院+科室）细分；
+        当前按工具粒度收敛，是对"重复扣费"最稳的护栏。
         """
         try:
             rows = await self._repo.list(
@@ -202,13 +216,9 @@ class ConfirmationService:
         except Exception as e:
             logger.warning(f"查询重复确认任务失败，按无重复放行: {e}")
             return None
-        for row in rows or []:
-            stored = row.get("tool_args")
-            if stored is None:
-                stored = row.get("arguments")
-            if stored == args:
-                return row
-        return None
+        if not rows:
+            return None
+        return sorted(rows, key=lambda r: r.get("created_at") or "")[0]
 
     # ------------------------------------------------------------- 放行凭证校验
 

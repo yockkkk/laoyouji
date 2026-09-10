@@ -10,12 +10,9 @@
         (coverSupport ? ', viewport-fit=cover' : '') + '" />'
       )
     </script>
-    <script type="text/javascript">
-      window._AMapSecurityConfig = {
-        securityJsCode: '6c6e8eddf72527878c4eb76d7273e380',
-      };
-    </script>
-    <script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=706804e5a0a33cdf140126d75bedd3ac&plugin=AMap.Scale,AMap.ToolBar,AMap.MoveAnimation"></script>
+    <!-- 地图不再引入高德 JS SDK：本机浏览器连不上高德控制面域名，SDK 出不了底图。
+         改由 src/utils/amap.js 的 loadLeaflet() 在长辈端/子女端地图页按需动态加载
+         Leaflet + 高德栅格瓦片（wprd0X.is.autonavi.com），其余页面不受牵连、更轻。 -->
     <title>老友记</title>
   </head>
   <body>
