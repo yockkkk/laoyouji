@@ -37,11 +37,14 @@
         <text class="meta-item">⏱️ {{ routeDuration }}</text>
         <text class="meta-item" v-if="routeDistance">🛣️ 约 {{ routeDistance }}</text>
         <text class="meta-item">🚆 高铁+市内接驳</text>
+        <button class="expand-map-tag" size="mini" @tap="toggleMapFullscreen">
+          {{ isMapFullscreen ? '✕ 退出大图' : '⛶ 全屏大图' }}
+        </button>
       </view>
     </view>
 
     <!-- 适老地图视窗 (Leaflet 渲染高德栅格瓦片，坐标 GCJ-02) -->
-    <view class="map-section">
+    <view class="map-section" :class="{ 'fullscreen-mode': isMapFullscreen }">
       <div id="elder-amap-container" class="amap-box"></div>
       <view v-if="mapLoading" class="map-loading-mask">
         <text class="loading-icon">⏳</text>
@@ -52,8 +55,21 @@
         <text class="loading-text">地图暂时没能加载出来</text>
         <button class="map-retry-btn" @tap="initMap">点我重新加载地图</button>
       </view>
+
+      <!-- 全屏大图模式下悬浮的适老退出条 (触控靶区 >= 48px，大字清晰) -->
+      <view v-if="isMapFullscreen" class="fullscreen-topbar">
+        <button class="fullscreen-exit-btn" @tap="toggleMapFullscreen">
+          <text class="exit-icon">✕</text>
+          <text class="exit-text">退出大图 · 查看详细步骤</text>
+        </button>
+        <text class="fullscreen-hint">双指缩放 · 拖动浏览站点与航迹</text>
+      </view>
+
       <!-- 地图工具浮层 -->
       <view class="map-controls">
+        <button class="ctrl-btn ctrl-btn-fullscreen" @tap="toggleMapFullscreen">
+          {{ isMapFullscreen ? '✕ 退出大图' : '⛶ 全屏大图' }}
+        </button>
         <button class="ctrl-btn" @tap="resetView">🗺️ 全览</button>
         <button class="ctrl-btn" @tap="locateElder">📍 我的位置</button>
       </view>
@@ -125,6 +141,7 @@ export default {
       routeDistance: '1023公里',
       mapLoading: true,
       mapFailed: false,
+      isMapFullscreen: false,
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
@@ -467,9 +484,26 @@ export default {
         this.doReportLocation()
       }
     },
+    toggleMapFullscreen() {
+      this.isMapFullscreen = !this.isMapFullscreen
+      this.$nextTick(() => {
+        if (this.leafletMap) {
+          setTimeout(() => {
+            this.leafletMap.invalidateSize()
+            if (this.routePolyline) {
+              this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
+                padding: this.isMapFullscreen ? [60, 60] : [30, 30],
+              })
+            }
+          }, 150)
+        }
+      })
+    },
     resetView() {
       if (this.leafletMap && this.routePolyline) {
-        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
+          padding: this.isMapFullscreen ? [60, 60] : [30, 30],
+        })
       }
     },
     locateElder() {
@@ -666,6 +700,7 @@ export default {
 }
 .summary-meta {
   display: flex;
+  align-items: center;
   gap: 20rpx;
   margin-top: 14rpx;
   padding-top: 12rpx;
@@ -676,6 +711,17 @@ export default {
   color: #64748b;
   font-weight: 600;
 }
+.expand-map-tag {
+  margin-left: auto;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1rpx solid #bfdbfe;
+  font-size: 24rpx;
+  font-weight: 700;
+  border-radius: 20rpx;
+  padding: 4rpx 18rpx;
+  cursor: pointer;
+}
 
 /* 高德地图容器 */
 .map-section {
@@ -685,6 +731,22 @@ export default {
   overflow: hidden;
   box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.08);
   border: 2rpx solid #e2e8f0;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.map-section.fullscreen-mode {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 430px;
+  margin: 0 auto !important;
+  border-radius: 0 !important;
+  border: none !important;
+  z-index: 9999 !important;
+  box-shadow: none !important;
 }
 .amap-box {
   width: 100%;
@@ -693,9 +755,59 @@ export default {
   background: #e2e8f0;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.map-section.expanded .amap-box {
-  height: 82vh;
+.map-section.fullscreen-mode .amap-box {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
 }
+
+/* 全屏大图模式顶部悬浮栏 (触控靶区 >= 48px) */
+.fullscreen-topbar {
+  position: absolute;
+  top: 24rpx;
+  left: 24rpx;
+  right: 24rpx;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  pointer-events: none;
+}
+.fullscreen-exit-btn {
+  pointer-events: auto;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  background: #ffffff;
+  color: #1e293b;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 48rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.2);
+  padding: 0 32rpx;
+  cursor: pointer;
+}
+.exit-icon {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #ef4444;
+}
+.exit-text {
+  font-size: 30rpx;
+  font-weight: 800;
+}
+.fullscreen-hint {
+  align-self: center;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 6rpx 22rpx;
+  border-radius: 20rpx;
+  backdrop-filter: blur(4px);
+}
+
 .map-loading-mask {
   position: absolute;
   top: 0;
@@ -749,6 +861,11 @@ export default {
   padding: 8rpx 20rpx;
   box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.1);
   cursor: pointer;
+}
+.ctrl-btn.ctrl-btn-fullscreen {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
 }
 
 /* 换乘步骤大字卡片 */

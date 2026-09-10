@@ -162,6 +162,20 @@ page, uni-page-body {
     border-radius: 36px;
     overflow: hidden;
   }
+  uni-page-wrapper {
+    height: 100% !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
+  }
+  uni-page-wrapper::-webkit-scrollbar {
+    width: 6px;
+  }
+  uni-page-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.25);
+    border-radius: 6px;
+  }
   uni-page-head {
     max-width: 430px !important;
     left: 0 !important;
