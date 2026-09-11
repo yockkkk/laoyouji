@@ -21,6 +21,15 @@
 
 安全管控中间层：高危操作拦截（子女确认后重放执行）· 方言 ASR · 大白话翻译 · 隐私分级（老人掌控）。
 
+## 📱 公网体验与移动端下载（腾讯云生产环境）
+
+| 入口类型 | 地址 / 下载链接 | 说明 |
+| :--- | :--- | :--- |
+| 📱 **安卓客户端 (APK)** | [http://159.75.94.149:8000/laoyouji.apk](http://159.75.94.149:8000/laoyouji.apk) | 原生轻量封装 (13KB)，点击直接下载安装 |
+| 🌐 **移动端官方下载页** | [http://159.75.94.149:8000/download/](http://159.75.94.149:8000/download/) | 包含一键下载与演示账号指引的自适应页面 |
+| 💻 **Web 端在线体验** | [http://159.75.94.149:8000/](http://159.75.94.149:8000/) | 适老全屏 Web 应用，首页已集成客户端下载横幅 |
+| 📚 **Swagger 接口文档** | [http://159.75.94.149:8000/docs](http://159.75.94.149:8000/docs) | 生产环境 FastAPI 全量接口交互文档 |
+
 ## 一键启动（离线可演，无需任何 API Key）
 
 ```bash
@@ -96,6 +105,8 @@ laoyouji/
 
 ## 文档索引
 
+- [docs/APP_DEPLOY_AND_USER_GUIDE.md](docs/APP_DEPLOY_AND_USER_GUIDE.md) — 📱 移动端安装与系统部署操作说明书（体验指南）
+- [docs/APK_BUILD_PROCESS.md](docs/APK_BUILD_PROCESS.md) — 🛠️ Android 原生轻量化打包流程全景说明书（-124 避坑细节）
 - [docs/PRD.md](docs/PRD.md) — 需求与功能黑名单（红线 R1-R6）
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 架构与关键决策（ADR-1~6）
 - [docs/API.md](docs/API.md) — 端点与 SSE 事件协议
