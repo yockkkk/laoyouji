@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 中文标签不写死在 AndroidManifest.xml 里，只在这里放一份。
+     改应用名 = 改这一行；不要忘了 android:label="@string/app_name" 是唯一引用点。 -->
+<resources>
+    <string name="app_name">康乐</string>
+</resources>

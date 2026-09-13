@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 明文流量放行（Android 9+ 白屏的根因）。
+     API 24+ 起 networkSecurityConfig 是权威配置，会覆盖清单里的
+     android:usesCleartextTraffic="true" 的宽泛放行，所以这里也必须放行：
+     两条一起上才覆盖 API 21-35。 -->
+<network-security-config>
+    <!-- 康乐 H5 由 159.75.94.149:8000 明文托管；壳不内嵌 H5，必须放行 -->
+    <base-config cleartextTrafficPermitted="true" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">159.75.94.149</domain>
+    </domain-config>
+</network-security-config>
