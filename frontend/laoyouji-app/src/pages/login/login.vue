@@ -376,18 +376,23 @@ export default {
   font-weight: 800;
   color: #1967C2;
   letter-spacing: 1rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .slogan-divider {
   font-size: 28rpx;
   color: #93C5FD;
+  white-space: nowrap !important;
 }
 
 .brand-desc {
-  font-size: 26rpx;
+  font-size: 24rpx;
   color: #78716C;
   margin-top: 8rpx;
   letter-spacing: 1rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 /* ---------------- 登录卡片 ---------------- */
@@ -517,13 +522,17 @@ export default {
 .role-title-row {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 10rpx;
+  flex-wrap: nowrap;
 }
 
 .role-name {
-  font-size: 34rpx;
+  font-size: 32rpx;
   font-weight: 800;
   color: #1E293B;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 
 .role-tag {
@@ -531,6 +540,9 @@ export default {
   font-weight: 700;
   padding: 2rpx 12rpx;
   border-radius: 999rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 
 .elder-tag {
@@ -546,32 +558,43 @@ export default {
 .role-desc {
   font-size: 24rpx;
   color: #64748B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .role-features {
   display: flex;
-  gap: 10rpx;
+  align-items: center;
+  gap: 8rpx;
   margin-top: 6rpx;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .feat-pill {
   font-size: 20rpx;
-  color: #78716C;
-  background: rgba(255, 255, 255, 0.85);
-  padding: 2rpx 10rpx;
+  color: #5F758E;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2rpx 8rpx;
   border-radius: 8rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.05);
+  border: 1rpx solid #CCE2F8;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 
 .role-enter-btn {
   display: flex;
   align-items: center;
   gap: 4rpx;
-  padding: 14rpx 22rpx;
+  padding: 12rpx 18rpx;
   border-radius: 16rpx;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 700;
   flex-shrink: 0;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .elder-btn {
@@ -707,29 +730,42 @@ export default {
   cursor: pointer;
 }
 
+.btn-text {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
 /* ---------------- 底部背书 ---------------- */
 .security-footer {
   display: flex;
   justify-content: center;
-  margin-top: 8rpx;
+  margin-top: 12rpx;
+  padding: 0 10rpx;
 }
 
 .security-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 10rpx 20rpx;
-  background: rgba(255, 255, 255, 0.65);
+  justify-content: center;
+  gap: 8rpx;
+  padding: 8rpx 16rpx;
+  background: rgba(255, 255, 255, 0.75);
   border: 1rpx solid #E1ECF7;
   border-radius: 999rpx;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sec-icon {
   font-size: 24rpx;
+  flex-shrink: 0;
 }
 
 .sec-text {
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #78716C;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  text-align: center;
 }
 </style>

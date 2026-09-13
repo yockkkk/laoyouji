@@ -375,7 +375,7 @@ export default {
       if (this.isDesktop) {
         return this.treeExpanded ? '智能体链路 [收起]' : '智能体链路 [展开]'
       }
-      return this.treeDrawerVisible ? '链路 [收起]' : '智能体链路'
+      return this.treeDrawerVisible ? '链路收起' : '链路'
     },
     currentAgent() {
       for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -1402,18 +1402,27 @@ export default {
 }
 .topbar-main {
   display: flex;
-  align-items: baseline;
-  gap: $lyj-space-sm;
+  align-items: center;
+  gap: $lyj-space-xs;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .title {
-  font-size: $lyj-font-lg;
+  font-size: 34rpx;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .status {
-  font-size: $lyj-font-sm;
+  font-size: 22rpx;
   color: $lyj-success;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
 }
 .topbar-right {
   display: flex;
@@ -1772,32 +1781,47 @@ export default {
 }
 
 
-/* 移动端狭窄屏自适应 (< 480px / 375px / 360px)：防止顶栏按钮折行和截断 */
-@media screen and (max-width: 480px) {
+/* 移动端屏幕自适应 (< 600px)：防止顶栏挤压、杜绝标题折行与多余留白 */
+@media screen and (max-width: 600px) {
   .topbar {
-    padding: 14rpx 16rpx;
+    padding: 12rpx 16rpx;
     gap: 8rpx;
+    min-height: 88rpx;
+  }
+  .back-btn {
+    padding: 6rpx 14rpx;
+  }
+  .topbar-main {
+    flex: 1;
+    min-width: 0;
   }
   .topbar-main .status {
-    display: none;
+    display: none; /* 移动端隐藏小状态词，确保主标题 100% 水平独占 */
+  }
+  .title {
+    font-size: 32rpx;
   }
   .agent-tag {
     display: none;
   }
   .tree-toggle-btn {
-    padding: 6rpx 14rpx;
-  }
-}
-
-@media screen and (max-width: 375px) {
-  .history-btn .history-text {
-    display: none;
-  }
-  .new-chat-btn .new-chat-text {
-    display: none;
+    padding: 6rpx 12rpx;
+    gap: 4rpx;
   }
   .tree-toggle-text {
     font-size: 22rpx;
+  }
+  .history-btn {
+    padding: 6rpx 12rpx;
+    .history-text {
+      display: none; /* 移动端紧凑化为图标按钮 📜 */
+    }
+  }
+  .new-chat-btn {
+    padding: 6rpx 12rpx;
+    .new-chat-text {
+      display: none; /* 移动端紧凑化为图标按钮 ＋ */
+    }
   }
 }
 

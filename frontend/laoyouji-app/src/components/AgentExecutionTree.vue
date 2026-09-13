@@ -2317,7 +2317,7 @@ export default {
   border-left: 2rpx solid #e2e8f0;
   box-sizing: border-box;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: $lyj-font-family !important;
 }
 
 /* 顶部工作台标题栏 */
@@ -2358,6 +2358,8 @@ export default {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #ffffff;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .tree-sub-title {

@@ -103,6 +103,8 @@ export default {
 .seg-text {
   font-size: $lyj-font-md;
   color: $lyj-text-light;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .seg-item.active .seg-text {
   color: $lyj-primary;

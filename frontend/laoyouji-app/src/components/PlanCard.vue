@@ -232,11 +232,14 @@ export default {
   font-weight: 700;
   color: $lyj-text;
   line-height: $lyj-line-height;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .card-badges {
   display: flex;
   align-items: center;
   gap: 12rpx;
+  flex-wrap: nowrap;
 }
 .page-badge {
   font-size: $lyj-font-xs;
@@ -245,16 +248,25 @@ export default {
   background: #eff6ff;
   color: #2563eb;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .card-todo {
   font-size: $lyj-font-xs;
   color: $lyj-warn-text;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .card-ready {
   font-size: $lyj-font-xs;
   color: $lyj-success;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .card-head-right {
   flex-shrink: 0;
@@ -270,6 +282,8 @@ export default {
   color: $lyj-primary;
   font-size: $lyj-font-xs;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .plan-toggle-btn.open {
   background: $lyj-primary-soft;

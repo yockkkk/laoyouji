@@ -221,6 +221,8 @@ export default {
   font-size: $lyj-font-md;
   color: $lyj-text-on;
   font-weight: 700;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .interim {
   padding: 0 $lyj-space-md;

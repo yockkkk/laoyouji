@@ -49,6 +49,9 @@ export default {
   background: rgba(42, 130, 228, 0.08);
   color: $lyj-text-light;
   align-self: flex-start;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .lyj-back.pressed {
   background: rgba(42, 130, 228, 0.18);
@@ -56,8 +59,11 @@ export default {
 .arrow {
   font-size: 52rpx;
   line-height: 0.8;
+  flex-shrink: 0;
 }
 .label {
   font-size: 26rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 </style>

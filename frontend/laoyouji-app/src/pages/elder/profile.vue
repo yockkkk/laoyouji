@@ -589,11 +589,16 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
   font-weight: 700;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .title {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .user-card {
   background: $lyj-card;

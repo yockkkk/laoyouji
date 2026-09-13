@@ -19,17 +19,32 @@ export default {
  */
 @import './uni.scss';
 
-page, uni-page-body, body {
-  background-color: $lyj-bg;
-  font-size: $lyj-font-md; /* 20px 正文地板 */
-  color: $lyj-text;
-  font-family: $lyj-font-family;
+page, uni-page-body, body, view, text, button, input, textarea {
+  font-family: $lyj-font-family !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-button, input, textarea {
-  font-family: $lyj-font-family;
+page, uni-page-body, body {
+  background-color: $lyj-bg;
+  font-size: $lyj-font-md; /* 20px 正文地板 */
+  color: $lyj-text;
+}
+
+/* 全局防单字孤儿折行与标题挤压保护 */
+.title,
+.name,
+.role-name,
+.role-tag,
+.feat-pill,
+.btn-text,
+.tab-text,
+.badge,
+.tag,
+.quick-label,
+.sec-text {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 button {

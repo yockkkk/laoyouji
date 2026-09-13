@@ -226,10 +226,14 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .sub {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .header-logo {
   font-size: 90rpx;

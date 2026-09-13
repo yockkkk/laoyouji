@@ -881,6 +881,9 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 700;
   color: $lyj-text-on;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .sub {
   font-size: $lyj-font-sm;

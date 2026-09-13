@@ -246,6 +246,8 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
   font-weight: 700;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .topbar-info {
   display: flex;
@@ -256,10 +258,15 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .sub {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .empty {
   display: flex;
