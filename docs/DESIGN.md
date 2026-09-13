@@ -1,4 +1,4 @@
-# 老友记 · 设计基线（DESIGN.md）
+# 康乐 · 设计基线（DESIGN.md）
 
 > blueprint 五步流程第 2 步的产物。前端一切返工以本文件为准：**页面不得自行发明颜色、字号、间距和导航方式。**
 
@@ -19,14 +19,16 @@
 
 | 保留项 | 值 | 理由 |
 |---|---|---|
-| 品牌主色 | `#e8541e` 暖橙红 | 已是全局识别色，醒目且不冷 |
-| 页面底色 | `#faf6f0` 米白暖底 | 老人端长时间阅读不刺眼 |
-| 页面数量 | 9 页，不增不减 | 竞赛演示动线已定 |
+| 品牌主色 | `#FF6B35` 暖橙 | 已是全局识别色，醒目且不冷（re-skin 后由 `#e8541e` 调整，现值见 `uni.scss:16`） |
+| 页面底色 | `#FDFBF7` 米白暖底 | 老人端长时间阅读不刺眼（re-skin 后由 `#faf6f0` 调整，现值见 `uni.scss:21`） |
+| 页面数量 | **14 页**（登录 2 + 老人端 6 + 子女端 6） | 大改后又陆续新增（老人端 健康/路线图、子女端 家人/通知），已超出初稿的 9 页 |
 | 整体观感 | 卡片 + 圆角 + 暖色 | 不推翻 |
 
 ## 2. Token
 
 全部落在 `src/uni.scss`；页面只准引用变量。**新增页面样式必须写 `<style lang="scss" scoped>`**，否则引用不到。
+
+> **本节的 token 表是 `src/uni.scss` 的现状快照。** re-skin 时 `uni.scss` 重新取过一批值（主色、底色、子女端冷色系、圆角阴影等），下面各表已按现值对齐；今后若两者再有出入，**以 `src/uni.scss` 为准**。
 
 uni-app 会把 `src/uni.scss` 自动注入每个 SFC 的 scss 块（官方约定，无需 import）。但本项目仍在每个样式块顶部显式写一行 `@import '../uni.scss';`（组件）或 `@import '../../uni.scss';`（页面）：
 
@@ -62,26 +64,33 @@ $lyj-font-sm: 36rpx;   // 18px 次要说明。仅限辅助信息，不得承载�
 
 ```scss
 /* 品牌 */
-$lyj-primary:      #e8541e;   // 主色
-$lyj-primary-dark: #c94314;   // 按下态
-$lyj-primary-soft: #ffe3c2;   // 主色浅底（进行中、选中态）
+$lyj-primary:      #FF6B35;   // 主色（re-skin：更柔和明亮的暖橙）
+$lyj-primary-dark: #E85D04;   // 按下态
+$lyj-primary-soft: #FFE8D6;   // 主色浅底（进行中、选中态）
 
 /* 底与面 */
-$lyj-bg:    #faf6f0;          // 页面底
+$lyj-bg:    #FDFBF7;          // 页面底（清透的米白暖底）
 $lyj-card:  #ffffff;          // 卡片面
-$lyj-line:  #eee3d8;          // 分隔线、未激活底
+$lyj-line:  #F2EBE1;          // 分隔线、未激活底
 
 /* 文字 */
-$lyj-text:       #333333;     // 正文
-$lyj-text-light: #8a8078;     // 次要文字
+$lyj-text:       #2B2D42;     // 正文（柔和的深灰蓝，避免纯黑刺眼）
+$lyj-text-light: #8D99AE;     // 次要文字
 $lyj-text-on:    #ffffff;     // 主色底上的字
 
 /* 语义 */
-$lyj-success: #2e8b57;        // 已完成、已服药
-$lyj-danger:  #d93025;        // 金额、异常
-$lyj-info:    #1a73e8;        // 链接、说明
-$lyj-warn:    #f0b25a;        // 待确认（挂起态专用）
-$lyj-warn-bg: #fff4e3;        // 待确认底
+$lyj-success:    #2e8b57;     // 已完成、已服药
+$lyj-success-bg: #e3f2ea;     // 已完成底（打卡后的格子）
+$lyj-danger:     #d93025;     // 金额、异常
+$lyj-info:       #1a73e8;     // 链接、说明
+$lyj-warn:       #f0b25a;     // 待确认（挂起态专用）
+$lyj-warn-bg:    #fff4e3;     // 待确认底
+$lyj-warn-text:  #9a6410;     // 待确认文字
+
+/* 状态与装饰（从页面里回收的字面量，不是新造的颜色） */
+$lyj-disabled: #d5c9bd;       // 禁用底
+$lyj-field:    #f5efe6;       // 输入框、未选中格子的底
+$lyj-muted-bg: #f2ece2;       // 流水提示条底
 ```
 
 `$lyj-warn` / `$lyj-warn-bg` 从 `ConfirmCard.vue` 现有的 `#f0b25a` / `#fff4e3` 提升为 token —— 挂起态是本项目的招牌状态，它需要一个稳定的颜色，而不是一个页面里的字面量。**PlanCard 那 6 种棕色一律作废**，交付卡片改用 `$lyj-card` + `$lyj-line` + `$lyj-primary`。
@@ -90,19 +99,19 @@ $lyj-warn-bg: #fff4e3;        // 待确认底
 
 #### 子女端（冷色系）
 
-老人端暖、子女端冷，是刻意的：两端同时开着演示时，一眼能看出"这是家人这一侧"。这套值同样全部从子女端四页回收，并把同义的近似色合并：
+老人端暖、子女端冷，是刻意的：两端同时开着演示时，一眼能看出"这是家人这一侧"。这套值同样全部从子女端各页回收，并把同义的近似色合并：
 
 ```scss
-$lyj-child-bg:       #f4f6f9;   // 页面底（原页面里另有一个 #f8fafc）
-$lyj-child-head:     #1f2d3d;   // 深色顶栏
-$lyj-child-head-sub: #9fb0c3;   // 深色顶栏上的次要字
-$lyj-child-text:     #243242;   // 标题与正文
+$lyj-child-bg:       #F8F9FA;   // 页面底（re-skin：更干净的浅灰底）
+$lyj-child-head:     #1D2D44;   // 深色顶栏
+$lyj-child-head-sub: #9BA4B5;   // 深色顶栏上的次要字
+$lyj-child-text:     #2B2D42;   // 标题与正文
 $lyj-child-body:     #5a6b7d;   // 说明性正文
 $lyj-child-muted:    #93a1b3;   // 次要文字、空态
-$lyj-child-line:     #f0f3f7;   // 分隔线、未选中底、内嵌面板（原另有 #e8edf3）
-$lyj-info-bg:        #e8f0fd;   // info 浅底（选中态、胶囊）
-$lyj-info-line:      #cfe0f5;   // info 描边
-$lyj-dot-idle:       #cdd9e8;   // 路线上还没走到的点
+$lyj-child-line:     #E9ECEF;   // 分隔线、未选中底、内嵌面板
+$lyj-info-bg:        #F0F4F8;   // info 浅底（选中态、胶囊）
+$lyj-info-line:      #D9E2EC;   // info 描边
+$lyj-dot-idle:       #D3DCE6;   // 路线上还没走到的点
 ```
 
 另有三处**不给新 token，直接复用语义色**——因为它们表达的是全项目同一个状态，各自成一套颜色只会让同一件事在两端长得不一样：
@@ -129,12 +138,12 @@ $lyj-gap: $lyj-space-md; // 保留别名，避免一次性改全部引用
 ### 2.4 圆角与阴影
 
 ```scss
-$lyj-radius:    24rpx;        // 卡片
-$lyj-radius-lg: 28rpx;        // 气泡
+$lyj-radius:      32rpx;      // 卡片（re-skin：更大圆角，更温和）
+$lyj-radius-lg:   40rpx;      // 气泡
 $lyj-radius-pill: 999rpx;     // 分段控件、胶囊按钮
 
-$lyj-shadow-card:   0 2rpx 12rpx rgba(0, 0, 0, 0.06);
-$lyj-shadow-raised: 0 4rpx 16rpx rgba(0, 0, 0, 0.10);
+$lyj-shadow-card:   0 12rpx 36rpx rgba(43, 45, 66, 0.04);
+$lyj-shadow-raised: 0 16rpx 48rpx rgba(43, 45, 66, 0.08);
 ```
 
 原 `PlanCard` 的 `rgba(180,120,40,.12)` 棕色阴影作废，统一用中性阴影。
@@ -152,7 +161,7 @@ $lyj-tabbar-h: 120rpx;        // 60px 底栏高度
 
 ### 2.6 导航内边距
 
-老人端 4 页都是 `navigationStyle: custom`（`pages.json:9,13,17,21`），自定义头必须自己让开状态栏：
+老人端 6 页都是 `navigationStyle: custom`（各页 `path` 行在 `pages.json:12,16,20,24,28,32`，对应的 `style` 行在 `pages.json:13,17,21,25,29,33`），自定义头必须自己让开状态栏：
 
 ```scss
 $lyj-nav-h: 88rpx;            // 自定义头内容区高度
@@ -163,9 +172,9 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 
 ## 3. 信息架构
 
-9 页 = 登录 1 + 老人端 4 + 子女端 4（其中 1 页是下钻详情）。
+14 页 = 登录 2（登录 / 注册）+ 老人端 6 + 子女端 6（其中 1 页是下钻详情）。
 
-### 老人端（4 页，进 tabBar）
+### 老人端（4 页进 tabBar + 2 页下钻）
 
 | 页面 | 首屏第一件事 | 说明 |
 |---|---|---|
@@ -173,15 +182,21 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 | `elder/chat` | 最后一条对话 + 输入区 | 办事过程可见：步骤条、卡片、挂起提示都在这里 |
 | `elder/medications` | 今天该吃的药 + 打卡 | 高频、低门槛，独立成页 |
 | `elder/profile` | 我的家人 / 隐私开关 / 退出 | 低频设置 |
+| `elder/health` | 健康概览（分诊档位横幅 + 指标） | 下钻页，不在 tabBar |
+| `elder/route-map` | 高德路线规划（大字导航 + 位置上报） | 下钻页，不在 tabBar |
 
-### 子女端（3 个平级视图 + 1 个下钻）
+### 子女端（5 个平级视图 + 1 个下钻）
 
 | 页面 | 角色 |
 |---|---|
-| `child/dashboard` | 看板（平级视图 1）—— 待确认事项、老人今日概况 |
-| `child/guardian` | 守护（平级视图 2）—— 行程与位置 |
-| `child/privacy` | 隐私（平级视图 3）—— 分级授权开关 |
-| `child/confirm-detail` | **下钻**详情 —— 从看板点某条待确认进来，按同意/拒绝 |
+| `child/dashboard` | 看板（平级视图 1）—— 就医知会、老人今日概况 |
+| `child/family` | 家人（平级视图 2）—— 家庭成员管理、发起绑定 |
+| `child/notification` | 通知（平级视图 3）—— 待我确认的付款 + 长辈动态通知 |
+| `child/guardian` | 守护（平级视图 4）—— 行程与位置 |
+| `child/privacy` | 隐私（平级视图 5）—— 分级授权开关 |
+| `child/confirm-detail` | **下钻**详情 —— 从看板/通知点某条待确认进来，按同意/拒绝 |
+
+顶部分段控件按此顺序列五项（看板 / 家人 / 通知 / 守护 / 隐私），`confirm-detail` 不在其中。
 
 ## 4. 导航模型（成文规则）
 
@@ -191,10 +206,10 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 | 下钻详情 | `uni.navigateTo` | 保留来路，返回键可用 |
 | 返回 | `uni.navigateBack` | 或交给系统返回键 |
 | 登录成功 / 切换角色 / 退出登录 | `uni.reLaunch` | 清空页面栈是**这里**要的语义 |
-| 子女端平级根视图互切（看板 ↔ 守护 ↔ 隐私） | `uni.reLaunch` | 子女端没有 `tabBar`，这三页互为平级根视图 —— `switchTab` 用不上，而"看板→守护→看板"若入栈会越按越深。见 `LyjSegment.vue:44` |
+| 子女端平级根视图互切（看板 / 家人 / 通知 / 守护 / 隐私 五项） | `uni.reLaunch` | 子女端没有 `tabBar`，这五页互为平级根视图 —— `switchTab` 用不上，而"看板→守护→看板"若入栈会越按越深。分段控件的切换逻辑在 `LyjSegment.vue:56`（**该处现仍走 `redirectTo`，待改，见下**） |
 | — | ~~`uni.redirectTo`~~ | **禁止**。它销毁当前页且不清栈，是两种正确语义之间的一个坑 |
 
-> `reLaunch` 的判据不是"是不是登录"，而是**目标页是不是一个根视图**。子女端三页
+> `reLaunch` 的判据不是"是不是登录"，而是**目标页是不是一个根视图**。子女端五页
 > 是根视图（栈里只该有一个），`confirm-detail` 不是（它必须能返回看板）。
 
 ### 现状违规清单（13 处，按类改，不逐行讨论）
@@ -205,7 +220,7 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 
 **C 类 —— 已正确**（2 处）：`dashboard.vue:161`、`dashboard.vue:166` 的 `navigateTo`，保持不动。
 
-> 返工后 13 处全部按上表转换完毕，`src/` 下 `grep uni.redirectTo` 仅剩 `LyjTabBar.vue` 一处 —— 而那个文件本身待删（见下）。
+> 上述 A/B 类跳转均已按上表转换。`LyjTabBar.vue` 本身已整体删除（全仓零引用，`find` 无结果），所以它那处随之消失；但**全仓 `grep uni.redirectTo` 仍有 2 处真调用**：`components/LyjSegment.vue:56`（分段控件平级互切，正应改成 `uni.reLaunch`）与 `pages/login/register.vue:118`（注册成功回登录页，正应改成 `uni.reLaunch`）。另有 `components/LyjBack.vue:4,27` 两处只是注释文字，不是调用。这两处未清，见 §7。
 
 ### `switchTab` 不能带参数 —— 这条约束改了首页的交互
 
@@ -216,7 +231,7 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 | 来路 | 是谁的话 | 落到聊天页 |
 |---|---|---|
 | 首页 120px 麦克风 | **老人自己说的** | `autoSend: true` → 直接办 |
-| 首页快捷入口卡片 | 卡片背后的**预设话术**（如"我想去北京看腿疼的老毛病"，替老人编了症状） | `autoSend: false` → 只填进输入框，等老人自己按发送 |
+| 首页快捷入口卡片 | 卡片背后的**预设话术**（如"我想去鼓楼医院看腿疼的老毛病"，替老人编了症状） | `autoSend: false` → 只填进输入框，等老人自己按发送 |
 
 老人点的是"看病挂号"四个字，不是那句带症状细节的话。替他把那句话说出去，是在他没说过的内容上代他表态。
 
@@ -245,18 +260,18 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 
 两点实现说明：
 
-1. **子女端不需要 `uni.hideTabBar()`。** uni-app 的原生 tabBar 只在 `tabBar.list` 声明过的页面出现；子女端 4 页都不在名单里，天然没有底栏。这正好落实"子女端无底栏"的决定，不必写任何隐藏代码。
+1. **子女端不需要 `uni.hideTabBar()`。** uni-app 的原生 tabBar 只在 `tabBar.list` 声明过的页面出现；子女端 6 页都不在名单里，天然没有底栏。这正好落实"子女端无底栏"的决定，不必写任何隐藏代码。
 2. `fontSize` / `height` 在 H5 端的支持随版本浮动。如果实测不生效，用全局样式覆盖 `.uni-tabbar`（高度 `$lyj-tabbar-h`、字号 `28rpx`）。tabBar 文字是导航标签而非正文，允许低于正文地板。
 
 ### 子女端分段控件
 
-顶部分段控件（看板 / 守护 / 隐私）+ `navigateTo` 下钻。选择理由：子女的动线是"收到通知 → 看详情 → 按确认"，不是浏览 tab；同时避开 uni-app 原生 tabBar 无法按角色切换、H5 端条目隐藏支持不全的坑。
+顶部分段控件（看板 / 家人 / 通知 / 守护 / 隐私，五项）+ `navigateTo` 下钻。选择理由：子女的动线是"收到通知 → 看详情 → 按确认"，不是浏览 tab；同时避开 uni-app 原生 tabBar 无法按角色切换、H5 端条目隐藏支持不全的坑。
 
 - 形态：`$lyj-radius-pill` 胶囊，选中态 `$lyj-primary-soft` 底 + `$lyj-primary` 字，高度 `$lyj-hit-min`
-- 三个视图之间切换用 `uni.reLaunch`（它们互为平级根视图，栈里只该有一个）
+- 五个平级视图之间切换用 `uni.reLaunch`（它们互为平级根视图，栈里只该有一个）
 - `confirm-detail` 用 `navigateTo` 进入，返回键回看板
 
-**子女端保留原生导航栏**（`pages.json` 里这 4 页都不设 `navigationStyle: custom`）。两条理由：
+**子女端保留原生导航栏**（`pages.json` 里这 6 页都不设 `navigationStyle: custom`）。两条理由：
 
 1. `confirm-detail` 的返回按钮是白送的。子女端整套导航决策的落点就是"返回键可用"，自己画一个返回箭头没有任何好处。
 2. 原生标题栏正好承担了两端的视觉分野 —— 老人端是沉浸式自定义头，子女端是系统 chrome。
@@ -264,7 +279,7 @@ $lyj-nav-h: 88rpx;            // 自定义头内容区高度
 由此有两条实现约束：
 
 - 子女端页面**不要**再写 `calc(var(--status-bar-height) + …)` 的顶部内边距。状态栏已被原生栏占掉，再让一次会在标题下顶出一条空白。（这一条我自己先踩了一遍。）
-- 这 4 页的 `navigationBarBackgroundColor` 设成 `#1f2d3d`（= `$lyj-child-head`）、`navigationBarTextStyle: white`。否则全局那条 `#faf6f0` 暖米色标题栏会压在看板的深色头上，接缝很难看。`pages.json` 是 JSON，取不到 SCSS 变量，所以这里的十六进制字面量是不可避免的（§7 的判据也只查 `src/pages` 与 `src/components` 下的样式）。
+- 这 6 页的 `navigationBarBackgroundColor` 设成 `#1f2d3d` / `#1D2D44`（= `$lyj-child-head`）、`navigationBarTextStyle: white`。否则全局那条 `#faf6f0` 暖米色标题栏会压在看板的深色头上，接缝很难看。`pages.json` 是 JSON，取不到 SCSS 变量，所以这里的十六进制字面量是不可避免的（§7 的判据也只查 `src/pages` 与 `src/components` 下的样式）。
 
 ## 5. 组件契约
 
@@ -280,12 +295,12 @@ agent:  String   main | travel | health | community —— 决定左侧头像
 
 现状可用。两处调整：`.text` 字号 `36rpx → $lyj-font-md`，`.replay-text` `26rpx → $lyj-font-sm`。
 
-"再念一遍"**已经实现且闭环**（`ChatBubble.vue:31-34` 调 `api/asr.js:132` 的 `speak()`，H5 `speechSynthesis`、语速 0.85 适老、不支持时返回 false 并弹提示）。计划书里"TTS 未实现"那条是错的。真实缺口只有两个，都更窄：
+"再念一遍"**已经实现且闭环**（`ChatBubble.vue:31-34` 调 `api/asr.js:223` 的 `speak()`，H5 `speechSynthesis`、语速 0.85 适老、不支持时返回 false 并弹提示）。计划书里"TTS 未实现"那条是错的。真实缺口只有两个，都更窄：
 
 - `speak()` 在非 H5 端（小程序 / App）直接返回 false，需要 `uni.createInnerAudioContext` + TTS provider 才能补
 - **朗读按钮原来只长在 `ChatBubble` 上**，交付卡片没有朗读入口。返工时给 `PlanCard` 补了一个（见 5.3）。
 
-补的时候纠正了本文档先前的一个错误说法。原文写的是"健康类卡片应补一个朗读按钮，念 `announce`"—— **`announce` 到不了卡片**。R4 免责声明在后端确实同时写进工具结果的 `summary` 与 `announce`（`test_medical_safety.py` 有断言），但 SSE 的 `card` 事件推的只是 `outcome.result["card"]` 这一个子字典（`core/session.py:343`），`announce` 是结果的**兄弟字段**，不在卡片里。所以：
+补的时候纠正了本文档先前的一个错误说法。原文写的是"健康类卡片应补一个朗读按钮，念 `announce`"—— **`announce` 到不了卡片**。R4 免责声明在后端确实同时写进工具结果的 `summary` 与 `announce`（`test_medical_safety.py` 有断言），但 SSE 的 `card` 事件推的只是 `outcome.result["card"]` 这一个子字典（`core/session.py:385`），`announce` 是结果的**兄弟字段**，不在卡片里。所以：
 
 | 免责声明的落点 | 走哪条 SSE | 界面上谁负责显示 |
 |---|---|---|
@@ -322,13 +337,13 @@ progress: Object  { total: Number, done: Number, doing: Number }
 
 现状 `card.body` 是扁平 `{k: v}` 字典，模板直接 `v-for` 铺开（`PlanCard.vue:9`）。两个后果：
 
-1. 页序不存在 —— "五页"在这个组件里根本不是一个概念
+1. 页序不存在 —— "四页"在这个组件里根本不是一个概念
 2. **子 Agent 没填上的字段不会成为 key，于是静静消失** —— 而需求是显式渲染"待补"，绝不编造
 
 新契约，吃 `plan_builder.py` 的 typed 输出：
 
 ```
-title:    String   张桂芳 · 北京就医出行计划书
+title:    String   张桂芳 · 南京就医出行计划书
 sections: Array    [{ heading: String,
                       rows:  [{ label: String, value: String, missing: Boolean }],
                       notes: [String] }]           页内叮嘱
@@ -338,12 +353,12 @@ compact:  Boolean  紧凑模式 —— 两张轻量卡片用同一组件
 announce: String   朗读文本的**覆盖**位；留空则从卡面合成
 ```
 
-> 标题按后端实际输出写：`plan_builder.py:302` 是 `f"{name} · {city}就医出行计划书"` —— **没有书名号，也没有"老人"二字**，名字来自种子数据的 `张桂芳`（`db/seed.py:16`）。本文档先前两处写的"《张桂芬老人 · …》"错在三个地方，已按代码订正。文档里的示例标题会被照着做成 PPT，写错就等于让演示稿和屏幕对不上。
+> 标题按后端实际输出写：`plan_builder.py:303` 是 `f"{name} · {city}就医出行计划书"` —— **没有书名号，也没有"老人"二字**，名字来自种子数据的 `张桂芳`（`db/seed.py:37`）。本文档先前两处写的"《张桂芬老人 · …》"错在三个地方，已按代码订正。文档里的示例标题会被照着做成 PPT，写错就等于让演示稿和屏幕对不上。
 
 - `missing: true` 的行渲染成 `$lyj-text-light` 的"待补"，**并且照样占一行** —— 缺页必须看得见
 - `complete: false` 时头部加一条"还有 N 项待补"提示，用 `$lyj-warn`。计数由组件自己数 `rows` 里的 `missing`，不信任外部传进来的数
-- 就医计划书 = 5 个 section，页序写死：①挂号信息 ②去程车票 + 返程建议 ③酒店 ④随身清单 ⑤天气与穿衣
-- **序号已经长在 `heading` 里了。** 后端的页标题是 `"第一页 · 挂号信息"`（`plan_builder.py:316`），组件**不得**再自己加一层"①"或下标 —— 那会渲染成"1. 第一页 · 挂号信息"。这条踩过一次
+- 就医计划书 = 4 个 section，页序写死：①挂号信息 ②怎么去医院 ③随身清单 ④天气与穿衣
+- **序号已经长在 `heading` 里了。** 后端的页标题是 `"第一页 · 挂号信息"`（`plan_builder.py:319`），组件**不得**再自己加一层"①"或下标 —— 那会渲染成"1. 第一页 · 挂号信息"。这条踩过一次
 - `compact: true` 时收起 section 标题、去掉打印留白，供《本周用药与复查安排》《社区服务预约单》使用
 - **页内叮嘱必须留在它那一页**（`section.notes`）。早先的写法把所有 note 抽到卡片末尾，于是"记得带医保卡"会漂到天气页下面 —— 只有卡片级的副标题、免责声明和模拟数据披露才进 `notes`
 
@@ -358,7 +373,7 @@ announce: String   朗读文本的**覆盖**位；留空则从卡面合成
 | `type` | `compact = type !== 'trip_plan'` |
 | `printable` / `generated_on` / `body` / `missing` | 暂不渲染（`missing` 由组件自己数） |
 
-`footnote` 是**模拟数据披露**（`plan_builder.py:52` 的 `MOCK_NOTE`，只有五页计划书带它）。返工时发现 `_toCard` 原来没取这个字段，于是"车次、号源、酒店数据来自模拟接口，正式落地对接官方开放 API"这句话印不到那张要打印出来的纸上。披露模拟数据是本项目的合规要求 —— 后端写了、前端丢了，等于没披露。已补。
+`footnote` 是**模拟数据披露**（`plan_builder.py:52` 的 `MOCK_NOTE`，只有就医计划书带它）。返工时发现 `_toCard` 原来没取这个字段，于是"（竞赛原型：号源、路线、天气数据来自模拟接口，正式落地对接官方开放 API）"这句话印不到那张要打印出来的纸上。披露模拟数据是本项目的合规要求 —— 后端写了、前端丢了，等于没披露。已补。
 
 **朗读按钮**：`speech` 计算属性把标题 → 各页标题 → `label：value` → 页内叮嘱 → 脚注按顺序拼成一段，用 `。` 连接；待补的行照念"待补"（听的人也有权知道哪一项还没定下来）。`announce` prop 留作覆盖位，但后端不会填它 —— 原因见 5.1。
 
@@ -435,7 +450,7 @@ bubble.text = d.text ?? ''
 
 一次工具调用在界面上只该有一个气泡，而这个气泡的文字必须来自**结果**，不是调用。
 
-理由是硬的：R4 的免责声明是 `HealthDisclaimerGuard` 在 `tools/post-execute` 上注进**结果** `summary` 的（`safety/risk_rules.py:100` 那一句 `result["summary"] += DISCLAIMER`）。调用摘要是工具自己在挂起前写的一句"正在查号源"，那时声明还不存在。**只渲染 `tool_call.summary`，那句"仅供参考，请遵医嘱"就永远到不了老人眼前** —— R4 在后端强制注入、在前端被丢掉，等于没有。
+理由是硬的：R4 的免责声明是 `HealthDisclaimerGuard` 在 `tools/post-execute` 上注进**结果** `summary` 的（`safety/risk_rules.py:153` 那一句 `result[key] = f"{text}{note}"`）。调用摘要是工具自己在挂起前写的一句"正在查号源"，那时声明还不存在。**只渲染 `tool_call.summary`，那句"仅供参考，请遵医嘱"就永远到不了老人眼前** —— R4 在后端强制注入、在前端被丢掉，等于没有。
 
 所以：
 
@@ -470,7 +485,7 @@ bubble.text = d.text ?? ''
 
 **① `privacy` 字段缺席 ⇒ 按"全关"处理，不是按默认值。**
 
-`/api/child/{id}/dashboard` 在没有绑定关系时走提前返回（`api/routes_child.py:34`），响应里**连 `privacy` 和 `elder` 都没有**。所以前端的兜底常量必须是
+`/api/child/{id}/dashboard` 在没有绑定关系时走提前返回（`api/routes_child.py:41`），响应里**连 `privacy` 和 `elder` 都没有**。所以前端的兜底常量必须是
 
 ```js
 const DENIED = { location_level: 'off', health_level: 'off', bound: false }
@@ -482,7 +497,7 @@ const DENIED = { location_level: 'off', health_level: 'off', bound: false }
 
 summary 档下药名被换成 `MASKED`（"老人未开放此项"）。原样摆在药名位上会读成一条奇怪的药，改成"用药情况（药名未开放）"并配 `$lyj-child-muted` + 斜体 —— 看得见，但不假装是药名。`taken_today` / `times` 仍是真的，"今天吃了几次"这条最要紧的事实不受影响。
 
-计数是**按计划分别算**的：`dashboard.vue:79` 渲染的是 `今日 {taken_today}/{times.length} 次`，分母是**这一条计划自己的时点数**，不是全天总数。种子数据里有两条计划（硫酸氨基葡萄糖胶囊 08:00/20:00 两次、钙片 09:00 一次），所以看板上是"今日 x/2 次"和"今日 x/1 次"两行，**不会**出现一个"2/3"。写文案和写答辩稿时别把两条计划的分母加起来 —— 那个数字界面上根本不存在。
+计数是**按计划分别算**的：`dashboard.vue:161` 渲染的是 `今日 {takenCount(m)}/{times.length} 次`，分母是**这一条计划自己的时点数**，不是全天总数。种子数据里有两条计划（硫酸氨基葡萄糖胶囊 08:00/20:00 两次、钙片 09:00 一次），所以看板上是"今日 x/2 次"和"今日 x/1 次"两行，**不会**出现一个"2/3"。写文案和写答辩稿时别把两条计划的分母加起来 —— 那个数字界面上根本不存在。
 
 **③ `alerts[].precision === 'off'` ⇒ 地点没有，告警照出。**
 
@@ -490,7 +505,7 @@ summary 档下药名被换成 `MASKED`（"老人未开放此项"）。原样摆�
 
 **④ 子女端调 `/api/trips/{id}` 必须带 `child_id`。**
 
-不带 `child_id` 是**老人看自己行程**的路径，后端会原样返回全量未降级轨迹（`api/routes_guardian.py:40`，`precision: "owner"`）。这条也踩过：旧 `guardian.vue` 不带，于是子女端拿到的是完整坐标 —— R6 在后端做对了，被前端一个缺参绕过去了。子女端一律带，并按返回的 `precision` 渲染说明：
+**可见范围由 token 里的身份决定，不看 `child_id`**（`api/routes_guardian.py:435` 的 `trip_detail`）：本人全量（`precision: "owner"`）、子女按隐私档裁剪、其余 403。`child_id` 现在只是"我是谁"的冗余提示，且必须与 token 一致（不一致直接 403）。这条也踩过：**改之前**"不带 `child_id` 就 return 全量"，闸门等于调用方自己开的 —— 旧 `guardian.vue` 不带，于是子女端拿到了完整坐标，R6 在后端做对了却被前端一个缺参绕过去。**子女端仍一律带 `child_id`**（冗余但无害），并按返回的 `precision` 渲染说明：
 
 | `precision` | 界面 |
 |---|---|
@@ -500,13 +515,13 @@ summary 档下药名被换成 `MASKED`（"老人未开放此项"）。原样摆�
 
 粗化后的地点是原名的前缀（`privacy.coarse_place`），所以拿 checkpoint 去匹配演示途经点时**两个方向都要试**（`a.includes(b) || b.includes(a)`）。
 
-顺带一条不属于隐私但同源的规则：**看板不要为已有的数据再发一次请求。** `dashboard` 响应里的 `pending_confirmations` 就是 `/confirmations?status=pending` 的同一个查询（`routes_child.py:45`），5 秒一轮的轮询里那是白发一半的请求。同理 `confirm-detail` 只需一次 `/confirmations`（不带 `status` 就是全部状态，`routes_confirm.py:13`）。轮询里的震动只在待确认数**增加**时触发 —— 每 5 秒震一次不是提醒，是骚扰。
+顺带一条不属于隐私但同源的规则：**看板不要为已有的数据再发一次请求。** `dashboard` 响应里的 `pending_confirmations` 就是 `/confirmations?status=pending` 的同一个查询（`routes_child.py:132`），5 秒一轮的轮询里那是白发一半的请求。同理 `confirm-detail` 只需一次 `/confirmations`（不带 `status` 就是全部状态，`routes_confirm.py:37`）。轮询里的震动只在待确认数**增加**时触发 —— 每 5 秒震一次不是提醒，是骚扰。
 
 ### 6.6 结果怎么回到老人屏幕上：一段刻意的轮询
 
 `confirmation_resolved` 有一个别的事件都没有的性质：**它发生在老人这一轮之外。**
 挂起发生在轮次之内，但家人是几分钟后在自己手机上点的 —— 那时老人这条 SSE 流早就
-收了 `final` 关掉了。后端确实广播了一次（`confirmation.py:216`），但那一刻没有人在听。
+收了 `final` 关掉了。后端确实广播了一次（`confirmation.py:413` 的 `push_sync`），但那一刻没有人在听。
 
 所以老人端多了一小段轮询（`chat.vue::_watchConfirmations`）。三条约束：
 
@@ -527,7 +542,11 @@ summary 档下药名被换成 `MASKED`（"老人未开放此项"）。原样摆�
 > 回放导出的，但**至今没有任何页面调用它**。补齐它是"重进会话看得见上文"这件事，
 > 比本条大，留作后续。
 
-### 6.7 反诈判定：界面上必须有第三档
+### 6.7 （历史）反诈判定：曾要求界面上留有第三档
+
+> **（历史）** `check_scam` 工具已随康乐收敛删除，反诈降级为后台安全规则
+> （`safety/risk_rules.py` 的 `ScamContentRule`，只对工具参数硬 DENY，不做三档判定）。
+> 本节保留为当时的界面契约记录 —— 界面侧现在没有这一档要显示。
 
 `check_scam` 的结果里 `data.verdict` 有**三个**取值，不是两个：
 
@@ -551,16 +570,16 @@ summary 档下药名被换成 `MASKED`（"老人未开放此项"）。原样摆�
 
 ## 7. 验收清单
 
-前端返工完成的判据。分两栏：**静态**的可以靠读代码和 grep 判定，已逐条核过；**实机**的必须跑起来看，留给验收现场。
+前端返工完成的判据。分两栏：**静态**的可以靠读代码和 grep 判定，已逐条核过（**未达标的项记 `[ ]` 并写明实测值**）；**实机**的必须跑起来看，留给验收现场。
 
 ### 静态判据
 
-- [x] `pages.json` 有真 `tabBar`（老人端 4 项），子女端 4 页不在名单里
+- [x] `pages.json` 有真 `tabBar`（老人端 4 项），子女端 6 页不在名单里
 - [x] **`LyjTabBar.vue` 已删除**，全仓无引用
-- [x] 全仓 `grep uni.redirectTo` 结果为 0
-- [x] `src/pages` 与 `src/components` 下 `grep -E '#[0-9a-fA-F]{6}'` 为 0。仅两处豁免：`uni.scss`（token 定义处，值本来就长在这里）与 `pages.json`（JSON 取不到 SCSS 变量）
-- [x] 页面与组件 `<style>` 全部带 `lang="scss"`（15 个文件全中）
-- [x] 导航模型无违例：`switchTab` 只切 tab、`navigateTo` 下钻、`reLaunch` 只用于登录/换角色与子女端平级根视图互切
+- [ ] 全仓 `grep uni.redirectTo` 结果为 **2**（**未归零**）：`components/LyjSegment.vue:56`（分段控件平级互切）、`pages/login/register.vue:118`（注册后回登录）；两者都该改 `uni.reLaunch`，待改。另 `components/LyjBack.vue:4,27` 两处只是注释文字，不算调用
+- [ ] `src/pages` 与 `src/components` 下 `grep -E '#[0-9a-fA-F]{6}'` 为 **505 行 / 13 文件**（**未归零**，按 `-o` 计 521 处）。重灾区：`components/AgentExecutionTree.vue`（深色风，235 行内联色）、`pages/child/guardian.vue`（100 行）、`pages/elder/route-map.vue`（Leaflet 主题色，53 行，需内联）。token 化未收口，届时重跑此 grep 并回填。原豁免仍成立：`uni.scss`（token 定义处）与 `pages.json`（JSON 取不到 SCSS 变量）
+- [x] `src` 下 26 个 `.vue`（`App.vue` + `pages/` 14 + `components/` 11）的 `<style>` 全部带 `lang="scss"`；命令 `grep -rlE '<style[^>]*lang="scss"' --include=*.vue src | wc -l` = 26
+- [ ] 导航模型**有违例**：`switchTab` / `navigateTo` / `reLaunch` 三类用法本身已归位，但子女端平级互切（`LyjSegment.vue:56`）与 `register.vue:118` 仍是 `redirectTo`（见上第 3 条），未全部落到 `reLaunch`
 - [x] 老人端正文与命中区按 token 算达标：`$lyj-font-md` = 40rpx = **20px**、`.btn-main` = `$lyj-btn-main` = 160rpx = **80px**、首页麦克风 = 240rpx = **120px**（rpx→px 按 750rpx ≡ 屏宽、375pt 屏换算）
 - [x] `StepTimeline` 只渲染传入快照，组件内没有任何推进状态的代码
 - [x] `PlanCard` 的 `missing` 行占位渲染"待补"，`missingCount` 由组件自己数
@@ -573,21 +592,21 @@ summary 档下药名被换成 `MASKED`（"老人未开放此项"）。原样摆�
 
 分两组，界线是**能不能交给脚本**。2026-09-02 跑过一轮门禁，所以第一组已经不是"待验证"了。
 
-**① E2E 已覆盖（`frontend/e2e/elder-flow.mjs`，46 条断言全绿）**
+**① E2E 已覆盖（`frontend/e2e/elder-flow.mjs`，62 条断言全绿）**
 
-- [x] 后端 `pytest tests/ -q` 全绿（**219 passed**，12 个文件；返工前的红线是 27，现在的红线是这一整套都得绿）
+- [x] 后端 `pytest tests/ -q` 全绿（本轮 **601 passed**，29 个文件；2026-09-02 首轮收尾时是 219；返工前的红线是 27，现在的红线是这一整套都得绿）
 - [x] `node frontend/e2e/elder-flow.mjs` 通过 —— 已按新契约整文重写（旧脚本驱动的 `?quick=` 通道和假底栏都不在了）
 - [x] 老人端原生底栏**按文字**切页（「聊天」↔「首页」）后 URL 正确
-- [x] 子女端 `confirm-detail` 返回键回看板，且待确认数由 3 变 2
-- [x] 子女在自己手机上点同意后，老人端那张黄卡**就地变绿**：`.s-executed`=1 / `.s-pending`=2 / 总数仍 3，绿卡标题改成结果口吻
+- [x] 子女端看板只出现 **1 条「就医知会」**（标题以 `【就医知会】` 开头、正文含挂号费与分诊档位），看板上 **0 个同意/拒绝按钮**；通知中心 `.confirm-card === 0` —— 就医**知会不审批**
+- [x] 老人端全程 **0 张挂起卡**（`.suspend-card === 0`）；挂号卡是绿的，卡片标题里没有「待确认」口吻
 - [x] 隐私页 6 个档位、选中态恰好 2 个（界面不能同时宣称两个权限档）
 
 **② 仍要人手验（脚本覆盖不到，或需要故障注入）**
 
 - [ ] 老人端任意页返回键行为正常（tab 页返回退出确认，详情页返回上一页）—— E2E 只验了子女端那一次 `goBack`
-- [ ] 子女端顶部分段控件**三页都互切一遍**（E2E 只走了「看板→隐私」和「看板→守护」两条）
+- [ ] 子女端顶部分段控件**五项都互切一遍**（E2E 已走「看板→通知 / 守护 / 隐私」，**家人**那一页还没人点过）
 - [ ] 实测字号与命中区（浏览器 devtools 量一遍，验证 rpx 换算在目标机上成立）—— 脚本不量 px
 - [ ] `StepTimeline` 在人为只发一次 `todo` 快照时，步骤状态与快照完全一致（**故障注入**，正常流程跑不到）
-- [ ] 抽掉酒店 report 后，计划书第 ③ 页显示"待补"且头部提示"还有 N 项待补"（**故障注入**；单元侧由 `test_plan_builder.py` 盯着，界面侧没人验）
-- [ ] 老人端把位置降到 `city`、健康降到 `summary` 后，子女端三页各自出现对应说明而**不是**空白或报错（E2E 只数档位，没改档位再回看）
-- [ ] 点**拒绝**时黄卡变灰且说"先不办"，不说"失败"（E2E 只走了同意那一支 —— 三种结局里有两种没被脚本走过）
+- [ ] 抽掉路线 report 后，计划书第 ② 页显示"待补"且头部提示"还有 N 项待补"（**故障注入**；单元侧由 `test_plan_builder.py` 盯着，界面侧没人验）
+- [ ] 老人端把位置降到 `city`、健康降到 `summary` 后，子女端相关页面各自出现对应说明而**不是**空白或报错（E2E 只数档位，没改档位再回看）
+- [ ] 点**拒绝**时黄卡变灰且说"先不办"，不说"失败"（E2E 现在全程 **0 张挂起卡**，三种结局一支都没被脚本走过 —— 这条目前只能靠 `test_confirmation.py` 的单测顶着）

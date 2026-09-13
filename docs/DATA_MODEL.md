@@ -3,7 +3,7 @@
 DDL 全文见 **`backend/app/db/schema.sql`**（在 Supabase SQL Editor 直接粘贴执行）。
 表清单与 `backend/app/db/repositories.py:17` 的 `TABLES` 一一对应 —— 那份列表还兼作 `reset()` 的清空顺序（反依赖序），所以两处必须同时改。
 
-## 表清单（13 张）
+## 表清单（16 张）
 
 | 表 | 用途 | 关键字段 |
 |---|---|---|
@@ -12,11 +12,14 @@ DDL 全文见 **`backend/app/db/schema.sql`**（在 Supabase SQL Editor 直接�
 | `sessions` | 会话 | `user_id`, `title` |
 | `session_events` | **append-only 唯一事实源** | `(session_id, seq)` 全序 · `type` · `payload jsonb` · **`agent_id` / `turn_id` / `step_id`** |
 | `confirmation_tasks` | 高危确认状态机 | `tool_name` + `tool_args`（冻结）, `status`, `expires_at`, `summary_for_child` |
+| `notifications` | 子女端通知（就医知会 / 待确认 / 结果） | `user_id` + `elder_id`, `type`（如 `appointment_notice`）, `is_read`, `data jsonb` |
 | `trips` | 行程 | `plan jsonb`（就医出行计划书全文）, `status` |
 | `trip_checkpoints` | 守护轨迹点 | `status`: normal / off_route / long_stay / arrived / **not_moving** |
 | `medication_plans` | 用药计划 | `times jsonb`（`["08:00","20:00"]`）, `active` |
 | `medication_logs` | 服药打卡 | `scheduled_for`(date) + `scheduled_time`(text), `taken_at`, `status` |
-| `health_records` | 健康记录 | `record_type` 约束允许 report / appointment / scam_check / diet，**代码目前只写前三种**（`diet_advice` 不落档，见下）· `plain_summary`（大白话解读） |
+| `health_records` | 健康记录 | `record_type` 约束允许 report / appointment / scam_check / diet，**代码目前只写 `appointment` / `report` 两种**（`scam_check` 随反诈工具下架、`diet_advice` 不落档，见下）· `plain_summary`（大白话解读） |
+| `health_metrics` | 健康指标读数（血压/血糖/心率/血氧/体温/体重） | `metric_type` · 血压 `systolic`/`diastolic`、单值 `value` · `level`（当时的**分诊档位** 保健/观察/建议就医/紧急） |
+| `health_conditions` | 慢病登记 | `name`（如 原发性高血压）· `diagnosed_at`（老人原话）· `severity` · `active` |
 | `orders` | 邻里帮订单 | `service_type`: canteen / cleaning / accompany · `timeline jsonb`（派单进度） |
 | `privacy_permissions` | 隐私分级 | `location_level`(realtime/city/off) · `health_level`(full/summary/off) · `(elder_id, child_id)` 唯一 |
 | `audit_log` | 审计 | `actor_id`, `action`, `target`, `detail jsonb` |
@@ -33,23 +36,18 @@ DDL 全文见 **`backend/app/db/schema.sql`**（在 Supabase SQL Editor 直接�
 
 另外：`delta` / `agent_status` / `todo` 三个 SSE 事件是 `persist=False` 的活信号，**这张表里没有它们**。轮询兜底因此看不到打字预览和步骤条 —— 事实进表，信号不进。
 
-### `health_records` 的三种写入者
+### `health_records` 的两种写入者
 
 | `record_type` | 谁写 | `plain_summary` 里是什么 |
 |---|---|---|
 | `appointment` | `register_appointment` 挂号成功后 | 空（挂号信息在 `content` 里） |
 | `report` | `interpret_report` 体检解读 | 那份大白话解读 |
-| `scam_check` | `check_scam`，**三档判定都写**（`high_risk` / `normal` / `unknown`）| 给子女看的那一句建议 |
 
-`scam_check` 每次检查都留痕是有意的：子女事后问"我妈那天到底收到了什么"要翻得出来。
-早先只有命中语料库那一支写，于是语料之外的检查在档案里查不到 —— 那正好是最需要人来
-看一眼的那一类。
-
-`diet` 在 `schema.sql:134` 的 check 约束里，但 `diet_advice` 目前**不落档**（它只回一段建议）。
+`scam_check` 与 `diet` 留在 `schema.sql:179` 的 check 约束里，但代码里没有写入者：反诈工具（`check_scam`）已随康乐收敛下架，`diet_advice` 也只回一段建议、**不落档**。
 约束留着是给后续用的；写文档和答辩稿时不要把"约束允许"说成"已经有这类记录"。
 
-**没有任何接口读这张表。** 全仓的读取只有两处，都在验证链路上：`scripts/demo_smoke.py`
-第 5 步统计反诈记录、`tests/test_scam_check.py` 断言三档都留痕。子女端看板返回的是
+**没有任何出库接口读这张表。** 全仓的读取只在挂号幂等查重（`health_tools.py`）与验证链路
+（`scripts/demo_smoke.py`、`tests/test_confirmation.py`）上。子女端看板返回的是
 `medications`，不是 `health_records`。所以 `health_level` 的降级
 （`filter_medication` / `filter_health_text`）此刻管不到这张表：不是设计上豁免，是这条
 出库路径还没接。**要给子女端加"健康档案"视图的话，R6 的第一件事就是在那条路上补裁剪**，
@@ -90,15 +88,13 @@ DDL 全文见 **`backend/app/db/schema.sql`**（在 Supabase SQL Editor 直接�
 
 **① 落库的种子数据**（`POST /api/seed` / `app/db/seed.py`，幂等，先 `reset()` 再灌）：
 
-- `users`：张桂芳（elder，南京，`dialect=southwestern`）+ 李明（child，北京）
-- `family_bindings`：儿子
-- `privacy_permissions`：`realtime` / `summary`
-- `medication_plans` ×2：硫酸氨基葡萄糖胶囊（08:00 / 20:00）、钙片（09:00）
+- `seed_demo`（基础四表）：`users` 张桂芳（elder，南京，`dialect=southwestern`）+ 李明（child，北京）· `family_bindings` 儿子 · `privacy_permissions` `realtime` / `summary` · `medication_plans` ×2（硫酸氨基葡萄糖胶囊 08:00 / 20:00、钙片 09:00）
+- `seed_kangle_persona`（`/api/seed` 默认 `with_persona=true` 时叠加，`days=30`）：`health_conditions` ×2（原发性高血压、2 型糖尿病）· `medication_plans` ×2（苯磺酸氨氯地平片、二甲双胍缓释片）· `health_metrics`（30 天合成读数，四个剧本对应四个分诊档位；只追加、不 reset）
 
-就这四张表。**老人的名字是「张桂芳」** —— 交付物标题 `f"{name} · {city}就医出行计划书"` 直接取它，文档和 PPT 里别写成别的字。
+**老人的名字是「张桂芳」** —— 交付物标题 `f"{name} · {city}就医出行计划书"` 直接取它，文档和 PPT 里别写成别的字。
 
 **② 不落库的业务夹具**（`backend/app/data/*.json`，由 Mock Provider 读取）：
 
-`hospitals.json`（医院 × 医生 × 一周号源）· `trains.json`（南京南 → 北京南 G102/G104/G106…）· `hotels.json`（医院 1km 内，无障碍标注）· `canteen_menu.json`（周菜单，软食/低糖/低盐标签）· `weather.json` · `scam_corpus.json`（"保健品神药""冒充孙子借钱""冒充医保局短信"等）
+`hospitals.json`（医院 × 医生 × 一周号源）· `routes.json` · `rides.json` · `activities.json` · `recipes.json` · `weather.json` · `scam_corpus.json`（"保健品神药""冒充孙子借钱""冒充医保局短信"等）
 
 这些**不是表**，也不进 Supabase。Mock Provider 按参数 `md5` 确定性取值，所以同一句话两次演示结果一致。正式落地时替换 provider 实现，夹具随之退场 —— 表结构不动。
