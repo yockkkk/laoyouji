@@ -76,7 +76,31 @@ def create_app() -> FastAPI:
     app.include_router(routes_privacy.router)
     app.include_router(routes_health.router)
 
+    # 挂载静态分发目录 static_dist，提供 APK 下载与前端 H5 单页应用
+    import os
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static_dist")
+
+    @app.get("/laoyouji.apk")
+    @app.head("/laoyouji.apk")
+    async def download_apk():
+        apk_path = os.path.join(static_dir, "laoyouji.apk")
+        if os.path.isfile(apk_path):
+            return FileResponse(
+                apk_path,
+                media_type="application/vnd.android.package-archive",
+                filename="laoyouji.apk",
+            )
+        raise HTTPException(404, "APK 尚未生成或不存在")
+
+    if os.path.isdir(static_dir):
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static_dist")
+
     return app
 
 
 app = create_app()
+
