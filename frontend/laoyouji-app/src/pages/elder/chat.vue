@@ -7,7 +7,7 @@
         <text class="back-text">首页</text>
       </view>
       <view class="topbar-main">
-        <text class="title">和老友记聊聊</text>
+        <text class="title">和康乐聊聊</text>
         <text class="status">{{ thinking ? '正在办事…' : '随时听您吩咐' }}</text>
       </view>
       <view class="topbar-right">
@@ -56,6 +56,28 @@
                 :is-user="m.isUser"
                 :agent="m.agent"
               />
+              <!-- 右翼两张专用卡先判：它们的 type 是 'call' / 'recipe'，
+                   若让下面 PlanCard 那一支先接，会被当成计划书截走 -->
+              <CallCard
+                v-else-if="m.kind === 'card' && m.type === 'call'"
+                :title="m.title"
+                :name="m.name"
+                :relation="m.relation"
+                :phone="m.phone"
+                :reason="m.reason"
+                :note="m.note"
+              />
+              <RecipeCard
+                v-else-if="m.kind === 'card' && m.type === 'recipe'"
+                :title="m.title"
+                :dish="m.dish"
+                :minutes="m.minutes"
+                :tags="m.tags"
+                :ingredients="m.ingredients"
+                :steps="m.steps"
+                :tips="m.tips"
+                :note="m.note"
+              />
               <PlanCard
                 v-else-if="m.kind === 'card'"
                 :title="m.title"
@@ -101,7 +123,7 @@
                 <input
                   class="text-input"
                   v-model="draft"
-                  placeholder="打字告诉老友记…"
+                  placeholder="打字告诉康乐…"
                   confirm-type="send"
                   @confirm="sendText"
                 />
@@ -174,7 +196,7 @@
               @tap="loadSession(s.id)"
             >
               <view class="history-item-top">
-                <text class="history-title">{{ s.title || '与老友记的聊天' }}</text>
+                <text class="history-title">{{ s.title || '与康乐的聊天' }}</text>
                 <text class="history-time">{{ _hm(s.last_active || s.created_at) }}</text>
               </view>
               <!-- 标题只是开头第一句话，重名会话全靠这一行最后说的话区分 -->
@@ -193,6 +215,8 @@
 <script>
 import ChatBubble from '../../components/ChatBubble.vue'
 import PlanCard from '../../components/PlanCard.vue'
+import CallCard from '../../components/CallCard.vue'
+import RecipeCard from '../../components/RecipeCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
 import AgentExecutionTree from '../../components/AgentExecutionTree.vue'
@@ -206,7 +230,7 @@ import { takeUtterance } from '../../store/handoff'
 // 子智能体的门面。名字与后端 display_name 一致（travel_agent.py:30 等），
 // 图标与 ChatBubble 的 agentIcon 一致 —— 同一个 Agent 在哪儿出现都是同一张脸。
 const AGENT_LABEL = {
-  main: '老友记',
+  main: '康乐',
   travel: '银发导航',
   health: '安康助手',
   community: '邻里帮',
@@ -236,7 +260,7 @@ function dayLabel(iso) {
 }
 
 export default {
-  components: { ChatBubble, PlanCard, ConfirmCard, LyjMic, AgentExecutionTree },
+  components: { ChatBubble, PlanCard, CallCard, RecipeCard, ConfirmCard, LyjMic, AgentExecutionTree },
   data() {
     return {
       user: null,
@@ -466,7 +490,9 @@ export default {
     isMainAgent(agent) {
       if (!agent) return true
       const norm = this.normalizeAgent(agent)
-      return norm === 'main' || norm === '老友记' || norm === 'orchestrator'
+      // 英文键（main / orchestrator）是后端 agent_msg 实际带的键，必须保留；
+      // display_name“康乐”那条只是后端没带键时的兜底，缺一不可。
+      return norm === 'main' || norm === '康乐' || norm === 'orchestrator'
     },
 
     toggleTreePane() {
@@ -657,7 +683,9 @@ export default {
       this.messages = [
         {
           kind: 'text',
-          text: `${this.user.name}您好，我是老友记。您想做什么，按住下面的大按钮跟我说就行——看病挂号、买票出门、订饭找保洁，我都办得了。`,
+          // 老人第一眼看到的自我介绍：只承诺康乐真能办的事（健康基线 + 身体/心理两翼）。
+          // 旧稿写的"买票出门、订饭找保洁"是砍掉的功能，留着就是骗人。
+          text: `${this.user.name}您好，我是康乐。身上哪儿不舒坦、想量个血压记下来，或者要去医院挂号、不认得路怎么走，您按住下面的大按钮跟我说就行；心里闷了想找人说说话、要去公园遛个弯，我也陪着您。`,
           agent: 'main',
         },
       ]
@@ -1086,26 +1114,17 @@ export default {
           (m) => m.kind === 'suspend' && m.tool === tool && m.status === 'pending',
         )
         if (!card) {
+          // 只剩挂号这一支。原来还有 book_ticket / book_hotel 两支，靠摘要里出现
+          // "车票/高铁/酒店"或金额等于写死的 443.5 / 680 来认领那张挂起卡 —— 那两个工具
+          // 已随产品收敛删掉，金额也是旧稿 1311.5 元口径的碎片，分支永远走不到。
+          // 挂号这一支留着同样不是因为挂号会挂起（它在 risk_rules.NON_PAYMENT_TOOLS 里，
+          // 当场办好、只发知会），而是为了兜旧会话里可能残留的历史挂起卡。
           if (tool === 'register_appointment' || tool.includes('appoint')) {
             card = this.messages.slice().reverse().find(
               (m) =>
                 m.kind === 'suspend' &&
                 m.status === 'pending' &&
                 ((m.summary && (m.summary.includes('挂号') || m.summary.includes('医院'))) || m.amount === 100),
-            )
-          } else if (tool === 'book_ticket' || tool.includes('ticket')) {
-            card = this.messages.slice().reverse().find(
-              (m) =>
-                m.kind === 'suspend' &&
-                m.status === 'pending' &&
-                ((m.summary && (m.summary.includes('车票') || m.summary.includes('高铁'))) || m.amount === 443.5),
-            )
-          } else if (tool === 'book_hotel' || tool.includes('hotel')) {
-            card = this.messages.slice().reverse().find(
-              (m) =>
-                m.kind === 'suspend' &&
-                m.status === 'pending' &&
-                ((m.summary && (m.summary.includes('酒店') || m.summary.includes('房'))) || m.amount === 680),
             )
           }
         }
@@ -1275,6 +1294,10 @@ export default {
       }
       return {
         kind: 'card',
+        // type 必须原样带过去：历史回放时卡片会被存成不带 sections 的裸对象，
+        // 再走 _toCard 重建，丢了 type 的话拨号卡/菜谱卡就退化成一纸普通计划书 ——
+        // 老人昨天收到的那个电话按钮，今天点开聊天就没了。
+        type: d.type || '',
         title: d.title || '',
         sections,
         notes,
@@ -1282,6 +1305,19 @@ export default {
         // 只有五页计划书铺开；两张轻量卡片走紧凑模式
         compact: d.type !== 'trip_plan' && d.type !== 'medical_plan',
         tripId: d.trip_id || d.tripId || (d.data && d.data.trip_id) || '',
+        // 拨号卡（suggest_call）与菜谱卡（get_recipe）的专用字段，平面透传。
+        // 卡片模板按 type 分流，这里不猜不拼，后端给什么就是什么。
+        name: d.name || '',
+        relation: d.relation || '',
+        phone: d.phone || '',
+        reason: d.reason || '',
+        dish: d.dish || '',
+        minutes: d.minutes || 0,
+        tags: d.tags || [],
+        ingredients: d.ingredients || [],
+        steps: d.steps || [],
+        tips: d.tips || [],
+        note: d.note || '',
       }
     },
 

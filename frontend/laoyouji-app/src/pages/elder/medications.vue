@@ -68,6 +68,7 @@
 import { get, post, del } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { speak } from '../../api/asr'
+import { syncAll } from '../../utils/native'
 
 export default {
   data() {
@@ -92,6 +93,9 @@ export default {
       return
     }
     this.load()
+    // 进这一页也同步一次闹钟（契约 §10.3）。首页 onShow 那次可能刚过去几秒，
+    // 会被 30 秒防抖挡掉，所以这里只是兜底；真正要紧的是下面增删成功后那次强制同步。
+    syncAll()
   },
   methods: {
     goBack() {
@@ -146,6 +150,9 @@ export default {
             await del(`/api/medications/${m.id}`)
             uni.showToast({ title: '已删除', icon: 'success' })
             await this.load()
+            // 删药是用户的显式改动：强制重排，不让 30 秒防抖把这次覆盖掉，
+            // 否则已删的这条提醒会继续在原生副本里响（契约 §10.3"用药计划变动后"）。
+            await syncAll({ force: true })
           } catch (e) {
             uni.showToast({ title: e.message || '删除失败', icon: 'none' })
           } finally {
@@ -186,6 +193,9 @@ export default {
         this.showAdd = false
         this.newMed = { drug_name: '', dose: '', times: '08:00', notes: '' }
         await this.load()
+        // 加药同理：必须强制重排，否则"刚加的提醒死活不响"—— 防抖窗口内
+        // syncAll() 只会复用首页那次的结果，这条新药根本进不了原生副本（契约 §10.3）。
+        await syncAll({ force: true })
       } catch (e) {
         uni.showToast({ title: e.message || '添加失败', icon: 'none' })
       } finally {

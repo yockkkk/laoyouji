@@ -14,10 +14,10 @@
       <!-- 待我确认 -->
       <view class="section">
         <view class="section-head">
-          <text class="section-title">✋ 待我确认 ({{ pendingCount }})</text>
+          <text class="section-title">✋ 待我确认的付款 ({{ pendingCount }})</text>
         </view>
         <view v-if="!pending.length" class="empty-row">
-          <text>暂无待确认事项</text>
+          <text>暂无待您确认的付款事项</text>
         </view>
         <view v-for="t in pending" :key="t.id" class="confirm-card" @tap="goDetail(t)">
           <view class="confirm-card-top">
@@ -228,13 +228,13 @@ export default {
       }
     },
     taskIcon(t) {
+      // 只留**在册**的工具（现役 22 个，见后端装配）。book_ticket / search_train /
+      // book_hotel / order_service 都已随产品收敛删掉，留着图标会让后来人以为
+      // 这产品还在订票订酒店。register_appointment 不在 HIGH_RISK_TOOLS 里、
+      // 不会走到这一屏，留着只为兜旧会话的历史挂起记录。
       const map = {
-        book_ticket: '🚄',
-        search_train: '🚄',
         register_appointment: '🏥',
         search_hospital: '🏥',
-        book_hotel: '🏨',
-        order_service: '🧹',
         pay: '💸',
       }
       return map[t.tool_name] || '✋'

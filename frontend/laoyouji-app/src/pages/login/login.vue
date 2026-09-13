@@ -12,7 +12,7 @@
           </view>
           <view class="brand-badge-ring"></view>
         </view>
-        <text class="brand-name">老友记</text>
+        <text class="brand-name">康乐</text>
         <view class="brand-slogan-wrap">
           <text class="brand-slogan">长辈生活助手</text>
           <text class="slogan-divider">·</text>
@@ -59,8 +59,11 @@
                 <text class="role-desc">72岁 · 母亲 · 适老陪伴管家</text>
                 <view class="role-features">
                   <text class="feat-pill">大字语音</text>
-                  <text class="feat-pill">就医买票</text>
-                  <text class="feat-pill">食堂居家</text>
+                  <!-- 原来写"就医买票""食堂居家"：买车票（跨城车票）和社区食堂订餐 /
+                       居家上门服务都已随康乐收敛砍掉，留着就是把已删的能力当卖点。
+                       换成现在真会做的事：挂号、线下活动、家常菜谱。 -->
+                  <text class="feat-pill">就医挂号</text>
+                  <text class="feat-pill">活动菜谱</text>
                 </view>
               </view>
             </view>
@@ -83,9 +86,13 @@
                 </view>
                 <text class="role-desc">42岁 · 儿子 · 跨城远程看板</text>
                 <view class="role-features">
-                  <text class="feat-pill">高危审批</text>
+                  <!-- 「高危审批」撤掉：就医不需要子女审批（康乐"知会不审批"，挂号当场办好、
+                       同一步发知会），而现役工具里也没有任何付费动作会走到审批那一条。
+                       摆一个产品里不存在的能力在登录页上，是当着评委的面许一个没实现的诺。
+                       换成子女在这端真能干的三件事。 -->
+                  <text class="feat-pill">健康概况</text>
                   <text class="feat-pill">轨迹守护</text>
-                  <text class="feat-pill">健康用药</text>
+                  <text class="feat-pill">就医知会</text>
                 </view>
               </view>
             </view>
@@ -143,12 +150,12 @@
             :disabled="loading"
             @tap="submitLogin"
           >
-            <text class="submit-text">{{ loading ? '正在验证…' : '登 录 老 友 记' }}</text>
+            <text class="submit-text">{{ loading ? '正在验证…' : '登 录 康 乐' }}</text>
           </button>
 
           <!-- 注册引导 -->
           <view class="register-prompt">
-            <text class="prompt-text">还没有老友记账号？</text>
+            <text class="prompt-text">还没有康乐账号？</text>
             <text class="prompt-link" @tap="goRegister">新用户快速注册 ›</text>
           </view>
         </view>
@@ -168,6 +175,7 @@
 <script>
 import { post } from '../../api/client'
 import { setAuthSession } from '../../store/user'
+import { syncAll } from '../../utils/native'
 
 export default {
   data() {
@@ -206,6 +214,9 @@ export default {
         setAuthSession(res)
         uni.hideLoading()
         uni.showToast({ title: welcomeTitle, icon: 'success', duration: 1500 })
+        // 长辈端登录成功后立刻排一次闹钟（契约 §10.3）。不 await —— 别拖慢跳转；
+        // 落点 home.vue 的 onShow 还会兜一次，这里先发出去是为了不在 300ms 跳转窗口里空着。
+        if (role === 'elder') syncAll()
         const dest = role === 'child' ? '/pages/child/dashboard' : '/pages/elder/home'
         setTimeout(() => {
           uni.reLaunch({ url: dest })
@@ -238,6 +249,8 @@ export default {
         const role = res.user ? res.user.role : 'elder'
         uni.hideLoading()
         uni.showToast({ title: '登录成功', icon: 'success' })
+        // 同 quickLogin：长辈端登录后立刻排闹钟（契约 §10.3），不 await 拖慢跳转。
+        if (role === 'elder') syncAll()
         setTimeout(() => {
           uni.reLaunch({
             url: role === 'child' ? '/pages/child/dashboard' : '/pages/elder/home',

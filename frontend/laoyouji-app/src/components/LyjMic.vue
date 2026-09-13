@@ -7,7 +7,7 @@
     识别—兜底"这条链路只有一份实现（三链路降级见 api/asr.js）。
 
     组件只负责把话变成文字，然后 emit('text', 文字)。**怎么用这句话是页面的事** ——
-    聊天页直接发给老友记，首页则交接过去。
+    聊天页直接发给康乐，首页则交接过去。
   -->
   <view class="mic-wrap" :class="'mode-' + mode">
     <view
@@ -100,7 +100,7 @@ export default {
       }
 
       // 最短时长 400ms：老人点按误触（碰一下就松）不该发起一次识别，
-      // 更不该把误触识别成的怪话发给老友记。
+      // 更不该把误触识别成的怪话发给康乐。
       if (heldMs < 400) {
         const rec = this._recorder
         this._recorder = null

@@ -1,7 +1,12 @@
 <script>
+import { initNative } from './utils/native'
+
 export default {
   onLaunch() {
-    console.log('老友记 App Launch')
+    console.log('康乐 App Launch')
+    // 提醒层的唯一入口：注册通知点击回流 + 冷启动补课 + 已登录则同步一次闹钟。
+    // 浏览器里没有 window.KangleNative，initNative 内部整体静默降级，不影响启动。
+    initNative()
   },
 }
 </script>

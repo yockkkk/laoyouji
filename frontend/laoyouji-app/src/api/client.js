@@ -3,7 +3,15 @@
  */
 import { getAccessToken, getRefreshToken, setAuthSession, clearCurrentUser } from '../store/user'
 
-const BASE_URL = 'http://127.0.0.1:8000'
+/**
+ * 后端根地址。全站（含 sse.js 的事件流）都从这里取，改一处即可全局生效。
+ *
+ * 为什么不是 127.0.0.1：康乐 H5 与 APK 同机托管在 http://159.75.94.149:8000/，
+ * App 壳的 WebView 加载的也是这个地址。壳里的 127.0.0.1 指的是**手机自己**，
+ * 请求会打到手机上并不存在的 8000 端口 —— 登录、用药、天气全都拿不到数据。
+ * 本机浏览器 + 本机后端做纯 H5 联调时，把这一行临时改回 127.0.0.1 即可。
+ */
+const BASE_URL = 'http://159.75.94.149:8000'
 export { BASE_URL }
 
 let refreshPromise = null

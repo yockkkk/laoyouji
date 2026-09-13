@@ -8,7 +8,7 @@
   -->
   <view class="plan-card">
     <view class="plan-head">
-      <text class="plan-title">📋 老友记的办事计划</text>
+      <text class="plan-title">📋 康乐的办事计划</text>
       <text v-if="progress && progress.total" class="plan-count">
         {{ progress.done || 0 }}/{{ progress.total }}
       </text>

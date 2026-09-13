@@ -33,6 +33,17 @@
             <text class="quick-label">{{ q.label }}</text>
           </view>
         </view>
+
+        <!-- 健康页入口：快捷区那套是发语音（quick(text)），填不进导航，
+             所以健康页单给一个能 navigateTo 的大入口 -->
+        <view class="health-entry" @tap="goHealth">
+          <text class="health-entry-icon">❤️</text>
+          <view class="health-entry-text">
+            <text class="health-entry-title">我的健康</text>
+            <text class="health-entry-sub">量血压、看分诊</text>
+          </view>
+          <text class="health-entry-arrow">›</text>
+        </view>
       </view>
 
       <view class="home-col">
@@ -72,12 +83,25 @@ import LyjMic from '../../components/LyjMic.vue'
 import { get } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { putUtterance } from '../../store/handoff'
+import { syncAll, consumePendingRoute } from '../../utils/native'
 
+/**
+ * 快捷入口的文案与离线剧本的意图词是配套的（app/providers/llm/mock.py）。
+ * 改这几句话之前先去核对 _wants_medical_trip / _wants_community /
+ * _wants_call / _wants_recipe —— 文案改了而意图词不认，点了就没反应。
+ * 已经砍掉的入口（买票出门 / 订餐送饭 / 防骗问问）不再摆出来：留着点了没反应，
+ * 比不给入口更让人犯嘀咕。
+ */
 const QUICKS = [
-  { icon: '🏥', label: '看病挂号', text: '我想去北京看腿疼的老毛病' },
-  { icon: '🚄', label: '买票出门', text: '帮我查一下明天去北京的高铁票' },
-  { icon: '🍱', label: '订餐送饭', text: '帮我订一份中午的软食套餐' },
-  { icon: '🛡️', label: '防骗问问', text: '有人给我打电话说我中奖了，让我先交钱' },
+  // "血压"命中 _wants_health（vital）→ 安康助手分诊
+  { icon: '🩺', label: '量个血压', text: '帮我记一下血压，高压 138 低压 86' },
+  // "医院"命中 _wants_medical_trip → 挂号 + 就近路线 + 计划书
+  { icon: '🏥', label: '看病挂号', text: '我想去鼓楼医院看腿疼的老毛病' },
+  // "心里闷"命中 _wants_community，进 _community 后 "心里闷" 又命中
+  // _wants_call → 先落一张一键拨号卡（不是先推活动）
+  { icon: '💬', label: '心里闷', text: '我心里闷得慌，一个人没意思' },
+  // "教我做"命中 _wants_community，进 _community 后命中 _wants_recipe → 菜谱卡
+  { icon: '🍲', label: '今天吃啥', text: '教我做一道软烂清淡的家常菜' },
 ]
 
 export default {
@@ -112,6 +136,12 @@ export default {
     }
     this.loadMeds()
     this.loadWeather()
+    // 进入长辈端首屏即按后端用药计划同步一次闹钟（声明式全量覆盖，重复调安全）。
+    // 没有桥时 syncAll 立即返回，纯浏览器里等于什么都没发生。
+    syncAll()
+    // 冷启动点通知进 App 时，onLaunch 那一刻页面栈还没建立、跳不动，目标被存成了
+    // 待跳路由；这里是首个落地页，onShow 到点把它领走重跳（没有待跳路由时无副作用）。
+    consumePendingRoute()
   },
   methods: {
     async loadMeds() {
@@ -145,6 +175,11 @@ export default {
     },
     goMed() {
       uni.switchTab({ url: '/pages/elder/medications' })
+    },
+
+    /** 健康页不是 tab 页，用 navigateTo（健康页有自己的返回）。 */
+    goHealth() {
+      uni.navigateTo({ url: '/pages/elder/health' })
     },
 
     /** 说完的话：老人自己说的，直接执行。 */
@@ -281,6 +316,42 @@ export default {
   font-weight: 700;
   color: $lyj-text;
 }
+/* 健康页入口：老人端字号，触控区不低于 44px（$lyj-hit-min） */
+.health-entry {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-md;
+  margin: $lyj-space-xs $lyj-space-md;
+  padding: $lyj-space-lg;
+  background: $lyj-card;
+  border: 2rpx solid $lyj-line;
+  border-radius: $lyj-radius;
+  box-shadow: $lyj-shadow-card;
+  min-height: $lyj-hit-min;
+}
+.health-entry-icon {
+  font-size: 64rpx;
+}
+.health-entry-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.health-entry-title {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: $lyj-text;
+}
+.health-entry-sub {
+  font-size: $lyj-font-sm;
+  color: $lyj-text-light;
+}
+.health-entry-arrow {
+  font-size: $lyj-font-lg;
+  font-weight: 800;
+  color: $lyj-text-light;
+}
 .weather-card {
   background: linear-gradient(140deg, $lyj-weather-from, $lyj-card);
   border-radius: $lyj-radius;
@@ -341,6 +412,9 @@ export default {
   }
   .quick {
     padding: 0;
+  }
+  .health-entry {
+    margin: 24rpx 0 0;
   }
 }
 </style>
