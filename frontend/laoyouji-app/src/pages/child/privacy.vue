@@ -178,6 +178,7 @@ export default {
   border-radius: $lyj-radius;
   margin: $lyj-space-xs $lyj-space-md;
   padding: $lyj-space-md;
+  border: 2rpx solid $lyj-line;
   box-shadow: $lyj-shadow-card;
 }
 .row {
@@ -200,17 +201,21 @@ export default {
   min-height: $lyj-hit-min;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 0 $lyj-space-md;
   border-radius: $lyj-radius;
-  background: $lyj-child-line;
+  background: $lyj-field;
   font-size: $lyj-font-sm;
   color: $lyj-child-muted;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .level.active {
-  background: $lyj-info-bg;
-  color: $lyj-info;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
   font-weight: 700;
-  border: 2rpx solid $lyj-info;
+  border: 2rpx solid $lyj-primary;
 }
 .explain {
   font-size: $lyj-font-sm;
@@ -219,7 +224,7 @@ export default {
 }
 .divider {
   height: 2rpx;
-  background: $lyj-child-line;
+  background: $lyj-line;
   margin: $lyj-space-lg 0;
 }
 .note-card {
@@ -230,6 +235,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: $lyj-space-sm;
+  border: 2rpx solid $lyj-line;
   box-shadow: $lyj-shadow-card;
 }
 .note-title {

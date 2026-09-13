@@ -1,4 +1,4 @@
--- 老友记 · Supabase 全量 DDL
+-- 康乐 · Supabase 全量 DDL
 -- 使用方式：Supabase Dashboard → SQL Editor → 粘贴执行
 -- 安全策略：所有表开启 RLS 且不建任何 policy（默认全拒，仅 service role 经后端访问）
 
@@ -13,6 +13,10 @@ create table if not exists public.users (
   role text not null check (role in ('elder','child')),
   name text not null,
   phone text,
+  -- 子女知会的**跨设备**送达地址（邮件）。App 是 WebView 壳，关掉就没有推送通道，
+  -- 厂商离线推送要企业资质、短信要签名报备 —— 见 providers/external/mailer.py。
+  -- 留空不是错误：知会照写，只是这一封发不出去，回执里如实记着原因。
+  email text,
   dialect text default 'mandarin',   -- 方言偏好：mandarin / southwestern / cantonese ...
   city text default '南京',
   created_at timestamptz default now()
@@ -38,7 +42,8 @@ alter table public.family_bindings enable row level security;
 alter table public.users
   add column if not exists username text unique,
   add column if not exists password_hash text,
-  add column if not exists status text not null default 'active' check (status in ('active', 'disabled'));
+  add column if not exists status text not null default 'active' check (status in ('active', 'disabled')),
+  add column if not exists email text;
 
 alter table public.family_bindings
   add column if not exists status text not null default 'active' check (status in ('pending', 'active', 'rejected', 'revoked', 'expired')),
@@ -178,6 +183,43 @@ create table if not exists public.health_records (
   created_at timestamptz default now()
 );
 alter table public.health_records enable row level security;
+
+-- ===== 康乐左翼·身体核心：健康指标 + 慢病登记 =====
+-- 指标一条一行（不是一表一列）—— 血压/血糖/心率…的参考区间各不同，将来加新指标
+-- 不该动表结构。血压是复合读数，收缩压/舒张压各占一列；其余指标用 value。
+-- ``level`` 存下当时的**分诊档位**（保健/观察/建议就医/紧急）：它是判断结果而不是
+-- 测量结果，但存起来才能回答"上周那条到底算不算异常"，不必拿今天的阈值去回溯。
+create table if not exists public.health_metrics (
+  id uuid primary key default gen_random_uuid(),
+  elder_id uuid references public.users(id),
+  metric_type text not null
+    check (metric_type in ('bp','glucose','heart_rate','spo2','temperature','weight')),
+  value numeric,                       -- 单值指标（血糖/心率/血氧/体温/体重）
+  systolic numeric,                    -- 血压·收缩压
+  diastolic numeric,                   -- 血压·舒张压
+  unit text,
+  measured_at timestamptz not null default now(),
+  context text,                        -- 血糖的 空腹/餐后，血压的 晨起/睡前
+  source text,                         -- 血压计 / 血糖仪 / 手动记录
+  level text check (level in ('保健','观察','建议就医','紧急')),
+  note text,
+  created_at timestamptz default now()
+);
+alter table public.health_metrics enable row level security;
+create index if not exists health_metrics_elder_time_idx
+  on public.health_metrics (elder_id, metric_type, measured_at desc);
+
+create table if not exists public.health_conditions (
+  id uuid primary key default gen_random_uuid(),
+  elder_id uuid references public.users(id),
+  name text not null,                  -- 慢病名称，如 原发性高血压
+  diagnosed_at text,                   -- 确诊时间（老人说的是"哪年"，存原话即可）
+  severity text,                       -- 轻度/中度/重度
+  active boolean default true,
+  notes text,
+  created_at timestamptz default now()
+);
+alter table public.health_conditions enable row level security;
 
 -- ===== 邻里帮订单 =====
 create table if not exists public.orders (

@@ -12,7 +12,7 @@
           </view>
           <view class="brand-badge-ring"></view>
         </view>
-        <text class="brand-name">老友记</text>
+        <text class="brand-name">康乐</text>
         <view class="brand-slogan-wrap">
           <text class="brand-slogan">长辈生活助手</text>
           <text class="slogan-divider">·</text>
@@ -59,8 +59,11 @@
                 <text class="role-desc">72岁 · 母亲 · 适老陪伴管家</text>
                 <view class="role-features">
                   <text class="feat-pill">大字语音</text>
-                  <text class="feat-pill">就医买票</text>
-                  <text class="feat-pill">食堂居家</text>
+                  <!-- 原来写"就医买票""食堂居家"：买车票（跨城车票）和社区食堂订餐 /
+                       居家上门服务都已随康乐收敛砍掉，留着就是把已删的能力当卖点。
+                       换成现在真会做的事：挂号、线下活动、家常菜谱。 -->
+                  <text class="feat-pill">就医挂号</text>
+                  <text class="feat-pill">活动菜谱</text>
                 </view>
               </view>
             </view>
@@ -83,9 +86,13 @@
                 </view>
                 <text class="role-desc">42岁 · 儿子 · 跨城远程看板</text>
                 <view class="role-features">
-                  <text class="feat-pill">高危审批</text>
+                  <!-- 「高危审批」撤掉：就医不需要子女审批（康乐"知会不审批"，挂号当场办好、
+                       同一步发知会），而现役工具里也没有任何付费动作会走到审批那一条。
+                       摆一个产品里不存在的能力在登录页上，是当着评委的面许一个没实现的诺。
+                       换成子女在这端真能干的三件事。 -->
+                  <text class="feat-pill">健康概况</text>
                   <text class="feat-pill">轨迹守护</text>
-                  <text class="feat-pill">健康用药</text>
+                  <text class="feat-pill">就医知会</text>
                 </view>
               </view>
             </view>
@@ -143,12 +150,12 @@
             :disabled="loading"
             @tap="submitLogin"
           >
-            <text class="submit-text">{{ loading ? '正在验证…' : '登 录 老 友 记' }}</text>
+            <text class="submit-text">{{ loading ? '正在验证…' : '登 录 康 乐' }}</text>
           </button>
 
           <!-- 注册引导 -->
           <view class="register-prompt">
-            <text class="prompt-text">还没有老友记账号？</text>
+            <text class="prompt-text">还没有康乐账号？</text>
             <text class="prompt-link" @tap="goRegister">新用户快速注册 ›</text>
           </view>
         </view>
@@ -182,6 +189,7 @@
 <script>
 import { post } from '../../api/client'
 import { setAuthSession } from '../../store/user'
+import { syncAll } from '../../utils/native'
 
 export default {
   data() {
@@ -220,6 +228,9 @@ export default {
         setAuthSession(res)
         uni.hideLoading()
         uni.showToast({ title: welcomeTitle, icon: 'success', duration: 1500 })
+        // 长辈端登录成功后立刻排一次闹钟（契约 §10.3）。不 await —— 别拖慢跳转；
+        // 落点 home.vue 的 onShow 还会兜一次，这里先发出去是为了不在 300ms 跳转窗口里空着。
+        if (role === 'elder') syncAll()
         const dest = role === 'child' ? '/pages/child/dashboard' : '/pages/elder/home'
         setTimeout(() => {
           uni.reLaunch({ url: dest })
@@ -261,6 +272,8 @@ export default {
         const role = res.user ? res.user.role : 'elder'
         uni.hideLoading()
         uni.showToast({ title: '登录成功', icon: 'success' })
+        // 同 quickLogin：长辈端登录后立刻排闹钟（契约 §10.3），不 await 拖慢跳转。
+        if (role === 'elder') syncAll()
         setTimeout(() => {
           uni.reLaunch({
             url: role === 'child' ? '/pages/child/dashboard' : '/pages/elder/home',
@@ -282,7 +295,7 @@ export default {
 
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #FAF7F2 0%, #F5ECE3 100%);
+  background: linear-gradient(180deg, #F2F7FD 0%, #EBF4FE 100%);
   position: relative;
   overflow-x: hidden;
   box-sizing: border-box;
@@ -292,7 +305,7 @@ export default {
   padding: 40rpx 28rpx;
 }
 
-/* 顶部柔和暖阳微光 */
+/* 顶部柔和晴空微光 */
 .ambient-glow {
   position: absolute;
   top: -100rpx;
@@ -300,7 +313,7 @@ export default {
   transform: translateX(-50%);
   width: 720rpx;
   height: 480rpx;
-  background: radial-gradient(circle, rgba(255, 122, 61, 0.22) 0%, rgba(255, 220, 180, 0.08) 60%, transparent 100%);
+  background: radial-gradient(circle, rgba(42, 130, 228, 0.18) 0%, rgba(235, 244, 254, 0.08) 60%, transparent 100%);
   border-radius: 50%;
   pointer-events: none;
   filter: blur(48rpx);
@@ -339,12 +352,12 @@ export default {
 .brand-badge {
   width: 116rpx;
   height: 116rpx;
-  background: linear-gradient(135deg, #FF7A3D 0%, #E85D04 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   border-radius: 38rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14rpx 32rpx rgba(232, 93, 4, 0.28);
+  box-shadow: 0 14rpx 32rpx rgba(42, 130, 228, 0.28);
   border: 4rpx solid #FFFFFF;
 }
 
@@ -356,7 +369,7 @@ export default {
   position: absolute;
   width: 136rpx;
   height: 136rpx;
-  border: 2rpx dashed rgba(255, 107, 53, 0.38);
+  border: 2rpx dashed rgba(42, 130, 228, 0.38);
   border-radius: 46rpx;
   animation: rotateRing 24s linear infinite;
 }
@@ -384,20 +397,25 @@ export default {
 .brand-slogan {
   font-size: 32rpx;
   font-weight: 800;
-  color: #D9480F;
+  color: #1967C2;
   letter-spacing: 1rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .slogan-divider {
   font-size: 28rpx;
-  color: #FFB38A;
+  color: #93C5FD;
+  white-space: nowrap !important;
 }
 
 .brand-desc {
-  font-size: 26rpx;
+  font-size: 24rpx;
   color: #78716C;
   margin-top: 8rpx;
   letter-spacing: 1rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 /* ---------------- 登录卡片 ---------------- */
@@ -406,13 +424,13 @@ export default {
   border-radius: 36rpx;
   padding: 36rpx 32rpx;
   box-shadow: 0 16rpx 48rpx rgba(71, 55, 41, 0.08), 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
-  border: 2rpx solid #EFE6DA;
+  border: 2rpx solid #E1ECF7;
 }
 
 /* 模式 Tabs */
 .mode-tabs {
   display: flex;
-  background: #F5EFE8;
+  background: #F2F7FD;
   border-radius: 20rpx;
   padding: 6rpx;
   margin-bottom: 32rpx;
@@ -433,7 +451,7 @@ export default {
 
 .tab-item.active {
   background: #FFFFFF;
-  color: #D9480F;
+  color: #2A82E4;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
@@ -467,13 +485,13 @@ export default {
 }
 
 .role-elder {
-  background: linear-gradient(135deg, #FFF9F3 0%, #FFF2E3 100%);
-  border-color: #FED7AA;
+  background: linear-gradient(135deg, #F8FAFC 0%, #EDF4FB 100%);
+  border-color: #CCE2F8;
 }
 
 .role-elder:hover {
-  border-color: #FDBA74;
-  box-shadow: 0 8rpx 20rpx rgba(255, 107, 53, 0.12);
+  border-color: #93C5FD;
+  box-shadow: 0 8rpx 20rpx rgba(42, 130, 228, 0.12);
 }
 
 .role-child {
@@ -504,8 +522,8 @@ export default {
 }
 
 .elder-avatar {
-  background: #FFE8D6;
-  border: 2rpx solid #FED7AA;
+  background: #EBF4FE;
+  border: 2rpx solid #CCE2F8;
 }
 
 .child-avatar {
@@ -527,13 +545,17 @@ export default {
 .role-title-row {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 10rpx;
+  flex-wrap: nowrap;
 }
 
 .role-name {
-  font-size: 34rpx;
+  font-size: 32rpx;
   font-weight: 800;
   color: #1E293B;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 
 .role-tag {
@@ -541,11 +563,14 @@ export default {
   font-weight: 700;
   padding: 2rpx 12rpx;
   border-radius: 999rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 
 .elder-tag {
-  background: #FFEDD5;
-  color: #C2410C;
+  background: #EBF4FE;
+  color: #1967C2;
 }
 
 .child-tag {
@@ -556,38 +581,49 @@ export default {
 .role-desc {
   font-size: 24rpx;
   color: #64748B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .role-features {
   display: flex;
-  gap: 10rpx;
+  align-items: center;
+  gap: 8rpx;
   margin-top: 6rpx;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .feat-pill {
   font-size: 20rpx;
-  color: #78716C;
-  background: rgba(255, 255, 255, 0.85);
-  padding: 2rpx 10rpx;
+  color: #5F758E;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2rpx 8rpx;
   border-radius: 8rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.05);
+  border: 1rpx solid #CCE2F8;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 
 .role-enter-btn {
   display: flex;
   align-items: center;
   gap: 4rpx;
-  padding: 14rpx 22rpx;
+  padding: 12rpx 18rpx;
   border-radius: 16rpx;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 700;
   flex-shrink: 0;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .elder-btn {
   background: #2A82E4;
   color: #FFFFFF;
-  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.28);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
 }
 
 .child-btn {
@@ -641,7 +677,7 @@ export default {
 .input-wrapper.focused {
   background: #FFFFFF;
   border-color: #2A82E4;
-  box-shadow: 0 0 0 6rpx rgba(42, 130, 228, 0.16);
+  box-shadow: 0 0 0 6rpx rgba(42, 130, 228, 0.14);
 }
 
 .input-icon {
@@ -673,13 +709,13 @@ export default {
 .submit-button {
   width: 100%;
   height: 104rpx;
-  background: linear-gradient(135deg, #FF7A3D 0%, #E85D04 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   border-radius: 22rpx;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(232, 93, 4, 0.3);
+  box-shadow: 0 8rpx 24rpx rgba(42, 130, 228, 0.28);
   margin-top: 10rpx;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -687,7 +723,7 @@ export default {
 
 .submit-button:active {
   transform: translateY(2rpx);
-  box-shadow: 0 4rpx 12rpx rgba(232, 93, 4, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
 }
 
 .submit-text {
@@ -717,90 +753,42 @@ export default {
   cursor: pointer;
 }
 
-/* ---------------- 安卓 APK 下载入口条 ---------------- */
-.apk-download-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #FFFFFF;
-  border-radius: 24rpx;
-  padding: 20rpx 24rpx;
-  border: 2rpx solid #BFDBFE;
-  box-shadow: 0 8rpx 24rpx rgba(37, 99, 235, 0.08);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.apk-download-bar:active {
-  transform: translateY(2rpx) scale(0.99);
-}
-
-.apk-download-left {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  flex: 1;
-}
-
-.apk-icon {
-  font-size: 44rpx;
-}
-
-.apk-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.apk-title {
-  font-size: 28rpx;
-  font-weight: 800;
-  color: #1E3A8A;
-}
-
-.apk-sub {
-  font-size: 22rpx;
-  color: #3B82F6;
-}
-
-.apk-btn {
-  background: #2563EB;
-  color: #FFFFFF;
-  padding: 12rpx 22rpx;
-  border-radius: 14rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-  box-shadow: 0 4rpx 10rpx rgba(37, 99, 235, 0.25);
-  flex-shrink: 0;
-}
-
-.apk-btn-text {
-  color: #FFFFFF;
+.btn-text {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 /* ---------------- 底部背书 ---------------- */
 .security-footer {
   display: flex;
   justify-content: center;
-  margin-top: 8rpx;
+  margin-top: 12rpx;
+  padding: 0 10rpx;
 }
 
 .security-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 10rpx 20rpx;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1rpx solid #E7DFD5;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 8rpx 16rpx;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1rpx solid #E1ECF7;
   border-radius: 999rpx;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sec-icon {
   font-size: 24rpx;
+  flex-shrink: 0;
 }
 
 .sec-text {
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #78716C;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  text-align: center;
 }
 </style>

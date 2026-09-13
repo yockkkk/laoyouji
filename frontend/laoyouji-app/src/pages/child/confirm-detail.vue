@@ -65,10 +65,11 @@ import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 
 const ICONS = {
-  book_ticket: '🚄',
+  // 只留在册工具（现役 22 个）。book_ticket / book_hotel / order_service 已随
+  // 产品收敛删掉，留着图标等于给不存在的工具留门。
+  // 这一页服务的是**金融高危动作的确认**（risk_rules.HIGH_RISK_TOOLS = {"pay"}），
+  // 不是就医审批 —— 挂号在 NON_PAYMENT_TOOLS 里，当场办好、只发知会。
   register_appointment: '🏥',
-  book_hotel: '🏨',
-  order_service: '🧹',
   pay: '💸',
 }
 

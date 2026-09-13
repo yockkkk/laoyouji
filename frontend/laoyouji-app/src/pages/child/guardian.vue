@@ -57,11 +57,19 @@
       <text class="precision-text">🔒 {{ precisionNote }}</text>
     </view>
 
-    <!-- 行程关联待审批事项（挂号、车票、酒店等高危操作） -->
+    <!-- 行程关联的待审批事项。
+         这里服务的**只有金融高危动作**（risk_rules.HIGH_RISK_TOOLS = {"pay"}）——
+         挂号不在此列：康乐"知会不审批"，挂号当场办好、同一步给子女发一条知会，
+         老人不该为看病等谁点头。原来的副标题写"长辈已发起申请，等待您确认核准"，
+         配上"（挂号、车票、酒店等高危操作）"的注释，把这套审批机制说成了就医流程的
+         一环，与产品立场正相反。
+         实况：现役装配里没有任何工具命中 HIGH_RISK_TOOLS（pay 未在册），所以这个区块
+         在旗舰链上是 0 条、不渲染。保留它是因为后端 routes_confirm.py 那条通道还在，
+         将来真有付费动作时子女端要有地方确认。 -->
     <view v-if="pendingConfirmations && pendingConfirmations.length > 0" class="pending-section">
       <view class="pending-section-head">
-        <text class="pending-section-title">✋ 行程关联待审批事项 ({{ pendingConfirmations.length }})</text>
-        <text class="pending-section-sub">长辈已发起申请，等待您确认核准</text>
+        <text class="pending-section-title">✋ 待您确认的付款事项 ({{ pendingConfirmations.length }})</text>
+        <text class="pending-section-sub">涉及付款的操作才需要您点头；挂号、出行这类不经过这里</text>
       </view>
       <view v-for="t in pendingConfirmations" :key="t.id" class="pending-card" @tap="goDetail(t)">
         <view class="pending-card-top">
@@ -147,12 +155,18 @@
           <button class="map-retry-btn" size="mini" @tap="initChildMap">重新加载地图</button>
         </view>
 
+        <!-- 没路线可画时的如实交代。放在地图上方而不是盖住地图 —— 地图本身还能看
+             （长辈位置、"全览"这些控件都还有用），缺的只是那条线，说清楚缺的是什么。 -->
+        <view v-if="!mapLoading && !mapFailed && mapEmptyNotice" class="map-empty-notice">
+          <text class="map-empty-notice-text">{{ mapEmptyNotice }}</text>
+        </view>
+
         <!-- 地图浮动工具条 -->
         <view class="guard-map-statusbar">
           <view class="status-indicator-pill">
             <view class="status-indicator-dot" :class="{ alert: isOffRoute }"></view>
             <text class="status-indicator-text">
-              {{ isOffRoute ? '⚠️ 发现偏离规划路线' : '🟢 实时守护中 (10秒刷新)' }}
+              {{ isOffRoute ? '⚠️ 发现偏离规划路线' : (latestCheckpoint && latestCheckpoint.lng != null ? '🟢 实时守护中 (10秒刷新)' : '⚪ 等待长辈位置上报') }}
             </text>
           </view>
           <view class="map-ctrl-btns">
@@ -220,13 +234,14 @@ const PRECISION_NOTE = {
   off: '长辈未开放位置共享，无法查看实时经纬度与航迹。',
 }
 
-const DEFAULT_POINTS = [
-  { name: '家（南京鼓楼区）', lng: 118.7732, lat: 32.0618, type: 'start' },
-  { name: '南京南站', lng: 118.7981, lat: 31.9696, type: 'station' },
-  { name: '济南西站', lng: 116.8974, lat: 36.6669, type: 'station' },
-  { name: '北京南站', lng: 116.3789, lat: 39.8652, type: 'station' },
-  { name: '北京积水潭医院', lng: 116.3748, lat: 39.9485, type: 'end' },
-]
+// 这里原来有一份 DEFAULT_POINTS：家（南京鼓楼区）→ 南京南站 → 济南西站 → 北京南站
+// → 北京积水潭医院。它是**编出来的**：后端没回路线时（没有行程、或行程还没算路），
+// renderTripOnMap 会拿它兜底连出一条南京到北京的高铁折线，还给每个站打上"站·济南西站"
+// 的标记 —— 老人端根本没规划过这条线，子女端却看着自己的父母正在跨城。
+// 康乐只做本市出行（公交/地铁/步行），本市产品更不该在守护页上画跨城航迹。
+// 现在默认全空：拿不到真数据就显示如实的空态，宁可不画。
+//
+// 姊妹页 pages/elder/route-map.vue 上一轮已经这样改过，这里保持同一口径。
 
 export default {
   name: 'ChildGuardian',
@@ -252,9 +267,11 @@ export default {
       elderMarker: null,
       offRouteMarker: null,
       waypointMarkers: [],
-      elderCoords: [118.7732, 32.0618],
+      // 全空起步：长辈的坐标只能来自真实上报，路线只能来自后端算出的结果。
+      // 在这里预置一个坐标（原来写的是南京鼓楼区）等于给子女看一个没发生过的位置。
+      elderCoords: null,
       routeCoords: [],
-      routePointsData: DEFAULT_POINTS,
+      routePointsData: [],
       simStep: 0,
       _switchSeq: 0,
     }
@@ -299,6 +316,26 @@ export default {
     isOffRoute() {
       if (!this.latestCheckpoint) return false
       return this.latestCheckpoint.status === 'off_route'
+    },
+    // 地图上到底有没有真东西可画。两个来源：后端算出的路线（routeCoords 是 polyline，
+    // routePointsData 是途经点）。都没有就不该画线，也不该假装"实时守护中"。
+    hasRouteData() {
+      return this.routeCoords.length >= 2 || this.routePointsData.length > 0
+    },
+    mapEmptyNotice() {
+      if (this.locationOff) return ''
+      if (!this.trip) return ''
+      // 说得具体一点：子女要能分清"路还没算"和"老人没动过"——这是两件事，
+      // 分开说才不会让一句含糊的"暂无数据"把两种情况糊在一起。
+      const noRoute = !this.hasRouteData
+      const noPosition = !(this.latestCheckpoint && this.latestCheckpoint.lng != null)
+      if (noRoute && noPosition) {
+        return '这条行程还没有路线，也没收到长辈的位置上报。等他出门上报一次，这里就会显示。'
+      }
+      if (noRoute) {
+        return '还没算出这条行程的路线。康乐只做本市出行（公交、地铁、步行）——所以这里不会出现跨城的航迹。'
+      }
+      return ''
     },
     offRouteDetail() {
       if (!this.latestCheckpoint) return ''
@@ -538,27 +575,31 @@ export default {
         this.offRouteMarker = null
       }
 
-      // 如果未获取到详细 polyline，使用途经点连线兜底
+      // 没有真路线就不画线。途经点连线只是"后端给了点、没给 polyline"时的兜底，
+      // 不是"后端什么都没给"时用来凑一条出来的 —— 后者画出来的每一段都在替老人
+      // 编一段没走过的路。空态由模板上的提示卡承担（见 hasRouteData）。
       const polyLngLat = this.routeCoords.length
         ? this.routeCoords
         : this.routePointsData.map((p) => [p.lng, p.lat])
       const latlngs = polyLngLat.map((p) => toLeafletLatLng(p))
 
       // 行程真实路线轨迹：白色描边打底 + 高德蓝主线
-      this.routeCasing = L.polyline(latlngs, {
-        color: '#ffffff',
-        weight: 10,
-        opacity: 0.9,
-        lineJoin: 'round',
-        lineCap: 'round',
-      }).addTo(this.leafletMap)
-      this.routePolyline = L.polyline(latlngs, {
-        color: '#2563eb', // 专业沉稳高德蓝
-        weight: 7,
-        opacity: 0.92,
-        lineJoin: 'round',
-        lineCap: 'round',
-      }).addTo(this.leafletMap)
+      if (latlngs.length >= 2) {
+        this.routeCasing = L.polyline(latlngs, {
+          color: '#ffffff',
+          weight: 10,
+          opacity: 0.9,
+          lineJoin: 'round',
+          lineCap: 'round',
+        }).addTo(this.leafletMap)
+        this.routePolyline = L.polyline(latlngs, {
+          color: '#2A82E4', // 晴空浅天蓝主线
+          weight: 7,
+          opacity: 0.92,
+          lineJoin: 'round',
+          lineCap: 'round',
+        }).addTo(this.leafletMap)
+      }
 
       // 绘制途经打点 Markers
       this.routePointsData.forEach((pt) => {
@@ -574,8 +615,16 @@ export default {
         this.waypointMarkers.push(marker)
       })
 
-      // 绘制/更新长辈当前位置呼吸 Marker
-      if (!this.elderMarker) {
+      // 绘制/更新长辈当前位置呼吸 Marker。
+      // elderCoords 为 null 表示"还没有任何真实上报"——这时候**不能画**：那个
+      // "👴 父母实时位置"的气泡一旦落在地图上，就是在替长辈声明一个没上报过的位置。
+      // 已经画出来的 marker 遇到坐标被清空也要收掉（切行程时会发生）。
+      if (!this.elderCoords || this.elderCoords.length < 2) {
+        if (this.elderMarker) {
+          this.leafletMap.removeLayer(this.elderMarker)
+          this.elderMarker = null
+        }
+      } else if (!this.elderMarker) {
         const liveIcon = makeMapMarkerIcon(L, {
           html: `<div class="child-elder-breathe-marker"><div class="breathe-wave"></div><div class="breathe-core">👴 父母实时位置</div></div>`,
           size: [90, 40],
@@ -685,24 +734,57 @@ export default {
     async simElderMove(type) {
       if (!this.tripId) return
       if (type === 'offroute') {
-        // 模拟偏航到朝阳区三里屯
+        // 偏航点**从长辈当前真实坐标往外挪一点**算出来，不写死城市。
+        // 原来这里钉的是「北京市朝阳区三里屯太古里」(116.455/39.937)：
+        // 一位南京的老人，在子女端地图上"偏航"到了北京 —— 一则本市产品里没有这种
+        // 行程，二则就算只是演示按钮，地图上会出现一条从南京连到北京的线。
+        // 偏航告警要证明的是"离开既定路线会被发现"，这件事与具体是哪座城无关。
+        const base = this.elderCoords
+          || (this.routePointsData.length ? [this.routePointsData[0].lng, this.routePointsData[0].lat] : null)
+        if (!base) {
+          uni.showToast({ title: '还没有长辈位置，先等一次上报', icon: 'none' })
+          return
+        }
+        // 偏移量必须**明确越过**后端的走廊容差，否则这次"偏航"会被后端判成 normal，
+        // 按钮弹一句"已触发偏航告警"、地图上却什么警报都没有 —— 按钮在说谎。
+        // 后端 routes_guardian.py 的 tolerance = 3500 米（本市出行就一条 3.5km 走廊，
+        // 判定用的是点到折线**线段**的最短距离，见 amap_service.min_distance_to_corridor_m）。
+        // 取 +0.06° 经度 / +0.04° 纬度：南京纬度上约 5.7km / 4.4km，直线约 7.2km；
+        // 而这条行程的走廊全长也就几公里，离走廊上任何一点都在 4km 开外，稳稳越过阈值。
+        // 这仍是"老人在本市走岔了"的量级，不是另一座城。
+        const offLng = Number(base[0]) + 0.06
+        const offLat = Number(base[1]) + 0.04
         try {
           const res = await post(`/api/trips/${this.tripId}/checkpoints`, {
-            location: '北京市朝阳区三里屯太古里',
-            lng: 116.455,
-            lat: 39.937,
+            location: '偏离既定路线（演示上报）',
+            lng: offLng,
+            lat: offLat,
           })
           if (res && res.checkpoint) {
             this.checkpoints.push(res.checkpoint)
-            this.elderCoords = [116.455, 39.937]
+            this.elderCoords = [offLng, offLat]
             this.renderTripOnMap()
-            uni.showToast({ title: '已触发偏航模拟上报！', icon: 'none' })
+            // 报后端**实际判出来的**档位，而不是替它宣布成功 ——
+            // 判成 normal 就直说没触发，别让按钮文案与地图上的实况对不上。
+            uni.showToast({
+              title:
+                res.checkpoint.status === 'off_route'
+                  ? '已触发偏航告警，地图上可看到警报'
+                  : '上报成功，但后端判定未偏离路线',
+              icon: 'none',
+            })
           }
         } catch (e) {
           uni.showToast({ title: e.message || '模拟失败', icon: 'none' })
         }
       } else {
-        // 模拟正常前进到下一站点
+        // 模拟正常前进到下一站点。
+        // 途经点为空时不能再往下走：routePointsData.length 是 0，取模会得到 NaN，
+        // 于是 targetPoint 是 undefined，下一行读 .name 直接抛。
+        if (!this.routePointsData.length) {
+          uni.showToast({ title: '这条行程还没有路线点，先规划路线', icon: 'none' })
+          return
+        }
         this.simStep = (this.simStep + 1) % this.routePointsData.length
         const targetPoint = this.routePointsData[this.simStep]
         try {
@@ -723,13 +805,14 @@ export default {
       }
     },
     taskIcon(t) {
+      // 只留**在册**的工具。book_ticket / search_train / book_hotel / order_service
+      // 都已随产品收敛删掉（现役 22 个工具，见后端装配），留着它们等于给不存在的
+      // 工具备一个图标 —— 后来人一看就以为这产品还在订票订酒店。
+      // register_appointment 留着不是因为它会挂起（它在 risk_rules.NON_PAYMENT_TOOLS
+      // 里，挂号当场办好、只发知会），而是因为旧会话的历史数据里可能有它的挂起记录。
       const map = {
-        book_ticket: '🚄',
-        search_train: '🚄',
         register_appointment: '🏥',
         search_hospital: '🏥',
-        book_hotel: '🏨',
-        order_service: '🧹',
         pay: '💸',
       }
       return map[t.tool_name] || '✋'
@@ -819,11 +902,11 @@ export default {
 /* 行程选择器与多行程切换栏 */
 .trip-selector-box {
   margin: $lyj-space-sm $lyj-space-md;
-  background: #ffffff;
-  border-radius: 16rpx;
-  border: 1rpx solid #e2e8f0;
+  background: $lyj-card;
+  border-radius: $lyj-radius;
+  border: 2rpx solid $lyj-line;
   padding: 18rpx 20rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  box-shadow: $lyj-shadow-card;
 }
 .selector-head {
   display: flex;
@@ -841,33 +924,34 @@ export default {
 .selector-label {
   font-size: 28rpx;
   font-weight: 700;
-  color: #1e293b;
+  color: $lyj-child-text;
 }
 .picker-current-pill {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #eff6ff;
-  border: 1rpx solid #bfdbfe;
+  background: $lyj-primary-soft;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
   border-radius: 30rpx;
   padding: 6rpx 20rpx;
   cursor: pointer;
 }
 .picker-text {
   font-size: 26rpx;
-  color: #1d4ed8;
+  color: $lyj-primary-dark;
   font-weight: 700;
+  white-space: nowrap;
 }
 .picker-dropdown-icon {
   font-size: 22rpx;
-  color: #3b82f6;
+  color: $lyj-primary;
 }
 .trip-tags-scroll {
   width: 100%;
   white-space: nowrap;
   margin-top: 14rpx;
   padding-top: 10rpx;
-  border-top: 1rpx dashed #f1f5f9;
+  border-top: 1rpx dashed $lyj-line;
 }
 .trip-tags-wrap {
   display: flex;
@@ -877,20 +961,22 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  background: #f1f5f9;
-  border-radius: 10rpx;
+  background: $lyj-field;
+  border-radius: 12rpx;
   padding: 8rpx 16rpx;
-  border: 1rpx solid #e2e8f0;
+  border: 1rpx solid $lyj-line;
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .trip-tag-item.active {
-  background: #1e293b;
-  border-color: #1e293b;
+  background: $lyj-primary;
+  border-color: $lyj-primary;
 }
 .tag-name {
   font-size: 24rpx;
-  color: #475569;
+  color: $lyj-child-body;
   font-weight: 600;
 }
 .trip-tag-item.active .tag-name {
@@ -966,16 +1052,15 @@ export default {
 .gaode-guard-card {
   position: relative;
   margin: $lyj-space-sm $lyj-space-md;
-  background: #ffffff;
-  border-radius: 20rpx;
+  background: $lyj-card;
+  border-radius: $lyj-radius;
   overflow: hidden;
-  border: 2rpx solid #e2e8f0;
-  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.06);
+  border: 2rpx solid $lyj-line;
+  box-shadow: $lyj-shadow-card;
 }
 .child-amap-canvas {
   width: 100%;
   height: 58vh;
-  min-height: 540rpx;
   background: #f1f5f9;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1000,8 +1085,22 @@ export default {
   color: #475569;
   font-weight: 600;
 }
+/* 没路线可画时的如实交代条。刻意做得显眼但不报警（中性灰蓝，不用红/黄）——
+   它说的是"还没数据"，不是"出事了"。 */
+.map-empty-notice {
+  background: #f1f5f9;
+  border-left: 6rpx solid #94a3b8;
+  border-radius: 8rpx;
+  padding: 16rpx 20rpx;
+  margin: 12rpx 16rpx;
+}
+.map-empty-notice-text {
+  font-size: 24rpx;
+  color: #475569;
+  line-height: 1.6;
+}
 .map-retry-btn {
-  background: #2563eb;
+  background: $lyj-primary;
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 700;
@@ -1108,14 +1207,16 @@ export default {
   gap: 10rpx;
 }
 .ctrl-btn {
-  background: #f1f5f9;
-  color: #334155;
-  border: 1rpx solid #cbd5e1;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
   border-radius: 20rpx;
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 700;
-  padding: 4rpx 16rpx;
+  padding: 6rpx 20rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 /* 模拟操作栏 */
@@ -1138,11 +1239,13 @@ export default {
   border-radius: 20rpx;
   padding: 2rpx 16rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .sim-pill-btn.normal {
-  background: #e0f2fe;
-  color: #0369a1;
-  border: 1rpx solid #bae6fd;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
 }
 .sim-pill-btn.warn {
   background: #fee2e2;
@@ -1319,10 +1422,16 @@ export default {
   cursor: pointer;
 }
 .inline-status {
-  font-size: $lyj-font-xs;
+  font-size: $lyj-font-sm;
   font-weight: 600;
-  padding: 4rpx 16rpx;
-  border-radius: 999rpx;
+  padding: 8rpx 20rpx;
+  border-radius: $lyj-radius-pill;
+  min-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 .inline-status.success {
   background: #dcfce7;
@@ -1334,27 +1443,36 @@ export default {
 }
 .pending-btns {
   display: flex;
-  gap: $lyj-space-xs;
+  align-items: center;
+  gap: $lyj-space-sm;
 }
 .btn-approve {
   background: #10b981;
   color: #ffffff;
-  font-size: $lyj-font-xs;
+  font-size: $lyj-font-sm;
   font-weight: 700;
   border: none;
-  border-radius: 8rpx;
-  padding: 0 20rpx;
-  min-height: 32px;
+  border-radius: $lyj-radius;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .btn-reject {
   background: #f1f5f9;
   color: #64748b;
-  font-size: $lyj-font-xs;
+  font-size: $lyj-font-sm;
   font-weight: 700;
   border: 1rpx solid #cbd5e1;
-  border-radius: 8rpx;
-  padding: 0 20rpx;
-  min-height: 32px;
+  border-radius: $lyj-radius;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .empty-card {
   margin: $lyj-space-md;

@@ -2,7 +2,7 @@
   "pages": [
     {
       "path": "pages/login/login",
-      "style": { "navigationBarTitleText": "老友记" }
+      "style": { "navigationBarTitleText": "康乐" }
     },
     {
       "path": "pages/login/register",
@@ -10,15 +10,19 @@
     },
     {
       "path": "pages/elder/home",
-      "style": { "navigationBarTitleText": "老友记", "navigationStyle": "custom" }
+      "style": { "navigationBarTitleText": "康乐", "navigationStyle": "custom" }
     },
     {
       "path": "pages/elder/chat",
-      "style": { "navigationBarTitleText": "和老友记聊聊", "navigationStyle": "custom" }
+      "style": { "navigationBarTitleText": "和康乐聊聊", "navigationStyle": "custom" }
     },
     {
       "path": "pages/elder/medications",
       "style": { "navigationBarTitleText": "今天的药", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/elder/health",
+      "style": { "navigationBarTitleText": "我的健康", "navigationStyle": "custom" }
     },
     {
       "path": "pages/elder/profile",
@@ -78,7 +82,7 @@
     }
   ],
   "tabBar": {
-    "color": "#7E93A8",
+    "color": "#5F758E",
     "selectedColor": "#2A82E4",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
@@ -93,7 +97,7 @@
   },
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "老友记",
+    "navigationBarTitleText": "康乐",
     "navigationBarBackgroundColor": "#F2F7FD",
     "backgroundColor": "#F2F7FD"
   }

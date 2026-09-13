@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  康乐（老友记）Android 壳 —— 清单
+
+  约束（见同目录 CONTRACT.md §2 / §7.3 / §8）：
+    * 无 Gradle、无 AndroidX、无 support library。构建只有 aapt + android.jar(API 30)，
+      R.java 由 aapt 生成，任何依赖坐标都不存在。
+    * 包名 com.kangle.app 已冻结：换包名 = 与旧壳并存（桌面两个「康乐」）+ 覆盖安装失效。
+      versionCode / versionName 由 build_apk.sh 用 sed 注入到这个文件的 build 副本，
+      仓库里这份只是默认值，不要在构建时手改。
+    * 明文流量：H5 与 APK 同机托管在 http://159.75.94.149:8000/，Android 9+ 默认禁明文，
+      不处理就是纯白屏。usesCleartextTraffic 与 networkSecurityConfig 两条都要。
+    * 图标：**只用本工程自己的资源**（@mipmap/ic_launcher），绝不引用 @android:drawable/... 这类
+      框架资源。框架图标引用（曾用过 sym_def_app_icon）时 aapt 编包只给 warning，但
+      `aapt dump badging` 会以退出码 1 结束（"ERROR getting 'android:icon' attribute:
+      attribute value reference does not exist"，android.jar 的资源表里那个 id 只是桩字符串），
+      会让 build_apk.sh 第 8 步误判成构建失败。本工程图标由 tools/make_icons.py 生成：
+      mipmap-anydpi-v26/ic_launcher.xml（API 26+ 自适应，演示机 MIUI 走这条）
+      + mipmap-{mdpi..xxxhdpi}/ic_launcher.png（API 21–25 兜底）。
+      改图标请改脚本后重跑，不要手改二进制 PNG。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.kangle.app"
+    android:versionCode="2"
+    android:versionName="1.1.0">
+
+    <!-- minSdk 21(Android 5.0) / targetSdk 30(Android 11)，编译基准 android.jar = API 30。
+         注意：API 30 的 android.jar 里没有 31+ 的任何符号（POST_NOTIFICATIONS /
+         canScheduleExactAlarms / Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM 都要写字面量或反射）。 -->
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30" />
+
+    <!-- ===== 权限（见 CONTRACT.md §8.1 总表）===== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 字面量：API 30 的 android.jar 里没有 Manifest.permission.POST_NOTIFICATIONS 符号 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 精确闹钟：属特殊权限，无运行时弹框，只能跳设置页人工授予；
+         拿不到时退回 setAndAllowWhileIdle（不精确，可能漂移几分钟），两级降级都要有。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- P4: 途中守护预留，本轮不申请、不实现任何 Service，仅占位 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 不声明 WAKE_LOCK：RTC_WAKEUP 闹钟本身就能唤醒设备，通知也不需要它 -->
+
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme"
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- H5 地址：build_apk.sh 用 sed 整行改写 value；MainActivity.h5Url() 读它，
+             缺失/为空时回退 MainActivity.DEFAULT_H5_URL。
+             注意这一行的属性写法被脚本按字面量匹配，改动会打断注入。 -->
+        <meta-data android:name="kangle.h5_url" android:value="http://159.75.94.149:8000/" />
+
+        <!-- 壳：WebView 全屏承载云端 H5（不内嵌 assets）。
+             configChanges 那一长串是有意的：不写的话屏幕一转 Activity 就重建，
+             WebView 重载 = 聊天上下文全丢。
+             singleTask 保证通知点击走 onNewIntent 而不是再开一个壳。 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|locale|layoutDirection|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 到点提醒：只由本应用自己的 PendingIntent（显式 Intent）触发，外部不该唤起 -->
+        <receiver android:name=".ReminderReceiver" android:exported="false" android:enabled="true" />
+
+        <!-- 开机 / 覆盖安装 / 改时区 → 从本地副本重新武装。
+             MY_PACKAGE_REPLACED 是必需的：应用升级会把所有已排闹钟清空，不重排就从此不响。
+             这几条都是系统保护广播，第三方应用无法伪造，所以可以 exported=true。 -->
+        <receiver android:name=".BootReceiver" android:exported="true" android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

@@ -7,7 +7,7 @@
     识别—兜底"这条链路只有一份实现（三链路降级见 api/asr.js）。
 
     组件只负责把话变成文字，然后 emit('text', 文字)。**怎么用这句话是页面的事** ——
-    聊天页直接发给老友记，首页则交接过去。
+    聊天页直接发给康乐，首页则交接过去。
   -->
   <view class="mic-wrap" :class="'mode-' + mode">
     <view
@@ -100,7 +100,7 @@ export default {
       }
 
       // 最短时长 400ms：老人点按误触（碰一下就松）不该发起一次识别，
-      // 更不该把误触识别成的怪话发给老友记。
+      // 更不该把误触识别成的怪话发给康乐。
       if (heldMs < 400) {
         const rec = this._recorder
         this._recorder = null
@@ -193,7 +193,7 @@ export default {
   align-items: center;
   justify-content: center;
   gap: $lyj-space-xs;
-  box-shadow: 0 12rpx 36rpx rgba(42, 130, 228, 0.38);
+  box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.4);
   transition: transform 0.15s;
   user-select: none;
   touch-action: manipulation;
@@ -209,9 +209,9 @@ export default {
   animation: pulse 1.5s infinite ease-in-out;
 }
 @keyframes pulse {
-  0% { box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.35); }
-  50% { box-shadow: 0 12rpx 50rpx rgba(42, 130, 228, 0.7); }
-  100% { box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.35); }
+  0% { box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.4); }
+  50% { box-shadow: 0 10rpx 50rpx rgba(42, 130, 228, 0.8); }
+  100% { box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.4); }
 }
 .mic.disabled {
   filter: grayscale(0.8);
@@ -223,6 +223,8 @@ export default {
   font-size: $lyj-font-md;
   color: $lyj-text-on;
   font-weight: 700;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .interim {
   padding: 0 $lyj-space-md;
@@ -247,7 +249,7 @@ export default {
     flex-direction: row;
     justify-content: center;
     gap: $lyj-space-sm;
-    box-shadow: 0 6rpx 20rpx rgba(42, 130, 228, 0.25);
+    box-shadow: 0 4rpx 16rpx rgba(42, 130, 228, 0.25);
     .mic-icon {
       font-size: 48rpx;
     }

@@ -58,5 +58,5 @@ def test_main_agent_prompt_rules():
     """检查总智能体提示词已包含行动优先与本地就医解耦规则。"""
     from app.agents.main_agent import SYSTEM_PROMPT
     assert "拒绝口头空话，行动优先" in SYSTEM_PROMPT
-    assert "本地同城就医" in SYSTEM_PROMPT
+    assert "本地就近就医" in SYSTEM_PROMPT
     assert "禁止重复追问" in SYSTEM_PROMPT

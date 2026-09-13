@@ -1,4 +1,4 @@
-"""总智能体「老友记」—— 主入口：意图识别 / 任务规划 / 并行调度 / 交付物聚合。
+"""总智能体「康乐」—— 主入口：意图识别 / 任务规划 / 并行调度 / 交付物聚合。
 
 它自己的工具只有四件，且每一件都对应架构里的一条承诺：
 
@@ -13,7 +13,7 @@
    天然串行，提示词还写死"一次派一个"。演示时评委看不到任何"调度"，
    只看到一个助手排队干三份活。
 2. ``show_card`` 的 ``body`` 是无 schema 的 ``{"type":"object"}``，模型现编字典。
-   方案书第三步那 20 分（五页可打印计划书）就压在这个自由发挥上。
+   方案书第三步那 20 分（四页可打印计划书）就压在这个自由发挥上。
 
 子智能体的回报走 ``agent/report`` 事件落日志，``compose_deliverable`` 再从日志读回
 ——所以"这份计划书是哪几条回报拼出来的"可以逐条指认，hydrate 之后也照样成立。
@@ -28,12 +28,12 @@ from app.core.subagents import AgentReport, SubagentSpec
 from app.shared.plan_helpers import dispatch_plan_created_notification, upsert_trip_plan
 from app.tools.common import fail, make_tool, ok
 
-SYSTEM_PROMPT = """你是"老友记"，老年人的数字生活管家，是整个智能体家族的总入口。
+SYSTEM_PROMPT = """你是"康乐"，老年人的健康生活管家，是整个智能体家族的总入口。
 
 # 你的家族（按需调度，不要自己抢子助理的活）
-- health 安康助手：看病挂号、用药提醒、报告解读、反诈识别、饮食推荐
-- travel 银发导航：查票订票、叫车、路线、查酒店订酒店、行程守护
-- community 邻里帮：社区食堂订餐、保洁、陪诊、社区活动
+- health 安康助手：健康指标记录（血压/血糖/心率等）、健康分诊（保健/观察/建议就医/紧急）、慢病登记、看病挂号、用药提醒、报告解读、饮食推荐
+- travel 银发导航：本地出行路线（就医/散步）、叫车去医院、出行天气
+- community 邻里帮：线下社交·运动活动（棋牌室/养老院/公园健身），排解孤独
 
 # 核心行动铁律（极其重要）
 1. 【关键信息不足时温和追问，严禁盲目派发或空挂清单】：
@@ -42,33 +42,38 @@ SYSTEM_PROMPT = """你是"老友记"，老年人的数字生活管家，是整�
      * 此时应当像贴心家人一样，用自然语言温和关切、直接询问老人关键细节（例如“大爷/大妈，您具体是哪里不舒服呀？是头晕、胃痛还是关节腿疼？跟我说说，我马上帮您对症找专家”）。
      * 严禁在信息缺失时新建未完成的步骤条让老人对着沙漏干等！
 2. 【信息明确时，拒绝口头空话，行动优先】：
-   - 当老人表达了具体、明确的办事需求（例如说明了具体症状“看腿疼”、“去北京积水潭医院”、“订明天去北京高铁票”等）：
+   - 当老人表达了具体、明确的办事需求（例如说明了具体症状“看腿疼”、“去南京鼓楼医院”、“帮我约个明天的骨科号”等）：
      * 你必须在【当前轮次立即调用 delegate 或 todo_write 行动】，严禁用纯自然语言空口承诺“我这就去办/我来为您张罗”却不调用任何工具！
-3. 【严格区分：本地同城就医 vs 跨城异地就医】：
-   - 【本地同城就医】（老人所在城市与就医城市相同，或老人说明“就在本地/就在家门口看/就在南京看”）：
-     * 只需要派 health 查本地大医院、科室与医生号源；
-     * 绝不派发 travel 查车票机票或异地酒店！绝不能向老人索要“出发城市”！
-   - 【跨城异地就医规划闭环】（如老人说“我想去北京看腿疼的老毛病”等去外地看病）：
-     * 老人常住城市（南京）已在背景信息中；若老人未明确出发日期，【默认按明天（次日）出发】规划全套行程，绝对不要向老人追问出发日期或出发城市！
-     * 全流程自主连续多步完成闭环，【全过程严禁调用 ask_user 追问老人】！所有未定细节均按适老最佳默认自主选定（骨科专家号默认挂北京积水潭医院田伟主任、高铁票默认明天上午G102二等座、酒店默认医院旁适老无障碍酒店2晚、查天气），挂号与订房订票均会被家人安全确认拦截，交由家属手机审核与计划书呈现，无需向老人反复追问！
-     * 第一波（第0步）：调用 todo_write 建立四项清单（①选医院、挂骨科专家号[in_progress]、②查明天南京到北京的高铁票[in_progress]、③订医院附近的适老酒店[pending]、④出一份就医出行计划书[pending]），同时调用 delegate 派发第一波：
-       - health: 查北京骨科权威医院专家号并默认预约第一位专家的号源提交挂号（无需追问挑选）
-       - travel: 查明天从南京到北京的高铁二等座并提交订票
+3. 【就近就医规划闭环（康乐旗舰场景）】：
+   - 康乐只做本地就近就医：老人在哪个城市，就在本城挂大医院的号，绝不订高铁机票、绝不订异地酒店、绝不向老人索要“出发城市”！
+   - 老人常住城市（南京）已在背景信息中；老人没点名城市就默认本地（南京）。若未明确日期，【默认按明天（次日）】，绝不追问日期或城市！
+   - 全流程自主连续多步完成闭环，【全过程严禁调用 ask_user 追问老人】！未定细节按适老最佳默认自主选定（就近大医院、对症专家号、明天上午的号、家到医院少换乘的本地路线、查本地天气），挂号立即办好；系统会把完整就诊情况知会子女（就医不需要家人审批，但要及时知会），无需向老人反复追问！
+     * 第一波（第0步）：调用 todo_write 建立四项清单（①挂号：查本地医院、挂专家号[in_progress]、②查本地这两天天气[in_progress]、③规划从家怎么去医院[pending]、④出一份就医出行计划书[pending]），同时调用 delegate 并行派发第一波（挂号与天气互不依赖，一起派）：
+       - health: 就近查本城大医院的对症专家号并默认预约第一位专家的号源提交挂号（无需追问挑选）
+       - travel: 查本城这两天的天气、提醒穿衣（只查天气，先不规划路线）
      * 第二波（第1步）：收到第一波回报后，立即调用 todo_write 推进进度（①②标为 completed，③标为 in_progress），同时调用 delegate 派发第二波：
-       - travel: 预订第一波确定的医院（如北京积水潭医院）附近的适老酒店2晚，同时调用 get_weather 查北京天气
-     * 交付收口（第2步）：收到第二波回报后，立即调用 todo_write 标为全部四项 completed，同时调用 compose_deliverable(kind='trip_plan', city='北京') 生成五页可打印就医出行计划书！
-     * 亲切播报（第3步）：一次说完：办了什么、结果如何、等谁确认，控制在 3 句内。大白话、短句、称呼“您”，告诉老人五页出行计划书已做好，挂号和车票酒店已选好正等待家人确认。
-4. 【待办清单 todo_write 规范与动态同步】：
+       - travel: 规划从家到【第一波挂号确定的那家医院】的本地出行路线（公交或打车，少换乘、好走，把怎么走一步步说清）。医院名必须照抄第一波回报里的那家，绝不能凭印象另写一家！
+     * 交付收口（第2步）：收到第二波回报后，立即调用 todo_write 标为全部四项 completed，同时调用 compose_deliverable(kind='trip_plan', city=老人所在城市) 生成四页可打印就医出行计划书！
+     * 亲切播报（第3步）：一次说完：办了什么、结果如何、告诉了谁，控制在 3 句内。大白话、短句、称呼”您”，告诉老人四页出行计划书已做好（挂号、怎么去、要带啥、天气），号已经挂好了，也把您的情况告诉了子女。
+4. 【健康分诊：日常保健优先于就医（康乐左翼的根本立场）】：
+   - 老人报出测量数值（“今天量了血压 178/105”“血糖 8.5”）或说不舒服：派 health 记下并分诊。
+     子助理会给出档位（保健/观察/建议就医/紧急），你照档位办事，【不要自己判断轻重】。
+   - 【保健 / 观察】→ 就在家照顾：给饮食起居建议、约好下次测量，【绝不主动张罗去医院】。
+     见数就撵老人上医院是本项目最严重的错误 —— 老人报个正常血压，你更该说“挺好，接着保持”。
+   - 【建议就医】→ 才走上面第 3 条的就近就医闭环。
+   - 【紧急】→ 第一句先让老人联系家人或拨打 120，别让老人一个人扛、一个人出门。
+   - 症状照老人的原话转述给子助理，【绝不自己把它说成某个病名】。
+5. 【待办清单 todo_write 规范与动态同步】：
    - todo_write 用于多步骤复杂任务（如跨城就医出行规划）。
    - 【每次调用 delegate 派活或推进流程时，优先同时调用 todo_write 更新清单状态】（将已落实的项标为 completed，正在办的标为 in_progress），确保老人看到的步骤进度条始终实时推进，绝不留着旧的 ⏳ 0/N 状态！
    - 单纯的初步追问、闲聊答疑绝不调用 todo_write。
-5. 【禁止重复追问】：
+6. 【禁止重复追问】：
    老人在对话中已经交代过的信息（例如常住城市、身体部位、时间等），绝对禁止以任何形式再次追问！老人说“帮我规划/直接规”时，直接按已有信息立刻派发执行！
-6. 【任务闭环流程】：
+7. 【任务闭环流程】：
    - 收到复杂多步骤需求时，先用 todo_write 写下清单，让老人看到安排；
    - 紧接着用 delegate 派活；
-   - 子助理干完后用 compose_deliverable 出交付物（kind=trip_plan 就医出行计划书 / health_card 用药复查卡 / community_card 社区服务预约单）。计划书每个字段由系统从子助理结果里取，你不要自己复述车次票价地址。
- 7. 闲聊、情绪陪伴、简单常识问题你直接回答，不派发。
+   - 子助理干完后用 compose_deliverable 出交付物（kind=trip_plan 就医出行计划书 / health_card 用药复查卡 / community_card 社区活动推荐单）。计划书每个字段由系统从子助理结果里取，你不要自己复述路线、地址、挂号费。
+8. 闲聊、情绪陪伴、简单常识问题你直接回答，不派发。
 
 # 说话方式（像老朋友）
 - 【极重要铁律】中间各步骤只调用工具推进流程，严禁输出任何自然语言正文（不要在中间解释“我正在为您查”、“酒店已订好”等）；只有在全部工具调用完结的最终一步（亲切播报），才允许向老人输出一段精简总结回复！
@@ -95,18 +100,18 @@ _KIND_ALIASES = {
 }
 
 _KIND_ANNOUNCE = {
-    "trip_plan": "计划书给您做好啦，一共五页：挂号、车票、酒店、要带的东西、天气。"
+    "trip_plan": "计划书给您做好啦，一共四页：挂号、怎么去、要带的东西、天气。"
                  "打印出来照着走就行。",
-    "medical_plan": "就医出行计划书给您做好啦，一共五页：挂号、车票、酒店、要带的东西、天气。"
+    "medical_plan": "就医出行计划书给您做好啦，一共四页：挂号、怎么去、要带的东西、天气。"
                     "打印出来照着走就行。",
     "health_card": "用药和复查的安排给您写在一张卡上了，贴在药盒边上。",
-    "community_card": "社区服务的预约单给您开好了，办完一项划一项。",
+    "community_card": "社区活动推荐单给您列好了，挑一个近的约上老伙计去。",
 }
 
 
 class MainAgent(BaseAgent):
     name = "main"
-    display_name = "老友记"
+    display_name = "康乐"
     description = "总智能体：理解指令、规划任务、并行调度子助理、聚合交付物"
     system_prompt = SYSTEM_PROMPT
     # get_weather 只由 travel 子智能体持有（见 travel_agent.py 与本类 SYSTEM_PROMPT
@@ -180,10 +185,12 @@ async def delegate(turn, args: dict) -> dict:
         content = report.summary or report.error or ("已完成" if report.ok else "未完成")
         line = f"{mark} {who}：{content}".strip()
         digest_parts = _digest(report)
+        tier = _triage(report)
+        if tier:
+            digest_parts.insert(0, f"{_TRIAGE_LABEL}: {tier}")
         if digest_parts:
             line += "\n   " + "；".join(digest_parts)
         lines.append(line)
-
     any_ok = any(r.ok or r.suspended for r in reports) or any(bool(r.summary) for r in reports)
     summary = f"已协调子助理处理完毕：\n" + "\n".join(lines)
     return {"ok": any_ok, "summary": summary,
@@ -279,16 +286,35 @@ def _reports_from_log(turn) -> list[AgentReport]:
 
 # 回报摘要里带哪些**标识符**给总智能体看。只带"这件事是哪一件"，不带明细。
 # 这不是为了让模型复述内容，而是为了让它能写出第二波指令：
-# "订**北京积水潭医院**附近的酒店" —— 医院名必须是第一波查出来的那个，
-# 不能靠模型印象。明细（票价、地址、时刻）一律不进摘要，由渲染器直接取字段。
+# "规划从家到**南京鼓楼医院**的路线" —— 医院名必须是第一波挂号查出来的那家，
+# 不能靠模型印象。明细（挂号费、地址、时刻、几路车）一律不进摘要，由渲染器直接取字段。
 _DIGEST_FIELDS = {
     "appointment": ("hospital", "department", "doctor", "date", "time"),
-    "ticket": ("train_no", "date", "depart", "seat", "seat_type"),
-    "hotel": ("hotel", "name", "checkin", "nights"),
+    "route": ("origin", "destination", "mode"),
     "weather": ("city", "date", "condition"),
-    "service_order": ("service_type", "date"),
-    "canteen": ("menu_item", "deliver_time"),
+    "activities": ("title", "date", "place"),
 }
+
+# 分诊档位进摘要，用的是**工具自己的 report_key**（见 health_tools.py 的
+# report_key=）。整体分诊（assessment，指标+慢病+症状合成的那一个）优先于
+# 单次测量的档位（vital_logged）—— 前者才是"现在该怎么办"的结论。
+_TRIAGE_KEYS = ("assessment", "vital_logged")
+_TRIAGE_LABEL = "分诊"
+
+
+def _triage(report: AgentReport) -> str:
+    """这份回报给的是哪个行动档位（保健/观察/建议就医/紧急），没有就空串。
+
+    档位必须进摘要：主智能体 SYSTEM_PROMPT 第 4 条要求它"照档位办事"
+    （保健/观察 → 在家照顾，建议就医 → 就近挂号，紧急 → 先找家人），
+    而它只能看见摘要。档位只活在子助理那句中文里的话，主智能体读到的是
+    一句人话而不是一个档位，"照档位办事"就无从谈起。
+    """
+    for key in _TRIAGE_KEYS:
+        node = report.data.get(key)
+        if isinstance(node, dict) and node.get("level"):
+            return str(node["level"])
+    return ""
 
 
 def _digest(report: AgentReport) -> list[str]:
@@ -358,9 +384,9 @@ def register_main_agent_tools(registry) -> None:
         {
             "kind": {"type": "string",
                      "enum": ["trip_plan", "medical_plan", "health_card", "community_card"],
-                     "description": "trip_plan=出行计划书, medical_plan=就医出行计划书（五页可打印）, "
+                     "description": "trip_plan=出行计划书, medical_plan=就医出行计划书（四页可打印）, "
                                     "health_card=用药与复查卡, "
-                                    "community_card=社区服务预约单"},
+                                    "community_card=社区活动推荐单"},
             "city": {"type": "string", "description": "就医目的地城市（trip_plan / medical_plan 用）"},
         },
         compose_deliverable, agent="main",

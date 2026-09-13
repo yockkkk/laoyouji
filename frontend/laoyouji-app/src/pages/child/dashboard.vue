@@ -20,51 +20,30 @@
 
     <!-- 响应式铺砌布局 -->
     <view class="sections-grid">
-      <!-- 父母实时位置动态卡片 -->
-      <view v-if="privacy.bound && privacy.location_level !== 'off'" class="section elder-location-section">
-        <view class="section-head location-head">
-          <view class="location-title-wrap">
-            <view class="pulse-beacon"></view>
-            <text class="section-title location-title">📍 父母实时位置动态</text>
-          </view>
-          <text v-if="latestLocationTime" class="location-refresh-time">{{ latestLocationTime }}</text>
-        </view>
-
-        <view v-if="latestLocation" class="location-card-content">
-          <view class="loc-main-row">
-            <view class="loc-icon-badge">👴</view>
-            <view class="loc-text-block">
-              <view class="loc-name-row">
-                <text class="loc-name">{{ latestLocation.location || '已在途中' }}</text>
-                <text class="loc-tag" :class="latestLocation.is_off_route ? 'alert' : 'normal'">
-                  {{ latestLocation.is_off_route ? '⚠️ 偏航预警' : latestLocation.trip_status === 'completed' ? '🏁 已到达' : '🟢 正常行进' }}
-                </text>
-              </view>
-              <text v-if="latestLocation.purpose" class="loc-purpose">
-                当前行程：{{ latestLocation.purpose }}
-              </text>
-              <text v-if="latestLocation.note" class="loc-note">
-                {{ latestLocation.note }}
-              </text>
+      <!-- 父母实时位置动态卡片 (带在线脉冲灯) -->
+      <view class="section location-section" @tap="goGuardian()">
+        <view class="location-card-head">
+          <view class="location-title-group">
+            <text class="location-card-icon">📍</text>
+            <text class="section-title">父母实时位置动态</text>
+            <view class="pulse-indicator">
+              <view class="pulse-dot"></view>
+              <text class="pulse-status-text">实时在线</text>
             </view>
           </view>
-          <view class="loc-btn-wrap">
-            <button class="loc-map-btn" size="mini" @tap="openGuardianMap(latestLocation.trip_id)">
-              🗺️ 查看高德大地图实时轨迹与守护 ›
-            </button>
+          <view class="location-go-btn">
+            <text class="go-text">高德地图守护</text>
+            <text class="go-arrow">›</text>
           </view>
         </view>
-
-        <view v-else class="location-empty-box">
-          <text class="location-empty-hint">长辈开启路线规划后，将在此自动同步其实时行进坐标与偏航预警。</text>
-          <button class="loc-map-btn-sm" size="mini" @tap="openGuardianMap()">
-            🗺️ 进入行程守护大地图
-          </button>
+        <view class="location-card-body">
+          <text class="location-headline">{{ locationTitle }}</text>
+          <text class="location-subtext">{{ locationDetail }}</text>
         </view>
       </view>
 
       <!-- 待我审批事项 -->
-      <view v-if="pendingConfirmations.length" class="section pending-section">
+      <view v-if="pendingConfirmations && pendingConfirmations.length" class="section pending-section">
         <view class="section-head">
           <text class="section-title pending-title">✋ 待我审批事项 ({{ pendingCount }})</text>
         </view>
@@ -114,13 +93,104 @@
         </view>
       </view>
 
-      <!-- 完整5页计划书（出行与就医） -->
+      <!-- 健康概览：这一屏的主结论。子女进来看的就是"我妈现在怎么样"。 -->
+      <view class="section overview-section">
+        <view class="section-head">
+          <text class="section-title">🩺 健康概览</text>
+          <text class="section-sub">老人最近的身体状况，来自康乐的记录</text>
+        </view>
+
+        <!-- 没有绑定 = 隐私层 fail-closed，一个字段都不给（与后端一致，不在这里放宽） -->
+        <view v-if="!privacy.bound" class="empty-row">
+          <text>还没有和老人建立绑定关系。绑定之前，健康数据一项都不会给。</text>
+        </view>
+        <!-- 老人把健康关到 off：连档位都不显示。要看得先请他本人打开，不在这一层绕 -->
+        <view v-else-if="privacy.health_level === 'off'" class="empty-row">
+          <text>老人未开放健康信息给您。指标、用药和分诊档位都不会显示 —— 这是老人自己的设置，只有他本人能改。</text>
+        </view>
+        <template v-else>
+          <!-- 分诊档位横幅。四档配色不同，因为"要不要去医院"是子女从这一屏上
+               唯一必须先读懂的一件事。 -->
+          <view class="level-banner" :class="levelClass">
+            <view class="level-row">
+              <text class="level-word">{{ triageLevel }}</text>
+              <text class="level-tag">当前分诊档位</text>
+            </view>
+            <text class="level-headline">{{ triageHeadline }}</text>
+            <text class="level-advice">{{ triageAdvice }}</text>
+          </view>
+
+          <!-- 最近一次关键指标。血压 / 血糖是主线，别的指标这一屏不铺开。
+               数值属"健康明细"，只有老人开到 full 档才取、才显示。 -->
+          <view class="vitals">
+            <text class="vitals-title">最近一次关键指标</text>
+            <view v-if="!vitals.length" class="empty-row">
+              <text>{{ vitalsEmptyText }}</text>
+            </view>
+            <view v-for="v in vitals" :key="v.metric_type" class="vital-item">
+              <text class="vital-name">{{ v.label }}</text>
+              <text class="vital-value" :class="levelClassOf(v.level)">{{ v.display }}</text>
+              <view class="vital-side">
+                <text class="vital-level" :class="levelClassOf(v.level)">{{ v.level }}</text>
+                <text class="vital-time">{{ fmtTime(v.measured_at) }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- R4：档位是分诊结论，免责声明由代码注入、跟着结论一起出现 -->
+          <text v-if="triageDisclaimer" class="overview-disclaimer">{{ triageDisclaimer }}</text>
+        </template>
+      </view>
+
+      <!-- 就医知会 —— 这块板子的灵魂：知会不审批。
+           挂号办完那一刻后端写一条 type='appointment_notice' 的通知，**没有 task_id**、
+           没有同意/拒绝、点不点都一样。这里只负责倒序列出来给子女"知道一件事"，
+           不要在这儿加回任何待办入口。 -->
+      <view class="section notice-section">
+        <view class="section-head">
+          <text class="section-title">📢 就医知会 ({{ appointmentNotices.length }})</text>
+          <text class="section-sub">老人就医由他自己拿主意，这里只是让您知道</text>
+        </view>
+        <view v-if="!appointmentNotices.length" class="empty-row">
+          <text>暂时没有就医知会。老人挂好号的那一刻，康乐会把完整情况发到这里。</text>
+        </view>
+        <view
+          v-for="n in appointmentNotices"
+          :key="n.id"
+          class="notice-card"
+          :class="{ unread: !n.is_read }"
+          @tap="markNoticeRead(n)"
+        >
+          <view class="notice-head">
+            <text class="notice-icon">📢</text>
+            <view class="notice-main">
+              <text class="notice-title">{{ n.title }}</text>
+              <text class="notice-time" v-if="n.created_at">知会时间：{{ fmtTime(n.created_at) }}</text>
+            </view>
+            <text v-if="!n.is_read" class="notice-unread">未读</text>
+          </view>
+          <text class="notice-summary">{{ n.summary || '这条知会没带上详情' }}</text>
+          <view class="notice-meta">
+            <text v-if="noticeDate(n)" class="notice-meta-item">🗓️ {{ noticeDate(n) }}</text>
+            <text v-if="noticeFee(n) !== ''" class="notice-meta-item">💴 挂号费 {{ noticeFee(n) }} 元</text>
+            <text v-if="noticeLevel(n)" class="notice-level" :class="levelClassOf(noticeLevel(n))">
+              分诊：{{ noticeLevel(n) }}
+            </text>
+          </view>
+        </view>
+        <!-- 把"这不是待办"明说出来 —— 否则子女第一反应还是找同意按钮 -->
+        <view v-if="appointmentNotices.length" class="notice-foot">
+          <text class="notice-foot-text">这些是「知道了一件事」，不是待办：没有同意 / 拒绝，也不用您点。老人看病不需要谁点头。</text>
+        </view>
+      </view>
+
+      <!-- 就医与出行计划书（页数以计划数据为准：城际车票 / 异地酒店两页已砍） -->
       <view class="section">
         <view class="section-head">
-          <text class="section-title">📋 出行与就医计划 ({{ consolidatedPlans.length }})</text>
+          <text class="section-title">📋 就医与出行计划 ({{ consolidatedPlans.length }})</text>
         </view>
         <view v-if="!consolidatedPlans.length" class="empty-row">
-          <text>暂无计划书（长辈提出就医或出行需求后由老友记生成）</text>
+          <text>暂无计划书（长辈提出就医或出行需求后由康乐生成）</text>
         </view>
         <view
           v-for="p in consolidatedPlans"
@@ -166,11 +236,13 @@
       </view>
     </view>
 
-    <!-- 5页完整计划书查看弹窗 -->
+    <!-- 完整计划书查看弹窗 -->
     <view v-if="selectedPlan" class="plan-modal-mask" @tap="closePlan">
       <view class="plan-modal-content" @tap.stop>
         <view class="modal-head">
-          <text class="modal-head-title">📖 完整计划书（共5页）</text>
+          <!-- 页数跟数据走：PlanCard 里自己会印「共 N 页」，这里的数字必须和它同一个来源，
+               写死页数会让同一个弹窗上下两个数字对不上。 -->
+          <text class="modal-head-title">{{ modalPageTitle }}</text>
           <button class="modal-close-btn" size="mini" @tap="closePlan">✕</button>
         </view>
         <scroll-view scroll-y class="modal-body-scroll">
@@ -199,38 +271,60 @@ import { publishPendingCount } from '../../store/pendingBadge'
 /** 没绑定时后端会走提前返回、连 privacy 字段都不给 —— 前端的兜底必须是"全关"。 */
 const DENIED = { location_level: 'off', health_level: 'off', bound: false }
 
+/** 概览只铺这两项：血压 / 血糖是康乐的主线，其余指标不在子女首页展开。 */
+const KEY_METRICS = ['bp', 'glucose']
+
 export default {
   components: { LyjSegment, PlanCard },
   data() {
     return {
       user: null,
+      elderId: '',
       trips: [],
       plans: [],
       pendingConfirmations: [],
-      actionLoading: {},
       selectedPlan: null,
       selectedPlanCard: null,
       medications: [],
       privacy: DENIED,
       elderName: '',
       elderCity: '',
-      latestLocation: null,
+      // 健康概览：overview 是分诊档位结论，readings 是指标读数。
+      // 都可能是 null / 空 —— 那时候宁可说"读不到/还没量过"，也不给宽心话。
+      overview: null,
+      readings: [],
+      appointmentNotices: [],
+      cachedNotifications: [],
+      alerts: [],
+      actionLoading: {},
       timer: null,
       lastRefresh: '',
     }
   },
   computed: {
-    latestLocationTime() {
-      if (!this.latestLocation || !this.latestLocation.created_at) return ''
-      try {
-        const d = new Date(this.latestLocation.created_at)
-        const hh = String(d.getHours()).padStart(2, '0')
-        const mm = String(d.getMinutes()).padStart(2, '0')
-        const ss = String(d.getSeconds()).padStart(2, '0')
-        return `最近上报 ${hh}:${mm}:${ss}`
-      } catch (e) {
-        return ''
+    pendingCount() {
+      return (this.pendingConfirmations || []).filter((t) => !t.status || t.status === 'pending').length
+    },
+    locationTitle() {
+      if (!this.privacy.bound) return '尚未绑定长辈'
+      if (this.privacy.location_level === 'off') return '长辈未开放实时位置'
+      if (this.alerts && this.alerts.length) {
+        return `⚠️ 偏航提醒：${this.alerts[0].location || '路线偏移'}`
       }
+      if (this.elderCity) {
+        const activeTrip = (this.trips || []).find((t) => t.status === 'ongoing')
+        if (activeTrip && (activeTrip.destination || activeTrip.purpose)) {
+          return `${this.elderCity} · 前往 ${activeTrip.destination || activeTrip.purpose}`
+        }
+        return `${this.elderCity} · 正常活动中`
+      }
+      return '位置实时守护中'
+    },
+    locationDetail() {
+      if (!this.privacy.bound) return '请先在家庭成员中绑定父母'
+      if (this.privacy.location_level === 'off') return '老人已在隐私设置中关闭位置共享，可联系老人开启'
+      if (this.privacy.location_level === 'city') return '已开启城市级模糊守护，详细门牌坐标已隐藏'
+      return '高德开放平台 10 秒定时周期上报与偏航判定已就绪'
     },
     elderLine() {
       if (!this.privacy.bound) return '尚未绑定老人'
@@ -254,8 +348,68 @@ export default {
       if (this.privacy.health_level === 'off') return '老人未开放健康信息给您'
       return '暂无用药计划'
     },
-    pendingCount() {
-      return this.pendingConfirmations.filter((t) => !t.status || t.status === 'pending').length
+    // 分诊档位：读到了就是后端的结论，读不到时**不给"保健"这种宽心兜底**
+    // —— 把没有数据说成"没事"，方向错了不可逆。这里换一句中性的话。
+    triageLevel() {
+      return this.overview && this.overview.level ? this.overview.level : '暂未算出'
+    },
+    triageHeadline() {
+      const h = this.summarySafeHeadline
+      if (h) return h
+      if (this.privacy.health_level === 'summary') return '老人只开放到「健康摘要」档，档位细节未共享。'
+      return '暂时读不到老人的分诊档位。'
+    },
+    // 摘要档的第二道闸。headline 是后端拼的（形如「血压 178/105，中重度偏高」），
+    // 这一档的规矩是后端把它重建成**不含数的一句**。这里再兜一道：万一哪天降级没
+    // 生效、headline 里还夹着数值，宁可退回中性文案 —— 绝不能让横幅印着 178/105、
+    // 底下又写着"看不到数"这两个自相矛盾的句子同时出现在一屏上（R6）。
+    // 只在 summary 档做这件事：full 档的 headline 本就允许带数值，不裁剪。
+    summarySafeHeadline() {
+      const h = (this.overview && this.overview.headline) || ''
+      if (this.privacy.health_level === 'summary' && /\d/.test(String(h))) return ''
+      return h
+    },
+    triageAdvice() {
+      if (this.overview && this.overview.advice) return this.overview.advice
+      if (this.privacy.health_level === 'summary') {
+        return '档位这一层可以看，具体是哪条指标把它抬上去的，需要老人把健康开放到"完整"档。'
+      }
+      return '要不要紧，得让医生看了才算数 —— 康乐不给没有数据支撑的宽心话。'
+    },
+    triageDisclaimer() {
+      return (this.overview && this.overview.disclaimer) || ''
+    },
+    // 四档配色。前两档是"在家照顾好"的暖调，后两档才逐渐转重：
+    // "建议就医"是一次进展而不是错误，所以用暖橙而非报警红。
+    levelClass() {
+      return this.levelClassOf(this.overview && this.overview.level)
+    },
+    // 指标读数按隐私档裁剪：数值属"健康明细"，只有 full 档才取回来。
+    // summary 档连请求都不发 —— 取回来再不显示，等于把闸门开在客户端。
+    vitals() {
+      if (this.privacy.health_level !== 'full') return []
+      const out = []
+      for (const mtype of KEY_METRICS) {
+        const row = (this.readings || []).find((r) => r.metric_type === mtype)
+        if (!row) continue
+        const pts = row.points || []
+        const last = pts.length ? pts[pts.length - 1] : {}
+        out.push({
+          metric_type: mtype,
+          label: row.label || mtype,
+          display: row.display || '',
+          level: row.level || '',
+          measured_at: last.measured_at || '',
+        })
+      }
+      return out
+    },
+    vitalsEmptyText() {
+      if (this.privacy.health_level === 'summary') {
+        return '具体数值未开放：老人只把健康开放到「摘要」档，能看到档位，看不到血压 / 血糖的数。'
+      }
+      // full 档但一条都没有 —— 明说"还没量过"，不拿一个数字糊上
+      return '还没量过 —— 老人还没记过血压或血糖。'
     },
     consolidatedPlans() {
       const list = []
@@ -299,6 +453,14 @@ export default {
         })
       }
       return list
+    },
+    // 弹窗标题里的页数，取自当前这张卡真正的 sections —— 与 PlanCard 内「共 N 页」
+    // 同源，所以两处永远同数。没挂到卡时（弹窗还没开）不显示页数，
+    // 与 PlanCard 在 sections 为空时不印页码一致。
+    modalPageTitle() {
+      const card = this.selectedPlanCard
+      const n = card && card.sections ? card.sections.length : 0
+      return n ? `📖 完整计划书（共 ${n} 页）` : '📖 完整计划书'
     },
   },
   onShow() {
@@ -378,7 +540,7 @@ export default {
       }
       return {
         kind: 'card',
-        title: d.title || d.purpose || '出行与就医计划书',
+        title: d.title || d.purpose || '就医与出行计划书',
         sections,
         notes,
         complete: d.complete !== false,
@@ -391,65 +553,109 @@ export default {
         this.privacy = d.privacy || DENIED
         this.elderName = d.elder ? d.elder.name : ''
         this.elderCity = d.elder ? d.elder.city || '' : ''
+        this.elderId = d.elder ? d.elder.id : ''
         this.trips = d.trips || []
         this.plans = d.plans || []
-        if (d.latest_location) {
-          this.latestLocation = d.latest_location
-        }
-
-        const serverPending = d.pending_confirmations || []
-        const serverIds = new Set(serverPending.map((x) => x.id))
-        const now = Date.now()
-        const kept = []
-        for (const local of this.pendingConfirmations) {
-          if (serverIds.has(local.id)) {
-            const fresh = serverPending.find((x) => x.id === local.id)
-            if (local.status && local.status !== 'pending') {
-              kept.push(local)
-            } else {
-              kept.push(fresh)
-            }
-          } else {
-            // Keep locally resolved items temporarily during background polling (10s)
-            if (silent && local.status && local.status !== 'pending' && (!local.resolvedAt || now - local.resolvedAt < 10000)) {
-              kept.push(local)
-            }
-          }
-        }
-        for (const fresh of serverPending) {
-          if (!kept.some((x) => x.id === fresh.id)) {
-            kept.push(fresh)
-          }
-        }
-        this.pendingConfirmations = kept
-        publishPendingCount(this.pendingCount)
-
         this.medications = d.medications || []
+        this.cachedNotifications = d.notifications || []
+        this.alerts = d.alerts || []
+
+        this.pendingConfirmations = d.pending_confirmations || []
+        publishPendingCount(
+          this.pendingConfirmations.filter((t) => !t.status || t.status === 'pending').length
+        )
+
         this.lastRefresh = this.fmtClock(new Date())
+        await Promise.all([this.loadHealth(), this.loadAppointmentNotices()])
       } catch (e) {
         if (!silent) uni.showToast({ title: '加载失败：' + e.message, icon: 'none' })
       }
     },
 
-    taskIcon(t) {
-      const map = {
-        book_ticket: '🚄',
-        search_train: '🚄',
-        register_appointment: '🏥',
-        search_hospital: '🏥',
-        book_hotel: '🏨',
-        order_service: '🧹',
-        pay: '💸',
+    /** 健康概览取数。按 privacy.health_level 分级取，越级的数据连请求都不发。 */
+    async loadHealth() {
+      if (!this.privacy.bound || this.privacy.health_level === 'off' || !this.elderId) {
+        this.overview = null
+        this.readings = []
+        return
       }
-      return map[t.tool_name] || '✋'
+      const jobs = [get('/api/health/overview', { elder_id: this.elderId })]
+      // 数值（血压/血糖的数）是"明细"档的数据：summary 档不取，避免把不该给的
+      // 东西先拉到客户端再靠前端藏起来 —— 藏在前端等于没藏。
+      if (this.privacy.health_level === 'full') {
+        jobs.push(get('/api/health/readings', { elder_id: this.elderId }))
+      }
+      try {
+        const [overview, readings] = await Promise.all(jobs)
+        this.overview = overview || null
+        this.readings = readings ? readings.items || [] : []
+      } catch (e) {
+        // 取不到就留空，横幅会走中性文案，不拿"保健"兜底
+        this.overview = null
+        this.readings = []
+      }
     },
-    taskSummary(t) {
-      const card = t.summary_for_child || {}
-      return card.summary || t.tool_name || '需要您确认的事项'
+
+    /** 就医知会：后端已按 created_at 倒序返回，这里只负责展示。 */
+    async loadAppointmentNotices() {
+      try {
+        const res = await get(`/api/child/${this.user.id}/notifications`, {
+          type: 'appointment_notice',
+        })
+        this.appointmentNotices = res.items || []
+      } catch (e) {
+        // 兜底：看板响应里也带一份通知，从里面筛出知会 —— 单这一个请求失败
+        // 不该让整块知会空掉。
+        this.appointmentNotices = (this.cachedNotifications || []).filter(
+          (n) => n.type === 'appointment_notice'
+        )
+      }
     },
-    taskReason(t) {
-      const card = t.summary_for_child || {}
-      return card.reason || ''
+
+    async markNoticeRead(n) {
+      if (!n || n.is_read) return
+      try {
+        await post(`/api/child/notifications/${n.id}/read`)
+        if (typeof this.$set === 'function') this.$set(n, 'is_read', true)
+        else n.is_read = true
+      } catch (e) {
+        // 标不上已读不该打断"看知会"这件事
+      }
+    },
+
+    /** 知会里那几项结构化细节：后端 data 里带的（jsonb，兜底按字符串解析一遍）。 */
+    noticeData(n) {
+      let d = n && n.data
+      if (typeof d === 'string') {
+        try {
+          d = JSON.parse(d)
+        } catch (e) {
+          d = null
+        }
+      }
+      return d && typeof d === 'object' ? d : {}
+    },
+    noticeDate(n) {
+      const d = this.noticeData(n)
+      const day = d.date || ''
+      const slot = d.time || ''
+      if (!day) return ''
+      return slot ? `${day} ${slot}` : String(day)
+    },
+    noticeFee(n) {
+      const d = this.noticeData(n)
+      return d.fee === undefined || d.fee === null ? '' : d.fee
+    },
+    noticeLevel(n) {
+      return this.noticeData(n).level || ''
+    },
+
+    levelClassOf(level) {
+      if (level === '紧急') return 'lv-emergency'
+      if (level === '建议就医') return 'lv-see-doctor'
+      if (level === '观察') return 'lv-watch'
+      if (level === '保健') return 'lv-care'
+      return 'lv-unknown'
     },
     isMedical(p) {
       if (p.type === 'medical_plan') return true
@@ -471,31 +677,78 @@ export default {
         return d.endsWith('市') && d.length > 2 ? d.slice(0, -1) : d
       }
       if (plan.body && typeof plan.body === 'object') {
-        const bodyVal = plan.body['天气与穿衣/城市'] || plan.body['去程车票 + 返程建议/到达']
+        // 只认天气那页的城市。这里原来还有个 `plan.body['去程车票 + 返程建议/到达']` ——
+        // 那是已被砍掉的"城际车票"页的字段名，那个页面连同跨城出行一起没了，
+        // 这行永远取不到值。（计划书四页见 backend/app/agents/plan_builder.py）
+        const bodyVal = plan.body['天气与穿衣/城市']
         if (bodyVal) {
           const cleanVal = String(bodyVal).replace(/南站|东站|西站|北站|虹桥|站/g, '').trim()
           return cleanVal.endsWith('市') && cleanVal.length > 2 ? cleanVal.slice(0, -1) : cleanVal
         }
       }
+      // 再往下原来有两张表：一张 13 个旅游城市（北京/上海/杭州/黄山…）、一张景区→城市
+      // （西湖/故宫/长城/迪士尼/兵马俑/协和…）。它们服务的是"跨城旅游/异地就医"那套
+      // 已经砍掉的产品形态 —— 康乐只做本市出行，计划书的目的地就是老人所在的城市，
+      // 由 plan_builder 随计划一起给出来，上面几支已经覆盖。留着这两张表，等于在代码里
+      // 留着一份"我们会去北京上海"的声明。
       const title = p.title || p.purpose || ''
-      for (const city of ['北京', '上海', '杭州', '南京', '苏州', '广州', '深圳', '成都', '重庆', '武汉', '西安', '青岛', '黄山']) {
-        if (title.includes(city)) return city
-      }
-      const scenicMap = {
-        '西湖': '杭州', '故宫': '北京', '长城': '北京', '天安门': '北京',
-        '外滩': '上海', '东方明珠': '上海', '迪士尼': '上海',
-        '夫子庙': '南京', '玄武湖': '南京', '中山陵': '南京',
-        '兵马俑': '西安', '大雁塔': '西安', '协和': '北京', '积水潭': '北京'
-      }
-      for (const [spot, cName] of Object.entries(scenicMap)) {
-        if (title.includes(spot)) return cName
-      }
       const match = title.match(/·\s*([^·就医出行计划书]+)/)
       if (match && match[1]) {
         const cleaned = match[1].replace(/两日游|三日游|游玩|出游/g, '').trim()
         return cleaned.endsWith('市') && cleaned.length > 2 ? cleaned.slice(0, -1) : cleaned
       }
       return ''
+    },
+
+    drugLabel(m) {
+      if (m.drug && m.drug !== '老人未开放此项') return m.drug
+      return m.precision === 'summary' ? '用药情况（药名未开放）' : m.drug
+    },
+    takenCount(m) {
+      return Object.values(m.taken_today || {}).filter((s) => s === 'taken').length
+    },
+    statusText(s) {
+      return { planned: '已规划', ongoing: '进行中', completed: '已完成' }[s] || s
+    },
+    fmtTime(iso) {
+      if (!iso) return ''
+      const d = new Date(iso)
+      if (!Number.isFinite(d.getTime())) return ''
+      return `${d.getMonth() + 1}/${d.getDate()} ${this.fmtClock(d, false)}`
+    },
+    fmtClock(d, withSeconds = true) {
+      const pad = (n) => String(n).padStart(2, '0')
+      const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+      return withSeconds ? `${hm}:${pad(d.getSeconds())}` : hm
+    },
+
+    goGuardian(t) {
+      if (t && (t.trip_id || t.id)) {
+        uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.trip_id || t.id}` })
+      } else {
+        uni.navigateTo({ url: '/pages/child/guardian' })
+      }
+    },
+
+    taskIcon(t) {
+      const map = {
+        book_ticket: '🚄',
+        search_train: '🚄',
+        register_appointment: '🏥',
+        search_hospital: '🏥',
+        book_hotel: '🏨',
+        order_service: '🧹',
+        pay: '💸',
+      }
+      return map[t.tool_name] || '📋'
+    },
+    taskSummary(t) {
+      const card = t.summary_for_child || {}
+      return card.summary || t.tool_name || '需要您确认的事项'
+    },
+    taskReason(t) {
+      const card = t.summary_for_child || {}
+      return card.reason || ''
     },
     async approveTask(t) {
       if (this.actionLoading[t.id]) return
@@ -518,20 +771,20 @@ export default {
         uni.showToast({ title: '已同意并办理', icon: 'success' })
       } catch (err) {
         const msg = err.message || ''
-        if (msg.includes('executed') || msg.includes('已执行')) {
-          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
-          else t.status = 'executed'
-          t.resolvedAt = Date.now()
-          publishPendingCount(this.pendingCount)
-        } else if (msg.includes('rejected') || msg.includes('已拒绝')) {
+        if (msg.includes('rejected') || msg.includes('已拒绝')) {
           if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
           else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
           t.resolvedAt = Date.now()
           publishPendingCount(this.pendingCount)
         } else if (msg.includes('已处理') || msg.includes('不存在')) {
           this.loadAll(true)
         }
-        uni.showToast({ title: msg || '审批失败', icon: 'none' })
+        uni.showToast({ title: msg || '操作失败', icon: 'none' })
       } finally {
         if (typeof this.$delete === 'function') {
           this.$delete(this.actionLoading, t.id)
@@ -572,14 +825,14 @@ export default {
         uni.showToast({ title: '已拒绝', icon: 'none' })
       } catch (err) {
         const msg = err.message || ''
-        if (msg.includes('rejected') || msg.includes('已拒绝')) {
-          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
-          else t.status = 'rejected'
-          t.resolvedAt = Date.now()
-          publishPendingCount(this.pendingCount)
-        } else if (msg.includes('executed') || msg.includes('已执行')) {
+        if (msg.includes('executed') || msg.includes('已执行')) {
           if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
           else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
           t.resolvedAt = Date.now()
           publishPendingCount(this.pendingCount)
         } else if (msg.includes('已处理') || msg.includes('不存在')) {
@@ -593,36 +846,6 @@ export default {
           delete this.actionLoading[t.id]
         }
       }
-    },
-
-    drugLabel(m) {
-      if (m.drug && m.drug !== '老人未开放此项') return m.drug
-      return m.precision === 'summary' ? '用药情况（药名未开放）' : m.drug
-    },
-    takenCount(m) {
-      return Object.values(m.taken_today || {}).filter((s) => s === 'taken').length
-    },
-    statusText(s) {
-      return { planned: '已规划', ongoing: '进行中', completed: '已完成' }[s] || s
-    },
-    fmtTime(iso) {
-      if (!iso) return ''
-      const d = new Date(iso)
-      if (!Number.isFinite(d.getTime())) return ''
-      return `${d.getMonth() + 1}/${d.getDate()} ${this.fmtClock(d, false)}`
-    },
-    fmtClock(d, withSeconds = true) {
-      const pad = (n) => String(n).padStart(2, '0')
-      const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
-      return withSeconds ? `${hm}:${pad(d.getSeconds())}` : hm
-    },
-
-    goGuardian(t) {
-      uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.trip_id || t.id}` })
-    },
-    openGuardianMap(tripId) {
-      const url = tripId ? `/pages/child/guardian?trip_id=${tripId}` : '/pages/child/guardian'
-      uni.navigateTo({ url })
     },
   },
 }
@@ -649,6 +872,7 @@ export default {
 }
 .head-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: $lyj-space-xs;
@@ -657,13 +881,21 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 700;
   color: $lyj-text-on;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .sub {
   font-size: $lyj-font-sm;
   color: $lyj-child-head-sub;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .refresh {
-  min-height: $lyj-hit-min;
+  min-height: 88rpx;
+  line-height: 88rpx;
   display: flex;
   align-items: center;
   background: rgba(255, 255, 255, 0.15);
@@ -671,6 +903,26 @@ export default {
   font-size: $lyj-font-sm;
   border-radius: $lyj-radius;
   margin: 0 0 0 $lyj-space-md;
+  padding: 0 28rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+}
+.logout-btn {
+  min-height: 88rpx;
+  line-height: 88rpx;
+  display: flex;
+  align-items: center;
+  background: rgba(239, 68, 68, 0.25);
+  color: #fff;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 28rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .privacy-note {
   margin: 0 $lyj-space-md $lyj-space-sm;
@@ -689,167 +941,89 @@ export default {
   border-radius: $lyj-radius;
   margin: $lyj-space-sm $lyj-space-md;
   padding: $lyj-space-md;
-  box-shadow: $lyj-shadow-card;
+  border: 2rpx solid $lyj-line;
+  box-shadow: 0 8rpx 28rpx rgba(42, 130, 228, 0.06);
 }
-.section-head {
-  margin-bottom: $lyj-space-sm;
+
+/* 父母实时位置动态卡片 */
+.location-section {
+  cursor: pointer;
+  border-left: 8rpx solid $lyj-primary;
 }
-.section-title {
-  font-size: $lyj-font-md;
-  font-weight: 700;
-  color: $lyj-child-text;
-}
-.empty-row {
-  padding: $lyj-space-md 0;
-  text-align: center;
-}
-.empty-row text {
-  font-size: $lyj-font-sm;
-  color: $lyj-child-muted;
-  line-height: $lyj-line-height;
-}
-.elder-location-section {
-  background: #ffffff;
-  border: 2rpx solid #d5e5f7;
-  border-left: 8rpx solid #2A82E4;
-  border-radius: $lyj-radius-lg;
-  box-shadow: 0 4rpx 16rpx rgba(42, 130, 228, 0.08);
-}
-.location-head {
+.location-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: $lyj-space-sm;
 }
-.location-title-wrap {
+.location-title-group {
   display: flex;
   align-items: center;
   gap: 12rpx;
 }
-.pulse-beacon {
-  width: 18rpx;
-  height: 18rpx;
+.location-card-icon {
+  font-size: 36rpx;
+  line-height: 1;
+}
+.pulse-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 4rpx 14rpx;
+  border-radius: $lyj-radius-pill;
+}
+.pulse-dot {
+  width: 14rpx;
+  height: 14rpx;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 0 6rpx rgba(16, 185, 129, 0.25);
-  animation: beaconPulse 1.8s infinite ease-in-out;
+  box-shadow: 0 0 0 4rpx rgba(16, 185, 129, 0.25);
+  animation: pulseLight 1.8s infinite ease-in-out;
 }
-@keyframes beaconPulse {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 0 10rpx rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.9); opacity: 0.7; }
+@keyframes pulseLight {
+  0% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 2rpx rgba(16, 185, 129, 0.2); }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6rpx rgba(16, 185, 129, 0.4); }
+  100% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 2rpx rgba(16, 185, 129, 0.2); }
 }
-.location-title {
-  color: #1a2838;
-  font-weight: 800;
-}
-.location-refresh-time {
-  font-size: 22rpx;
-  color: #64748b;
-}
-.location-card-content {
-  padding: 12rpx 0 0;
-}
-.loc-main-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 16rpx;
-}
-.loc-icon-badge {
-  width: 68rpx;
-  height: 68rpx;
-  border-radius: 50%;
-  background: #ebf4fe;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36rpx;
-  flex-shrink: 0;
-}
-.loc-text-block {
-  flex: 1;
-  min-width: 0;
-}
-.loc-name-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-wrap: wrap;
-}
-.loc-name {
-  font-size: 32rpx;
-  font-weight: 800;
-  color: #1a2838;
-}
-.loc-tag {
+.pulse-status-text {
   font-size: 22rpx;
   font-weight: 700;
-  padding: 2rpx 14rpx;
-  border-radius: 12rpx;
-  background: #dcfce7;
-  color: #15803d;
+  color: #059669;
+  white-space: nowrap;
 }
-.loc-tag.alert {
-  background: #fee2e2;
-  color: #b91c1c;
+.location-go-btn {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  color: $lyj-primary;
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.loc-purpose {
-  display: block;
-  font-size: 24rpx;
-  color: #475569;
-  margin-top: 6rpx;
-}
-.loc-note {
-  display: block;
-  font-size: 24rpx;
-  color: #1967c2;
-  margin-top: 6rpx;
-  background: #ebf4fe;
-  padding: 8rpx 14rpx;
-  border-radius: 10rpx;
-}
-.loc-btn-wrap {
-  margin-top: 20rpx;
-}
-.loc-map-btn {
-  width: 100%;
-  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
-  color: #ffffff;
-  font-size: 28rpx;
-  font-weight: 700;
-  border-radius: 40rpx;
-  border: none;
-  padding: 12rpx 0;
-  cursor: pointer;
-  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
-}
-.location-empty-box {
-  padding: 16rpx 0;
+.location-card-body {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 6rpx;
 }
-.location-empty-hint {
-  font-size: 26rpx;
-  color: #64748b;
-  line-height: 1.5;
-}
-.loc-map-btn-sm {
-  background: #f1f5f9;
-  color: #2A82E4;
-  border: 2rpx solid #bfdbfe;
-  font-size: 26rpx;
+.location-headline {
+  font-size: $lyj-font-md;
   font-weight: 700;
-  border-radius: 30rpx;
-  align-self: flex-start;
-  padding: 6rpx 20rpx;
-  cursor: pointer;
+  color: $lyj-child-text;
+  line-height: 1.4;
+}
+.location-subtext {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-body;
+  line-height: 1.4;
 }
 
+/* 待我审批事项 */
 .pending-section {
-  border-left: 8rpx solid #f59e0b;
+  border-left: 8rpx solid $lyj-warn;
 }
 .pending-card {
-  background: #fffbeb;
+  background: $lyj-warn-bg;
   border: 2rpx solid #fde68a;
   border-radius: $lyj-radius;
   padding: $lyj-space-md;
@@ -889,21 +1063,24 @@ export default {
 .pending-cost {
   font-size: $lyj-font-md;
   font-weight: 700;
-  color: #dc2626;
+  color: $lyj-danger;
+  font-variant-numeric: tabular-nums;
 }
 .pending-reason {
   font-size: $lyj-font-sm;
-  color: #4b5563;
+  color: $lyj-child-body;
   margin-top: 2rpx;
 }
 .pending-time {
   font-size: $lyj-font-xs;
   color: $lyj-child-muted;
   margin-top: 2rpx;
+  font-variant-numeric: tabular-nums;
 }
 .pending-action-bar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   padding-top: $lyj-space-xs;
   border-top: 1rpx dashed #fcd34d;
 }
@@ -918,10 +1095,13 @@ export default {
   font-size: $lyj-font-sm;
   font-weight: 600;
   border-radius: $lyj-radius;
-  padding: 0 24rpx;
-  min-height: 60rpx;
-  line-height: 60rpx;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .reject-btn {
   background: #e5e7eb !important;
@@ -929,18 +1109,25 @@ export default {
   font-size: $lyj-font-sm;
   font-weight: 600;
   border-radius: $lyj-radius;
-  padding: 0 24rpx;
-  min-height: 60rpx;
-  line-height: 60rpx;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .inline-status {
   display: flex;
   align-items: center;
   font-size: $lyj-font-sm;
   font-weight: 600;
-  padding: 6rpx 16rpx;
+  padding: 8rpx 20rpx;
   border-radius: $lyj-radius-pill;
+  min-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .inline-status.success {
   background: #dcfce7;
@@ -955,6 +1142,300 @@ export default {
   color: #b91c1c;
 }
 
+.section-head {
+  margin-bottom: $lyj-space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.section-title {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: $lyj-child-text;
+}
+.section-sub {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+}
+.empty-row {
+  padding: $lyj-space-md 0;
+  text-align: center;
+}
+.empty-row text {
+  font-size: $lyj-font-sm;
+  color: $lyj-child-muted;
+  line-height: $lyj-line-height;
+}
+
+/* ---------- 健康概览 ---------- */
+.overview-section {
+  /* 这一块是首页的主结论，给它一条主色左边线，一眼能和下面几块区分开 */
+  border-left: 8rpx solid $lyj-primary;
+}
+.level-banner {
+  border-radius: $lyj-radius;
+  padding: $lyj-space-md;
+  display: flex;
+  flex-direction: column;
+  gap: $lyj-space-xs;
+  border: 2rpx solid transparent;
+}
+.level-row {
+  display: flex;
+  align-items: baseline;
+  gap: $lyj-space-sm;
+}
+.level-word {
+  font-size: $lyj-font-lg;
+  font-weight: 700;
+}
+.level-tag {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+}
+.level-headline {
+  font-size: $lyj-font-sm;
+  color: $lyj-child-text;
+  line-height: $lyj-line-height;
+}
+.level-advice {
+  font-size: $lyj-font-sm;
+  color: $lyj-child-body;
+  line-height: $lyj-line-height;
+}
+/* 四档：前两档暖，后两档转重。"建议就医"是进展不是错误，故暖橙不报警红。 */
+.level-banner.lv-care {
+  background: $lyj-success-bg;
+  border-color: rgba(46, 139, 87, 0.25);
+}
+.level-banner.lv-care .level-word {
+  color: $lyj-success;
+}
+.level-banner.lv-watch {
+  background: $lyj-warn-bg;
+  border-color: rgba(240, 178, 90, 0.4);
+}
+.level-banner.lv-watch .level-word {
+  color: $lyj-warn-text;
+}
+.level-banner.lv-see-doctor {
+  background: $lyj-primary-soft;
+  border-color: rgba(42, 130, 228, 0.35);
+}
+.level-banner.lv-see-doctor .level-word {
+  color: $lyj-primary-dark;
+}
+.level-banner.lv-emergency {
+  background: rgba(217, 48, 37, 0.1);
+  border-color: rgba(217, 48, 37, 0.35);
+}
+.level-banner.lv-emergency .level-word {
+  color: $lyj-danger;
+}
+/* 读不到档位：中性灰，不做任何倾向性着色 */
+.level-banner.lv-unknown {
+  background: $lyj-child-line;
+  border-color: $lyj-info-line;
+}
+.level-banner.lv-unknown .level-word {
+  color: $lyj-child-muted;
+}
+.vitals {
+  margin-top: $lyj-space-md;
+  display: flex;
+  flex-direction: column;
+}
+.vitals-title {
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  color: $lyj-child-text;
+  margin-bottom: $lyj-space-xs;
+}
+.vital-item {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-sm;
+  padding: $lyj-space-sm 0;
+  border-bottom: 2rpx solid $lyj-child-line;
+}
+.vital-item:last-child {
+  border-bottom: none;
+}
+.vital-name {
+  flex: 1;
+  font-size: $lyj-font-md;
+  color: $lyj-child-text;
+}
+.vital-value {
+  font-size: $lyj-font-lg;
+  font-weight: 700;
+  color: $lyj-child-text;
+  font-variant-numeric: tabular-nums;
+}
+.vital-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2rpx;
+  min-width: 120rpx;
+}
+.vital-level {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  padding: 2rpx 12rpx;
+  border-radius: $lyj-radius-pill;
+  background: $lyj-child-line;
+  color: $lyj-child-body;
+}
+.vital-time {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 指标数值按档位染色，读数一眼能看出轻重 */
+.vital-value.lv-care,
+.vital-level.lv-care {
+  color: $lyj-success;
+}
+.vital-value.lv-watch,
+.vital-level.lv-watch {
+  color: $lyj-warn-text;
+}
+.vital-value.lv-see-doctor,
+.vital-level.lv-see-doctor {
+  color: $lyj-primary-dark;
+}
+.vital-value.lv-emergency,
+.vital-level.lv-emergency {
+  color: $lyj-danger;
+}
+.vital-level.lv-care {
+  background: $lyj-success-bg;
+}
+.vital-level.lv-watch {
+  background: $lyj-warn-bg;
+}
+.vital-level.lv-see-doctor {
+  background: $lyj-primary-soft;
+}
+.vital-level.lv-emergency {
+  background: rgba(217, 48, 37, 0.1);
+}
+.overview-disclaimer {
+  display: block;
+  margin-top: $lyj-space-md;
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  line-height: $lyj-line-height;
+}
+
+/* ---------- 就医知会 ---------- */
+.notice-section {
+  border-left: 8rpx solid $lyj-info;
+}
+.notice-card {
+  background: $lyj-info-bg;
+  border: 2rpx solid $lyj-info-line;
+  border-radius: $lyj-radius;
+  padding: $lyj-space-md;
+  margin-bottom: $lyj-space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: $lyj-space-xs;
+}
+.notice-card:last-child {
+  margin-bottom: 0;
+}
+/* 未读只是"还没看过"，不做红点催促 —— 它是知会，不是待办 */
+.notice-card.unread {
+  border-color: $lyj-info;
+}
+.notice-head {
+  display: flex;
+  align-items: flex-start;
+  gap: $lyj-space-sm;
+}
+.notice-icon {
+  font-size: 36rpx;
+  line-height: 1.2;
+}
+.notice-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+.notice-title {
+  font-size: $lyj-font-sm;
+  font-weight: 700;
+  color: $lyj-child-text;
+}
+.notice-time {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.notice-unread {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  color: $lyj-info;
+  border: 2rpx solid $lyj-info;
+  border-radius: $lyj-radius-pill;
+  padding: 0 12rpx;
+}
+.notice-summary {
+  font-size: $lyj-font-sm;
+  color: $lyj-child-body;
+  line-height: $lyj-line-height;
+}
+.notice-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $lyj-space-sm;
+}
+.notice-meta-item {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-body;
+}
+.notice-level {
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  padding: 2rpx 12rpx;
+  border-radius: $lyj-radius-pill;
+  background: $lyj-child-line;
+  color: $lyj-child-body;
+}
+.notice-level.lv-care {
+  background: $lyj-success-bg;
+  color: $lyj-success;
+}
+.notice-level.lv-watch {
+  background: $lyj-warn-bg;
+  color: $lyj-warn-text;
+}
+.notice-level.lv-see-doctor {
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+}
+.notice-level.lv-emergency {
+  background: rgba(217, 48, 37, 0.1);
+  color: $lyj-danger;
+}
+.notice-foot {
+  margin-top: $lyj-space-sm;
+  padding-top: $lyj-space-sm;
+  border-top: 2rpx dashed $lyj-info-line;
+}
+.notice-foot-text {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  line-height: $lyj-line-height;
+}
+
+/* ---------- 计划书 ---------- */
 .plan-card-item {
   display: flex;
   align-items: center;
@@ -982,18 +1463,21 @@ export default {
 .plan-badge {
   font-size: $lyj-font-xs;
   font-weight: 600;
-  padding: 2rpx 10rpx;
+  padding: 4rpx 14rpx;
   border-radius: $lyj-radius-pill;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .plan-badge.medical_plan {
   background: #fef3c7;
   color: #b45309;
 }
 .plan-badge.trip_plan {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
 }
 .plan-item-title {
   font-size: $lyj-font-md;
@@ -1003,11 +1487,14 @@ export default {
 .plan-status-badge {
   font-size: $lyj-font-xs;
   font-weight: 600;
-  padding: 2rpx 12rpx;
+  padding: 4rpx 14rpx;
   border-radius: $lyj-radius-pill;
   background: $lyj-info-bg;
   color: $lyj-info;
   margin-left: auto;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .plan-status-badge.ongoing {
   background: $lyj-primary-soft;
@@ -1030,6 +1517,8 @@ export default {
 }
 .plan-meta-time {
   color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .plan-actions {
   display: flex;
@@ -1038,12 +1527,16 @@ export default {
   flex-shrink: 0;
 }
 .plan-btn {
-  min-height: 56rpx;
-  line-height: 56rpx;
+  min-height: 64rpx;
+  line-height: 64rpx;
   font-size: $lyj-font-xs;
-  padding: 0 16rpx;
+  font-weight: 600;
+  padding: 0 20rpx;
   border-radius: $lyj-radius;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .plan-btn.plan {
   background: #0284c7;
@@ -1054,6 +1547,7 @@ export default {
   color: #fff;
 }
 
+/* ---------- 今日用药 ---------- */
 .med-item {
   display: flex;
   align-items: center;

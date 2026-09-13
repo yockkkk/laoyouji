@@ -1,7 +1,12 @@
 <script>
+import { initNative } from './utils/native'
+
 export default {
   onLaunch() {
-    console.log('老友记 App Launch')
+    console.log('康乐 App Launch')
+    // 提醒层的唯一入口：注册通知点击回流 + 冷启动补课 + 已登录则同步一次闹钟。
+    // 浏览器里没有 window.KangleNative，initNative 内部整体静默降级，不影响启动。
+    initNative()
   },
 }
 </script>
@@ -14,13 +19,32 @@ export default {
  */
 @import './uni.scss';
 
-page {
+page, uni-page-body, body, view, text, button, input, textarea {
+  font-family: $lyj-font-family !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+page, uni-page-body, body {
   background-color: $lyj-bg;
   font-size: $lyj-font-md; /* 20px 正文地板 */
   color: $lyj-text;
-  font-family: 'Nunito', 'Rounded Mplus 1c', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 全局防单字孤儿折行与标题挤压保护 */
+.title,
+.name,
+.role-name,
+.role-tag,
+.feat-pill,
+.btn-text,
+.tab-text,
+.badge,
+.tag,
+.quick-label,
+.sec-text {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 button {
@@ -61,7 +85,7 @@ input, textarea {
 .btn-main {
   min-height: $lyj-btn-main;
   border-radius: $lyj-radius;
-  background: linear-gradient(135deg, #2A82E4 0%, #3B99FC 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   color: $lyj-text-on;
   font-size: $lyj-font-md;
   font-weight: 700;
@@ -114,14 +138,14 @@ page, uni-page-body {
   border-radius: $lyj-radius;
   padding: $lyj-space-lg;
   margin: $lyj-space-md;
-  box-shadow: $lyj-shadow-card;
+  box-shadow: 0 8rpx 28rpx rgba(42, 130, 228, 0.08);
   border: 2rpx solid $lyj-line;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:active {
   transform: translateY(2rpx);
-  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.04);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.08);
 }
 
 /* #ifdef H5 */
@@ -138,43 +162,18 @@ page, uni-page-body {
     justify-content: center;
     align-items: center;
   }
-  #app {
-    width: 100%;
+  uni-app {
     max-width: 430px;
+    width: 100%;
     height: 100vh;
     max-height: 920px;
-    display: flex;
-    justify-content: center;
-    align-items: stretch;
-    flex: 0 0 430px;
-    box-sizing: border-box;
-  }
-  uni-app {
-    max-width: 430px !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 920px !important;
-    margin: 0 auto;
+    margin: 16px auto;
     position: relative;
     transform: translate(0, 0); /* 确立包含块 (Containing Block)，锁定 position: fixed 子元素于手机沙盒内 */
     background-color: $lyj-bg;
     box-shadow: 0 20px 60px rgba(19, 36, 56, 0.16), 0 0 0 8px #D0DFEE;
     border-radius: 36px;
     overflow: hidden;
-  }
-  uni-page-wrapper {
-    height: 100% !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
-  }
-  uni-page-wrapper::-webkit-scrollbar {
-    width: 6px;
-  }
-  uni-page-wrapper::-webkit-scrollbar-thumb {
-    background: rgba(100, 116, 139, 0.25);
-    border-radius: 6px;
   }
   uni-page-head {
     max-width: 430px !important;
@@ -198,11 +197,6 @@ page, uni-page-body {
     background-color: $lyj-bg;
     margin: 0;
     padding: 0;
-  }
-  #app {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100% !important;
   }
   uni-app {
     width: 100% !important;

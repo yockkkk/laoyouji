@@ -1,11 +1,14 @@
 """高德开放平台 Web 服务 API 联动模块。
 
-支持：
+康乐只陪老人在本市走动，这里就只做四件事：
 1. 真实地址地理编码（/v3/geocode/geo）
-2. 驾车路径规划 2.0（/v5/direction/driving）
-3. 公交与综合换乘规划 2.0（/v5/direction/transit/integrated）
-4. 综合路线（含跨城高铁+到院真实接驳航迹）与长辈 10 秒坐标偏航判定
-5. 离线/断网降级至 routes.json 本地兜底，确保全场景 0 故障
+2. 本市驾车路径规划 2.0（/v5/direction/driving）
+3. 本市公交与综合换乘规划 2.0（/v5/direction/transit/integrated）
+4. 本市步行规划 2.0（/v5/direction/walking）
+
+跨城（两端直线距离 > 60km）不规划、不编时长、不编车次，直接退与 MockMapProvider
+一字不差的诚实回执。另附长辈 10 秒坐标偏航判定用的航迹/走廊距离工具，
+以及断网时降级到 routes.json 的本地兜底，确保全场景 0 故障。
 """
 from __future__ import annotations
 
@@ -24,10 +27,12 @@ logger = logging.getLogger(__name__)
 
 AMAP_WEB_BASE = "https://restapi.amap.com"
 
-# 常用地标经纬度缓存（高德 GCJ-02 坐标系）
+# 常用地标经纬度缓存（高德 GCJ-02 坐标系）。
+# 这张表里**没有"家"**："家"是个称呼、不是地名，它在哪座城取决于老人此刻在哪座城，
+# 坐标只有一份（hospitals.json 的 elder_homes），靠 home_coords 按城市去取。
+# 表里留一个南京的"家"，认不出城市时就会默默退回南京 —— 北京的行程起点被画到南京，
+# 子女端地图上差 900 公里。
 KNOWN_LANDMARKS: dict[str, tuple[float, float]] = {
-    "家": (118.7841, 32.0645),
-    "家（南京鼓楼区）": (118.7732, 32.0618),
     "南京": (118.7841, 32.0645),
     "南京鼓楼医院": (118.7838, 32.0569),
     "南京南站": (118.7981, 31.9696),
@@ -139,6 +144,121 @@ def parse_polyline_string(polyline_str: str) -> list[dict[str, float]]:
     return points
 
 
+# 康乐只陪老人在本市走动：两端直线距离超过这个数就是跨城，不规划、不编车次。
+INTERCITY_KM = 60.0
+
+
+def city_of(text: str) -> str:
+    """从自由文本里认出城市（``家（南京鼓楼区）`` → 南京）；认不出返回空串。
+
+    与 services.py 里同名函数同一套规则：**认不出不等于跨城** —— 模型填的出发地
+    常常就是一个"家"，正文里本来就没有城名；只有两头都认得出、而且不是同一座城，
+    才叫跨城长途。这里自成一份是沿用 hospital.py 的做法：地图接口层不该为了
+    六行字符串包含去依赖 provider 的文件。
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    for city in sorted(load_fixture("routes").get("cities") or [], key=len, reverse=True):
+        if city in text:
+            return city
+    return ""
+
+
+# "家"是个**称呼**、不是地名：它落在哪座城，取决于老人此刻在哪座城。
+_HOME_ALIAS = "家"
+
+
+def is_home(text: str) -> bool:
+    """这句话说的是不是"家"这个称呼。
+
+    只认裸 ``家`` 和 ``家（北京西城区）`` 这种"家+括号"的写法 —— 不认"国家大剧院"
+    "老家"这类只是碰巧含"家"字的地名，否则它们会被接到老人住址上，画出一个跟这句
+    话毫不相干的起点。与 services.py 的同名判断同一套规则。
+    """
+    text = (text or "").strip()
+    return (text == _HOME_ALIAS
+            or text.startswith(f"{_HOME_ALIAS}（")
+            or text.startswith(f"{_HOME_ALIAS}("))
+
+
+def home_coords(city: str) -> tuple[float, float] | None:
+    """按城市取"家"的坐标；认不出的城返回 None（不编一个）。
+
+    坐标**只有一份**，写在 hospitals.json 的 ``elder_homes`` 里 —— 医院 provider 算
+    "离家多远"（"离家约 1.3 公里"）用的是同一份，routes.json 每条线的 ``points[0]``
+    也是它的抄写。地图这一层不再另立一张表：三处各自飘一点，子女端地图上画的家门口
+    和计划书上那句"离家 1.3 公里"就成了两个地方，问起来没法解释。
+    """
+    home = (load_fixture("hospitals").get("elder_homes") or {}).get(city or "")
+    if not home:
+        return None
+    return (float(home["lng"]), float(home["lat"]))
+
+
+def _cross_city_receipt(origin: str, destination: str) -> dict:
+    """跨城的诚实回执：直接复用 MockMapProvider 那一份。
+
+    两个 provider 对同一件事必须说同样的话、给同样形状的返回 —— 否则老人从
+    "高德这条路"问来的答案，和从"演示库那条路"问来的答案会对不上。
+    """
+    from app.providers.external.services import MockMapProvider
+    return MockMapProvider._no_route(
+        load_fixture("routes"), origin, destination, cross_city=True
+    )
+
+
+def _no_route_receipt(origin: str, destination: str, city: str = "") -> dict:
+    """认不出端点落在哪座城时的诚实回执：复用 MockMapProvider 那一份（非跨城）。
+
+    "家"认不出城名就走这一条：不画线、不编时长，只说"这条路线我这儿只有大致方向"。
+    **不能拿跨城那句话去顶** —— 跨城是"我知道你出城了"，这里只是"我说不清'家'在
+    哪座城"；老人问一句"从家去鼓楼医院"，回他"这段路跨城了"是另一种编造。
+    """
+    from app.providers.external.services import MockMapProvider
+    return MockMapProvider._no_route(
+        load_fixture("routes"), origin, destination, city=city
+    )
+
+
+async def _local_fallback(origin: str, destination: str, mode: str, city: str) -> dict:
+    """演示路线库兜底（``options``/``announce`` 齐全，与 MockMapProvider 同形）。
+
+    ``city`` 由调用方从出发地文本里认出来；认不出就传空串，让库里那条
+    "认不出城名就不下定论"的规则自己决定 —— 别拿目的地的城市去顶，
+    那会把"家 → 外地的医院"当成同城，反而放出一条跨城线。
+    """
+    from app.providers.external.services import MockMapProvider
+    result = await MockMapProvider().plan_route(origin, destination, mode, city)
+    # 前端地图两种形状都读：points 画站点标记、polyline 连线。演示库的折线点
+    # 自带 location，照抄一份给 points，站点标记不至于因为换了 provider 就消失。
+    if not result.get("points"):
+        result["points"] = [p for p in (result.get("polyline") or [])
+                            if isinstance(p, dict) and p.get("location")]
+    return result
+
+
+def _format_duration(duration_s: int) -> str:
+    """秒 → 老人听得懂的说法；拿不到时长就说空串，不编一个出来。"""
+    if duration_s <= 0:
+        return ""
+    dur_min = max(1, round(duration_s / 60))
+    if dur_min >= 60:
+        return f"约{dur_min // 60}小时{dur_min % 60}分钟"
+    return f"约{dur_min}分钟"
+
+
+def _busline_names(transit: dict) -> list[str]:
+    """一套换乘方案里坐过的所有线路名（地铁线也在 buslines 里，名字带"地铁"）。"""
+    names: list[str] = []
+    for seg in (transit.get("segments") or []):
+        for line in ((seg.get("bus") or {}).get("buslines") or []):
+            name = (line.get("name") or "").strip()
+            if name:
+                names.append(name)
+    return names
+
+
 class AmapWebClient:
     """高德开放平台 Web API 客户端。"""
 
@@ -158,21 +278,49 @@ class AmapWebClient:
             logger.warning("Amap Web API %s error: %s", path, err)
             return None
 
+    @staticmethod
+    def _lookup_known(text: str) -> tuple[float, float] | None:
+        """本地地标表查表：完全匹配优先，其次按名称长度由长到短包含匹配。"""
+        if text in KNOWN_LANDMARKS:
+            return KNOWN_LANDMARKS[text]
+        for name, coords in sorted(KNOWN_LANDMARKS.items(), key=lambda x: len(x[0]), reverse=True):
+            if name in text:
+                return coords
+        return None
+
     async def geocode(self, address: str, city: str = "") -> tuple[float, float] | None:
-        """根据地址获取经纬度 (lng, lat)。"""
+        """根据地址获取经纬度 (lng, lat)。
+
+        ``city`` = 老人所在的城市，只在"家"这个称呼上用得到：这句话里带着城名
+        （``家（北京西城区）``）时以正文为准，正文里没有才拿它兜底。
+        """
         if not address:
             return None
-        # 1. 完全精准匹配
-        if address in KNOWN_LANDMARKS:
-            return KNOWN_LANDMARKS[address]
+        text = address.strip()
 
-        # 2. 按地标名称长度由长到短进行包含匹配（防御短键截断长键）
-        for name, coords in sorted(KNOWN_LANDMARKS.items(), key=lambda x: len(x[0]), reverse=True):
-            if name in address:
+        # 0. "家"按城市落到 elder_homes —— 表里查不出来（三座城各有一个家），
+        #    所以这一步必须排在查表前面，否则"家（北京西城区）"会被较短的"北京"
+        #    键接住，落到天安门，离西城区的家差 4 公里。
+        if is_home(text):
+            city_in_text = city_of(text)
+            coords = home_coords(city_in_text or city)
+            if coords:
                 return coords
+            if city_in_text:
+                # 城名认得出来、但那座城没登记"家"（家（杭州西城区））：退到那座城的
+                # 市中心当大致方向 —— 与 services.py 的 _landmark 同一口径。
+                return self._lookup_known(city_in_text)
+            # 连城名都认不出：不退回任何一座城（尤其不退回南京），如实返回 None，
+            # 由调用方按"说不出这是本市哪一段"处理。
+            return None
+
+        # 1-2. 本地地标表
+        known = self._lookup_known(text)
+        if known:
+            return known
 
         def _do():
-            return self._http_get("/v3/geocode/geo", {"address": address, "city": city})
+            return self._http_get("/v3/geocode/geo", {"address": text, "city": city})
 
         data = await asyncio.to_thread(_do)
         if data and data.get("status") == "1" and data.get("geocodes"):
@@ -240,475 +388,187 @@ class AmapWebClient:
             "steps": steps_text,
         }
 
-    async def plan_route(self, origin: str, destination: str) -> dict:
-        """综合路线规划：优先调用高德真实 Web API 2.0，兼具跨城高铁与市内到院接驳。"""
-        # 0. 规范化起点与终点输入
+    async def plan_transit_2(
+        self, origin: tuple[float, float], destination: tuple[float, float], city: str = ""
+    ) -> dict | None:
+        """调用高德公交/地铁综合换乘规划 2.0（/v5/direction/transit/integrated）。
+
+        ``city`` 是本市城市名，两端都传同一个（康乐只做同城，city1 == city2）。
+        到底是"公交"还是"地铁"，高德不会直说 —— 看换乘方案里每一段第一条线路
+        （``segments[].bus.buslines[0].name``）的名字里有没有"地铁"来定。
+
+        失败/超时一律返回 ``None``：调用方据此落回演示路线库，
+        绝不把异常吞掉之后自己编一份换乘方案出来。
+        """
+        orig_s = f"{origin[0]:.6f},{origin[1]:.6f}"
+        dest_s = f"{destination[0]:.6f},{destination[1]:.6f}"
+        params = {"origin": orig_s, "destination": dest_s, "show_fields": "cost,polyline,steps"}
+        if city:
+            params["city1"] = city
+            params["city2"] = city
+
+        def _do():
+            return self._http_get("/v5/direction/transit/integrated", params)
+
+        res = await asyncio.to_thread(_do)
+        if not res or res.get("status") != "1":
+            return None
+        transits = (res.get("route") or {}).get("transits") or []
+        if not transits:
+            return None
+
+        picked = transits[0]
+        lines = _busline_names(picked)
+        polyline: list[dict[str, float]] = []
+        steps: list[str] = []
+        for seg in picked.get("segments") or []:
+            walking = seg.get("walking") or {}
+            for ws in walking.get("steps") or []:
+                if ws.get("instruction"):
+                    steps.append(ws["instruction"])
+                polyline.extend(parse_polyline_string(ws.get("polyline") or ""))
+            for line in (seg.get("bus") or {}).get("buslines") or []:
+                name = (line.get("name") or "").strip()
+                if name:
+                    steps.append(f"乘坐{name}")
+                polyline.extend(parse_polyline_string(line.get("polyline") or ""))
+
+        distance_m = int(picked.get("distance") or 0)
+        duration_s = int((picked.get("cost") or {}).get("duration") or 0)
+        return {
+            "mode": "地铁" if any("地铁" in n for n in lines) else "公交",
+            "distance_km": round(distance_m / 1000.0, 1),
+            "distance_m": distance_m,
+            "duration": _format_duration(duration_s),
+            "duration_s": duration_s,
+            "polyline": polyline,
+            "steps": steps,
+        }
+
+    async def plan_walking_2(
+        self, origin: tuple[float, float], destination: tuple[float, float]
+    ) -> dict | None:
+        """调用高德步行规划 2.0（/v5/direction/walking）。
+
+        失败/超时一律返回 ``None`` —— 老人"走着去"这条路宁可落回演示库，
+        也不能拿一份编出来的步行动线糊弄他。
+        """
+        orig_s = f"{origin[0]:.6f},{origin[1]:.6f}"
+        dest_s = f"{destination[0]:.6f},{destination[1]:.6f}"
+
+        def _do():
+            return self._http_get(
+                "/v5/direction/walking",
+                {"origin": orig_s, "destination": dest_s, "show_fields": "cost,polyline,steps"},
+            )
+
+        res = await asyncio.to_thread(_do)
+        if not res or res.get("status") != "1":
+            return None
+        paths = (res.get("route") or {}).get("paths") or []
+        if not paths:
+            return None
+
+        p = paths[0]
+        polyline: list[dict[str, float]] = []
+        steps: list[str] = []
+        for step in p.get("steps") or []:
+            if step.get("instruction"):
+                steps.append(step["instruction"])
+            polyline.extend(parse_polyline_string(step.get("polyline") or ""))
+
+        distance_m = int(p.get("distance") or 0)
+        duration_s = int((p.get("cost") or {}).get("duration") or 0)
+        return {
+            "mode": "步行",
+            "distance_km": round(distance_m / 1000.0, 1),
+            "distance_m": distance_m,
+            "duration": _format_duration(duration_s),
+            "duration_s": duration_s,
+            "polyline": polyline,
+            "steps": steps,
+        }
+
+    async def plan_route(self, origin: str, destination: str, mode: str = "",
+                         city: str = "") -> dict:
+        """同城出行规划：公交/地铁、步行、驾车各走各的真接口；跨城如实拒答。
+
+        ``mode`` 与 ``city`` 都是后加的带默认值参数，位置参数保持兼容 ——
+        routes_guardian.py 那几处两参调用原样能用。分派规则：``地铁``/``公交``
+        走综合换乘、``步行`` 走步行规划、空或认不出的方式走驾车。
+
+        ``city`` = 老人所在的城市（老人档案里的常住城市）。"家"是个称呼、不是地名，
+        认不出它在哪座城就给不出这一段：这句话里带着城名（``家（北京西城区）``）时
+        以正文为准，正文里没有才用 ``city`` 兜底。
+
+        跨城（两头的城名都认得出而且不是一座城，或两端直线距离超过 60km）
+        **不规划**：返回 ``matched=False`` 的诚实回执，口径与 MockMapProvider
+        一字不差。这里不编时长、也不编车次 —— 编一个出来，老人会照着出门。
+        """
         origin = (origin or "家（南京鼓楼区）").strip()
-        destination = (destination or "北京积水潭医院").strip()
+        destination = (destination or "南京鼓楼医院").strip()
 
-        # 1. 检查已知或固定路线
-        fixture_data = load_fixture("routes")
-        matched_fixture = None
-        for r in fixture_data.get("routes", []):
-            if (r["from"] in origin or origin in r["from"]) and (
-                r["to"] in destination or destination in r["to"]
-            ):
-                matched_fixture = r
-                break
+        # 1. 城市与端点坐标。正文里的城名**优先于**档案里的 city（同 services.py 的
+        #    _end_cities）：老人说的是"家（北京西城区）"，档案写南京也得听正文的。
+        o_city, d_city = city_of(origin), city_of(destination)
+        elder_city = o_city or city
 
-        # 2. 获取端点坐标
-        orig_coords = await self.geocode(origin)
+        # "家"认不出在哪座城：这一趟本就不该由我们拍板。不借目的地的城名去顶
+        # （借了，"家 → 外地的医院"就成了同城线，放出一条老人根本走不到的路），
+        # 也不默默退回任何一座城 —— 按项目口径如实说"只有大致方向"。
+        if is_home(origin) and not elder_city:
+            return _no_route_receipt(origin, destination)
+
+        orig_coords = await self.geocode(origin, elder_city)
         dest_coords = await self.geocode(destination)
 
-        # 3. 跨城行程判定
-        is_nanjing_beijing = (
-            ("南京" in origin and ("北京" in destination or "积水潭" in destination or "协和" in destination))
-            or ("北京" in origin and "南京" in destination)
-        )
-        is_nanjing_shanghai = (
-            ("南京" in origin and ("上海" in destination or "第六人民" in destination or "华山" in destination or "瑞金" in destination))
-            or ("上海" in origin and "南京" in destination)
-        )
-        is_nanjing_hangzhou = (
-            ("南京" in origin and ("杭州" in destination or "浙大" in destination or "西湖" in destination))
-            or ("杭州" in origin and "南京" in destination)
-        )
-        is_nanjing_suzhou = (
-            ("南京" in origin and ("苏州" in destination or "苏大" in destination))
-            or ("苏州" in origin and "南京" in destination)
-        )
-        is_intercity = (
-            is_nanjing_beijing
-            or is_nanjing_shanghai
-            or is_nanjing_hangzhou
-            or is_nanjing_suzhou
-            or (orig_coords and dest_coords and haversine_distance_m(orig_coords, dest_coords) > 60_000)
-        )
+        # 2. 跨城：直接退诚实回执，绝不生成"高铁 + 市内接驳"那种整条线
+        cross_city = bool(o_city and d_city and o_city != d_city)
+        if not cross_city and orig_coords and dest_coords:
+            cross_city = haversine_distance_m(orig_coords, dest_coords) > INTERCITY_KM * 1000
+        if cross_city:
+            return _cross_city_receipt(origin, destination)
 
-        # 4. 跨城高铁专线路线生成
-        if is_intercity:
-            orig_lng = orig_coords[0] if orig_coords else 118.7732
-            orig_lat = orig_coords[1] if orig_coords else 32.0618
-            dest_lng = dest_coords[0] if dest_coords else 118.7732
-            dest_lat = dest_coords[1] if dest_coords else 32.0618
-
-            # 4.1 上海专线（南京 ⇄ 上海）
-            if is_nanjing_shanghai:
-                hongqiao = KNOWN_LANDMARKS["上海虹桥站"]
-                is_return = "上海" in origin
-
-                if not is_return:
-                    # 南京 -> 上海去程
-                    dest_target = dest_coords or KNOWN_LANDMARKS["上海市第六人民医院"]
-                    last_mile = await self.plan_driving_2(hongqiao, dest_target)
-
-                    points = [
-                        {"location": origin, "lng": orig_lng, "lat": orig_lat, "desc": "行程起点"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "乘坐高铁出发"},
-                        {"location": "上海虹桥站", "lng": 121.3201, "lat": 31.1942, "desc": "高铁到站换乘"},
-                        {"location": destination, "lng": dest_target[0], "lat": dest_target[1], "desc": "行程目的地"},
-                    ]
-                    steps = [
-                        f"从{origin}打车到南京南站出发层，车程约 20 分钟。",
-                        "在南京南站候车乘坐高铁前往上海虹桥站，车程约 1 小时 25 分钟。",
-                    ]
-                    if last_mile and last_mile.get("polyline"):
-                        steps.append(
-                            f"上海虹桥站地下网约车点上车直达{destination}：全程约 {last_mile['distance_km']} 公里，"
-                            f"耗时{last_mile['duration']}。"
-                        )
-                        if last_mile.get("steps"):
-                            steps.extend(last_mile["steps"][:3])
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points[:3]] + last_mile["polyline"]
-                    else:
-                        steps.append(f"上海虹桥站出站后换乘网约车直达{destination}，车程约 25 分钟。")
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 市内接驳",
-                        "duration": "约1小时50分",
-                        "distance_km": 318,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：推荐在南京南站乘坐高铁直达上海虹桥站，出站换乘打车到达{destination}，全程约2小时。",
-                    }
-                else:
-                    # 上海 -> 南京返程
-                    orig_target = orig_coords or KNOWN_LANDMARKS["上海市第六人民医院"]
-                    points = [
-                        {"location": origin, "lng": orig_target[0], "lat": orig_target[1], "desc": "返程起点"},
-                        {"location": "上海虹桥站", "lng": 121.3201, "lat": 31.1942, "desc": "搭乘高铁返程"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "到达南京南站"},
-                        {"location": destination, "lng": dest_lng, "lat": dest_lat, "desc": "回到家中"},
-                    ]
-                    steps = [
-                        f"从{origin}打车前往上海虹桥站候车出发，车程约 25 分钟。",
-                        "在上海虹桥站乘坐高铁直达南京南站，车程约 1 小时 25 分钟。",
-                        f"到达南京南站后打车返回{destination}，车程约 20 分钟。",
-                    ]
-                    all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 返程接驳",
-                        "duration": "约1小时50分",
-                        "distance_km": 318,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：返程推荐前往上海虹桥站搭乘高铁直达南京南站，出站打车回到家中，全程约2小时。",
-                    }
-
-            # 4.2 杭州专线（南京 ⇄ 杭州）
-            elif is_nanjing_hangzhou:
-                hangzhou_east = KNOWN_LANDMARKS["杭州东站"]
-                is_return = "杭州" in origin or "浙大" in origin or "西湖" in origin
-
-                if not is_return:
-                    dest_target = dest_coords or KNOWN_LANDMARKS["杭州市第一人民医院"]
-                    last_mile = await self.plan_driving_2(hangzhou_east, dest_target)
-
-                    points = [
-                        {"location": origin, "lng": orig_lng, "lat": orig_lat, "desc": "行程起点"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "乘坐高铁出发"},
-                        {"location": "杭州东站", "lng": 120.2131, "lat": 30.2910, "desc": "高铁到站换乘"},
-                        {"location": destination, "lng": dest_target[0], "lat": dest_target[1], "desc": "行程目的地"},
-                    ]
-                    steps = [
-                        f"从{origin}打车到南京南站出发层，车程约 20 分钟。",
-                        "在南京南站候车乘坐宁杭高铁直达杭州东站，车程约 1 小时 15 分钟。",
-                    ]
-                    if last_mile and last_mile.get("polyline"):
-                        steps.append(
-                            f"杭州东站出站打车前往{destination}：全程约 {last_mile['distance_km']} 公里，"
-                            f"耗时{last_mile['duration']}。"
-                        )
-                        if last_mile.get("steps"):
-                            steps.extend(last_mile["steps"][:3])
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points[:3]] + last_mile["polyline"]
-                    else:
-                        steps.append(f"杭州东站出站后换乘网约车直达{destination}，车程约 25 分钟。")
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 市内接驳",
-                        "duration": "约1小时40分",
-                        "distance_km": 256,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：推荐在南京南站乘坐宁杭高铁直达杭州东站，出站换乘打车到达{destination}，全程约1小时40分。",
-                    }
-                else:
-                    orig_target = orig_coords or KNOWN_LANDMARKS["杭州市第一人民医院"]
-                    points = [
-                        {"location": origin, "lng": orig_target[0], "lat": orig_target[1], "desc": "返程起点"},
-                        {"location": "杭州东站", "lng": 120.2131, "lat": 30.2910, "desc": "搭乘高铁返程"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "到达南京南站"},
-                        {"location": destination, "lng": dest_lng, "lat": dest_lat, "desc": "回到家中"},
-                    ]
-                    steps = [
-                        f"从{origin}打车前往杭州东站候车出发，车程约 25 分钟。",
-                        "在杭州东站乘坐宁杭高铁直达南京南站，车程约 1 小时 15 分钟。",
-                        f"到达南京南站后打车返回{destination}，车程约 20 分钟。",
-                    ]
-                    all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 返程接驳",
-                        "duration": "约1小时40分",
-                        "distance_km": 256,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：返程推荐前往杭州东站搭乘高铁直达南京南站，出站打车回到家中，全程约1小时40分。",
-                    }
-
-            # 4.3 苏州专线（南京 ⇄ 苏州）
-            elif is_nanjing_suzhou:
-                suzhou_station = KNOWN_LANDMARKS["苏州站"]
-                is_return = "苏州" in origin or "苏大" in origin
-
-                if not is_return:
-                    dest_target = dest_coords or KNOWN_LANDMARKS["苏州大学附属第一医院"]
-                    last_mile = await self.plan_driving_2(suzhou_station, dest_target)
-
-                    points = [
-                        {"location": origin, "lng": orig_lng, "lat": orig_lat, "desc": "行程起点"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "乘坐高铁出发"},
-                        {"location": "苏州站", "lng": 120.6120, "lat": 31.3303, "desc": "高铁到站换乘"},
-                        {"location": destination, "lng": dest_target[0], "lat": dest_target[1], "desc": "行程目的地"},
-                    ]
-                    steps = [
-                        f"从{origin}打车到南京南站出发层，车程约 20 分钟。",
-                        "在南京南站候车乘坐沪宁城际高铁直达苏州站，车程约 55 分钟。",
-                    ]
-                    if last_mile and last_mile.get("polyline"):
-                        steps.append(
-                            f"苏州站出站后网约车直达{destination}：全程约 {last_mile['distance_km']} 公里，"
-                            f"耗时{last_mile['duration']}。"
-                        )
-                        if last_mile.get("steps"):
-                            steps.extend(last_mile["steps"][:3])
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points[:3]] + last_mile["polyline"]
-                    else:
-                        steps.append(f"苏州站出站后换乘网约车直达{destination}，车程约 20 分钟。",)
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 市内接驳",
-                        "duration": "约1小时20分",
-                        "distance_km": 218,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：推荐在南京南站乘坐高铁直达苏州站，出站换乘打车到达{destination}，全程约1小时20分。",
-                    }
-                else:
-                    orig_target = orig_coords or KNOWN_LANDMARKS["苏州大学附属第一医院"]
-                    points = [
-                        {"location": origin, "lng": orig_target[0], "lat": orig_target[1], "desc": "返程起点"},
-                        {"location": "苏州站", "lng": 120.6120, "lat": 31.3303, "desc": "搭乘高铁返程"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "到达南京南站"},
-                        {"location": destination, "lng": dest_lng, "lat": dest_lat, "desc": "回到家中"},
-                    ]
-                    steps = [
-                        f"从{origin}打车前往苏州站候车出发，车程约 20 分钟。",
-                        "在苏州站乘坐高铁直达南京南站，车程约 55 分钟。",
-                        f"到达南京南站后打车返回{destination}，车程约 20 分钟。",
-                    ]
-                    all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 返程接驳",
-                        "duration": "约1小时20分",
-                        "distance_km": 218,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：返程推荐前往苏州站搭乘高铁直达南京南站，出站打车回到家中，全程约1小时20分。",
-                    }
-
-            # 4.4 北京专线（南京 ⇄ 北京）
-            elif is_nanjing_beijing:
-                beijing_south = KNOWN_LANDMARKS["北京南站"]
-                is_return = "北京" in origin or "积水潭" in origin or "协和" in origin
-
-                if not is_return:
-                    # 去程：南京 -> 北京
-                    dest_target = dest_coords or (
-                        KNOWN_LANDMARKS["北京协和医院"] if "协和" in destination else KNOWN_LANDMARKS["北京积水潭医院"]
-                    )
-                    last_mile = await self.plan_driving_2(beijing_south, dest_target)
-
-                    points = [
-                        {"location": origin, "lng": orig_lng, "lat": orig_lat, "desc": "行程起点"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "乘坐高铁出发"},
-                        {"location": "济南西站", "lng": 116.8974, "lat": 36.6669, "desc": "高铁途经站点"},
-                        {"location": "北京南站", "lng": 116.3789, "lat": 39.8652, "desc": "高铁到站换乘"},
-                        {"location": destination, "lng": dest_target[0], "lat": dest_target[1], "desc": "行程目的地"},
-                    ]
-
-                    steps = [
-                        f"从{origin}打车到南京南站出发层，车程约 20 分钟。",
-                        "在南京南站候车乘高铁（如 G12 次），途中经停济南西站，约 3 小时 40 分到达北京南站。",
-                    ]
-
-                    if last_mile and last_mile.get("polyline"):
-                        steps.append(
-                            f"北京南站地下网约车点上车直达{destination}：全程约 {last_mile['distance_km']} 公里，"
-                            f"耗时{last_mile['duration']}。"
-                        )
-                        if last_mile.get("steps"):
-                            steps.extend(last_mile["steps"][:4])
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points[:4]] + last_mile["polyline"]
-                    else:
-                        steps.append(f"北京南站出站后网约车直达{destination}，车程约 20 分钟。")
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 市内接驳",
-                        "duration": "约4小时20分",
-                        "distance_km": 1023,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：推荐乘坐高铁经停济南西站直达北京南站，出站换乘打车到达{destination}，全程约4小时20分。",
-                    }
-                else:
-                    # 返程：北京 -> 南京
-                    orig_target = orig_coords or (
-                        KNOWN_LANDMARKS["北京协和医院"] if "协和" in origin else KNOWN_LANDMARKS["北京积水潭医院"]
-                    )
-                    first_mile = await self.plan_driving_2(orig_target, beijing_south)
-
-                    points = [
-                        {"location": origin, "lng": orig_target[0], "lat": orig_target[1], "desc": "返程起点"},
-                        {"location": "北京南站", "lng": 116.3789, "lat": 39.8652, "desc": "搭乘高铁返程"},
-                        {"location": "济南西站", "lng": 116.8974, "lat": 36.6669, "desc": "高铁途经站点"},
-                        {"location": "南京南站", "lng": 118.7981, "lat": 31.9696, "desc": "到达南京南站"},
-                        {"location": destination, "lng": dest_lng, "lat": dest_lat, "desc": "回到家中"},
-                    ]
-
-                    steps = [
-                        f"从{origin}打车前往北京南站出发层。",
-                        "在北京南站乘坐高铁返程直达南京南站，中途经停济南西站，车程约 3 小时 40 分钟。",
-                        f"到达南京南站出站后打车返回{destination}，车程约 20 分钟。",
-                    ]
-                    if first_mile and first_mile.get("polyline"):
-                        all_poly = first_mile["polyline"] + [{"lng": p["lng"], "lat": p["lat"]} for p in points[1:]]
-                    else:
-                        all_poly = [{"lng": p["lng"], "lat": p["lat"]} for p in points]
-
-                    return {
-                        "ok": True,
-                        "matched": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "mode": "高铁 + 返程接驳",
-                        "duration": "约4小时20分",
-                        "distance_km": 1023,
-                        "points": points,
-                        "polyline": all_poly,
-                        "steps": steps,
-                        "summary": f"从{origin}到{destination}：返程推荐乘车至北京南站搭乘高铁返回南京南站，出站换乘打车回到家，全程约4小时20分。",
-                    }
-
-            # 4.5 通用城际行程（其他跨城长途）
+        # 3. 本市：按 mode 分派到公交/地铁、步行、驾车三条真接口
+        plan: dict | None = None
+        if orig_coords and dest_coords:
+            if mode == "步行":
+                plan = await self.plan_walking_2(orig_coords, dest_coords)
+            elif mode in ("地铁", "公交"):
+                plan = await self.plan_transit_2(orig_coords, dest_coords, elder_city)
             else:
-                if orig_coords and dest_coords:
-                    direct_plan = await self.plan_driving_2(orig_coords, dest_coords)
-                    if direct_plan:
-                        dur_disp = direct_plan["duration"]
-                        return {
-                            "ok": True,
-                            "matched": True,
-                            "origin": origin,
-                            "destination": destination,
-                            "mode": "城际接驳出行",
-                            "duration": dur_disp,
-                            "distance_km": direct_plan["distance_km"],
-                            "points": [
-                                {"location": origin, "lng": orig_coords[0], "lat": orig_coords[1], "desc": "行程起点"},
-                                {"location": destination, "lng": dest_coords[0], "lat": dest_coords[1], "desc": "行程终点"},
-                            ],
-                            "polyline": direct_plan["polyline"],
-                            "steps": direct_plan["steps"],
-                            "summary": f"从{origin}到{destination}：跨城全程约{direct_plan['distance_km']}公里，车程{dur_disp}。出门前备好身份证件与就医卡。",
-                        }
+                plan = await self.plan_driving_2(orig_coords, dest_coords)
 
-        # 5. 市内行程：若获取到双方坐标，直接走高德真实驾车规划 2.0
-        if orig_coords and dest_coords:
-            direct_plan = await self.plan_driving_2(orig_coords, dest_coords)
-            if direct_plan:
-                points = [
-                    {"location": origin, "lng": orig_coords[0], "lat": orig_coords[1], "desc": "起点"},
-                    {"location": destination, "lng": dest_coords[0], "lat": dest_coords[1], "desc": "终点"},
-                ]
-                dur_disp = direct_plan["duration"]
-                return {
-                    "ok": True,
-                    "matched": True,
-                    "origin": origin,
-                    "destination": destination,
-                    "mode": direct_plan["mode"],
-                    "duration": dur_disp,
-                    "distance_km": direct_plan["distance_km"],
-                    "points": points,
-                    "polyline": direct_plan["polyline"],
-                    "steps": direct_plan["steps"],
-                    "summary": f"从{origin}到{destination}：打车{dur_disp}，全程{direct_plan['distance_km']}公里。"
-                    + "".join(direct_plan["steps"][:3]),
-                }
-
-        # 降级到本地 fixture 匹配
-        if matched_fixture:
-            return {
-                "ok": True,
-                "matched": True,
-                "origin": origin,
-                "destination": destination,
-                "mode": matched_fixture["mode"],
-                "duration": matched_fixture["duration"],
-                "distance_km": matched_fixture.get("distance_km"),
-                "points": matched_fixture["points"],
-                "polyline": matched_fixture["points"],
-                "steps": matched_fixture["steps"],
-                "summary": f"从{origin}到{destination}：{matched_fixture['mode']}，全程{matched_fixture['duration']}。"
-                + "".join(matched_fixture["steps"]),
-            }
-
-        # 兜底：计算两点间估算距离与步骤，确保适老端换乘卡片绝不空白
-        ends = []
-        if orig_coords:
-            ends.append({"location": origin, "lng": orig_coords[0], "lat": orig_coords[1], "desc": "起点"})
-        if dest_coords:
-            ends.append({"location": destination, "lng": dest_coords[0], "lat": dest_coords[1], "desc": "终点"})
-
-        if orig_coords and dest_coords:
-            direct_dist_km = round(haversine_distance_m(orig_coords, dest_coords) / 1000.0 * 1.3, 1)
-            dur_mins = max(10, round(direct_dist_km / 30.0 * 60))
-            dur_str = f"约{dur_mins // 60}小时{dur_mins % 60}分" if dur_mins >= 60 else f"约{dur_mins}分钟"
-            fallback_steps = [
-                f"从{origin}出发，建议搭乘出租车或无障碍网约车直达。",
-                f"途径城市主干道前往{destination}，路程约{direct_dist_km}公里，车程{dur_str}。",
-                f"到达{destination}门诊大楼，可在大厅便民服务台寻求导医与轮椅协助。",
+        if plan:
+            orig_name = origin
+            if is_home(origin) and elder_city:
+                h = (load_fixture("hospitals").get("elder_homes") or {}).get(elder_city)
+                if h and h.get("name"):
+                    orig_name = h["name"]
+            points = [
+                {"location": orig_name, "lng": orig_coords[0], "lat": orig_coords[1], "desc": "起点"},
+                {"location": destination, "lng": dest_coords[0], "lat": dest_coords[1], "desc": "终点"},
             ]
             return {
                 "ok": True,
                 "matched": True,
                 "origin": origin,
                 "destination": destination,
-                "mode": "市内接驳出行",
-                "duration": dur_str,
-                "distance_km": direct_dist_km,
-                "points": ends,
-                "polyline": ends,
-                "steps": fallback_steps,
-                "summary": f"从{origin}到{destination}：打车{dur_str}，全程约{direct_dist_km}公里。出门前备好随身证件与就医卡。",
+                "mode": plan["mode"],
+                "duration": plan["duration"],
+                "distance_km": plan["distance_km"],
+                "points": points,
+                "polyline": plan["polyline"],
+                "steps": plan["steps"],
+                "summary": (f"从{origin}到{destination}：{plan['mode']}{plan['duration']}，"
+                            f"全程{plan['distance_km']}公里。" + "".join(plan["steps"][:3])),
             }
 
-        return {
-            "ok": True,
-            "matched": False,
-            "origin": origin,
-            "destination": destination,
-            "mode": "常规出行建议",
-            "duration": "视路况而定",
-            "distance_km": None,
-            "points": ends,
-            "polyline": ends,
-            "steps": [
-                f"从{origin}出发，建议提前准备好就医卡与身份证件。",
-                f"乘坐交通工具前往{destination}，如遇困难可寻求工作人员协助。",
-            ],
-            "summary": f"从{origin}到{destination}：请合理安排出发时间，出门前问一下家里人或站里的工作人员。",
-        }
+        # 4. 真接口全灭（断网/超配额/这段路高德没收录）：落回演示路线库，
+        #    换乘卡片绝不留白；库里也没有就如实说"只有大致方向"，不编时长。
+        #    city 只传老人那座城（不传目的地的）：库里那条"家 → 外地的医院"
+        #    正是靠它才认得出是跨城。
+        return await _local_fallback(origin, destination, mode, elder_city)
 
 
 # 全局单例

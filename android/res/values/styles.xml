@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 用框架主题，不用 AppCompat（无 AndroidX，构建链里没有依赖仓库）。
+     Theme.Material.Light.NoActionBar 是 API 21 起的框架主题，minSdk 21 可用。 -->
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- 与 H5 的浅色底接近，消掉 WebView 首帧白闪 -->
+        <item name="android:windowBackground">#FFFBF7F2</item>
+    </style>
+</resources>

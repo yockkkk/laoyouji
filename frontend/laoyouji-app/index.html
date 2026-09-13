@@ -13,7 +13,17 @@
     <!-- 地图不再引入高德 JS SDK：本机浏览器连不上高德控制面域名，SDK 出不了底图。
          改由 src/utils/amap.js 的 loadLeaflet() 在长辈端/子女端地图页按需动态加载
          Leaflet + 高德栅格瓦片（wprd0X.is.autonavi.com），其余页面不受牵连、更轻。 -->
-    <title>老友记</title>
+    <title>康乐</title>
+    <!-- 引入标准无衬线思源黑体/Noto Sans SC，杜绝安卓系统个性手写体/艺术字体污染排版 -->
+    <link rel="preconnect" href="https://fonts.font.im" />
+    <link rel="stylesheet" href="https://fonts.font.im/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" />
+    <style>
+      html, body, #app {
+        font-family: 'Noto Sans SC', 'MiSans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

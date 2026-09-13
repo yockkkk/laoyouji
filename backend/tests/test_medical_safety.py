@@ -215,7 +215,7 @@ def test_a_sentence_that_trips_both_is_charged_to_the_graver_one():
 
 def test_a_clean_answer_comes_back_unchanged():
     """没越线就一个字都不动 —— 筛子不能顺手改写正常回话。"""
-    clean = "明天上午九点提醒您去积水潭医院，别忘了带医保卡。"
+    clean = "明天上午九点提醒您去鼓楼医院，别忘了带医保卡。"
     assert scrub_medical_text(clean) == (clean, [])
     assert scrub_medical_text("") == ("", [])
 
@@ -385,15 +385,21 @@ async def test_a_benign_answer_survives_the_round_trip(ctx, elder):
 def test_health_tools_is_the_set_that_gets_the_disclaimer():
     """哪些工具算"健康域结论"是一份明账，不是散在各处的 if。
 
-    ``add_medication`` 刻意不在里面：它记的是医生已经开好的药，属于提醒，
-    句尾挂一句"这不是诊断"只会让老人以为提醒本身也不可信。
+    ``add_medication`` / ``add_condition`` 刻意不在里面：它们记的是医生已经开好的药、
+    医生已经说过的病，属于提醒和记账，句尾挂一句"这不是诊断"只会让老人以为提醒本身
+    也不可信。反过来 ``assess_health`` / ``get_health_summary`` / ``log_vital`` 都在
+    —— 这三个都会说出"这个数怎么样"，那正是 R4 要盖住的地方。
     """
     assert HEALTH_TOOLS == {"interpret_report", "diet_advice",
                             "register_appointment", "search_hospital",
-                            "check_scam"}
+                            "assess_health", "get_health_summary", "log_vital"}
     assert "add_medication" not in HEALTH_TOOLS
-    # 挂号同时是高危项：一件事可以同时被两条线管，互不替代
-    assert "register_appointment" in HEALTH_TOOLS & HIGH_RISK_TOOLS
+    assert "add_condition" not in HEALTH_TOOLS
+    # 挂号仍在健康域里（R4 照旧盖住它），但已**退出高危集**：就医知会不审批，
+    # 挂号不再走"等家人点同意"那道闸门，而是当场办好、办完写一条 appointment_notice。
+    # 这两件事互不替代 —— R4 管的是"挂号回执后面那句免责声明"，与审批无关。
+    assert "register_appointment" in HEALTH_TOOLS
+    assert "register_appointment" not in HIGH_RISK_TOOLS
 
 
 def test_the_disclaimer_says_assisted_reading_not_diagnosis():
@@ -421,8 +427,8 @@ def test_both_wordings_carry_the_same_three_promises():
 async def test_only_the_report_reading_talks_about_a_report():
     """措辞要对得上眼前的事。
 
-    这条钉的是一个真出现过的毛病：五个健康域工具共用体检解读那一版措辞，
-    于是老人问"有人说我中奖了让我交钱"，反诈判定后面跟着一句
+    这条钉的是一个真出现过的毛病：健康域几个工具共用体检解读那一版措辞，
+    于是老人只是查了家医院，医院列表后面跟着一句
     "以上是把报告上的话换成大白话" —— 没有报告，也没人念过报告。
     对不上号的免责声明会被当噪音跳过去，那 R4 就等于白注入。
     """
@@ -432,8 +438,7 @@ async def test_only_the_report_reading_talks_about_a_report():
         None, _tool("interpret_report"), {"ok": True, "summary": "骨密度偏低。"})
     assert reading["summary"].endswith(DISCLAIMER)
 
-    for name in ("check_scam", "diet_advice", "search_hospital",
-                 "register_appointment"):
+    for name in ("diet_advice", "search_hospital", "register_appointment"):
         out = await guard.apply(None, _tool(name), {"ok": True, "summary": "好了。"})
         assert out["summary"].endswith(GENERIC_DISCLAIMER), name
         assert "报告" not in out["summary"], name
@@ -481,11 +486,11 @@ async def test_the_disclaimer_is_never_appended_twice():
 
 
 async def test_a_non_health_tool_is_left_alone():
-    """订票回执后面挂一句"不是诊断结论"是荒谬的。域外一个字不加。"""
+    """路线规划回执后面挂一句"不是诊断结论"是荒谬的。域外一个字不加。"""
     guard = HealthDisclaimerGuard()
-    result = {"ok": True, "summary": "G102 已订好。", "announce": "票订上了。"}
+    result = {"ok": True, "summary": "路线给您规划好了。", "announce": "按这个走就行。"}
 
-    out = await guard.apply(None, _tool("book_ticket"), dict(result))
+    out = await guard.apply(None, _tool("plan_route"), dict(result))
     assert out == result
 
 
@@ -499,19 +504,36 @@ async def test_a_failed_health_result_is_left_alone():
     assert DISCLAIMER not in out["summary"]
 
 
-async def test_a_suspended_appointment_is_not_dressed_up_with_a_disclaimer(
-        ctx, elder):
-    """挂号被拦下时说的是"等家人确认"，不是一句结论 —— 别给流程状态贴免责声明。
+async def test_a_booked_appointment_reaches_the_child_without_a_diagnosis(
+        ctx, elder, child):
+    """就医"知会不审批"之后，挂号当场办好；写给子女的那条知会里**一个字都不带诊断**（R1）。
 
-    ``register_appointment`` 同时在健康域和高危集里，所以这一条同时确认了两件事：
-    R5 照常拦（``suspended``），R4 照常不掺和（``ok`` 为假就不注入）。
+    这条替换掉旧的"挂起时不贴免责声明"用例 —— 挂起那一格整条没了，但红线没跟着没。
+    知会是工具直写库的，**不经过** R1/R2 那把挂在模型出口上的筛子，所以"知会里不出
+    诊断结论"只能在这里把关：拿同一把筛子扫一遍知会的每个字，一个字都不许命中。
+    子女收到的是事实（哪家医院、哪位医生、为什么去），不是一句"老人得了××病"。
+
+    免责声明（R4）也照旧：挂号算健康域结论，回执两条出口都带上那句通用声明。
     """
-    turn = TurnContext(ctx=ctx, session_id="s-suspend", user=elder)
+    turn = TurnContext(ctx=ctx, session_id="s-notice", user=elder)
     result = await ctx.dispatcher.execute(turn, "register_appointment", {
-        "hospital": "北京积水潭医院", "department": "骨科",
-        "doctor": "田伟", "fee": 100})
+        "hospital": "南京鼓楼医院", "department": "骨科",
+        "doctor": "邱勇", "fee": 70})
 
-    assert result["suspended"] is True and result["ok"] is False
-    assert DISCLAIMER not in result["summary"]
-    assert GENERIC_DISCLAIMER not in result["summary"]
-    assert "确认" in result["summary"]
+    # 当场办好：不挂起、不产生待确认任务
+    assert result["ok"] is True and not result.get("suspended")
+    assert "知会" in result["summary"]
+    assert await ctx.confirmation.list_for_child(child["id"], status="pending") == []
+    # R4 照旧：挂号回执后面挂着通用免责声明
+    assert result["summary"].endswith(GENERIC_DISCLAIMER)
+    assert result["announce"].endswith(GENERIC_DISCLAIMER)
+
+    notices = await ctx.repos.list(
+        "notifications", where={"user_id": child["id"], "type": "appointment_notice"})
+    assert notices, "挂号办好了就得给子女写一条知会"
+    for n in notices:
+        blob = " ".join([n.get("title") or "", n.get("summary") or "",
+                         str(n.get("data") or {})])
+        cleaned, hits = scrub_medical_text(blob)
+        assert hits == [], f"知会里出现了诊断/处方话术：{blob}"
+        assert cleaned == blob, "知会没过筛子，一个字都不该被改写"

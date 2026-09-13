@@ -57,7 +57,7 @@
       <view class="tree-canvas">
 
 
-        <!-- ================= 根节点：老友记主调度 (Orchestrator Card) ================= -->
+        <!-- ================= 根节点：康乐主调度 (Orchestrator Card) ================= -->
         <view class="root-node-card" :class="{ 'is-thinking': thinking || rootThinking }">
           <view class="node-glass-glow"></view>
           <view class="node-head">
@@ -67,7 +67,7 @@
               </view>
               <view class="node-meta">
                 <view class="node-title-row">
-                  <text class="node-title">老友记主调度</text>
+                  <text class="node-title">康乐主调度</text>
                   <text class="agent-tag-role">Orchestrator · 总入口</text>
                 </view>
                 <text class="node-role-desc">意图解析 · 任务规划 · 并行派发 · 交付聚合</text>
@@ -273,7 +273,7 @@
                     <text class="branch-name">银发导航</text>
                     <text class="branch-en-tag">Travel Agent · 银发导航</text>
                   </view>
-                  <text class="branch-desc">高铁订票 · 适老酒店 · 行程感知与天气</text>
+                  <text class="branch-desc">本地出行路线 · 叫车 · 出行天气</text>
                 </view>
               </view>
               <view class="branch-header-right">
@@ -403,7 +403,7 @@
                     <text class="branch-name">邻里帮</text>
                     <text class="branch-en-tag">Community Agent · 邻里帮</text>
                   </view>
-                  <text class="branch-desc">就医陪诊 · 轮椅借用 · 绿色通道引导</text>
+                  <text class="branch-desc">线下活动 · 一键联系家人 · 散步环线 · 家常菜谱</text>
                 </view>
               </view>
               <view class="branch-header-right">
@@ -533,7 +533,7 @@
                     <text class="branch-name">资金与医疗安全防护网</text>
                     <text class="branch-en-tag">安全网关 · 链路管控环节</text>
                   </view>
-                  <text class="branch-desc">高危支付拦截 · 医疗操作防护 · 子女端实时核准</text>
+                  <text class="branch-desc">支付高危拦截 · 就医知会不审批 · 子女端实时核准</text>
                 </view>
               </view>
               <view class="branch-header-right">
@@ -1017,20 +1017,23 @@ export default {
       if (todoMsg && todoMsg.todos.length > 0) {
         const validTodos = todoMsg.todos.filter((t) => t && typeof t === 'object')
         const text = validTodos.map((t) => t.content || t.title || t.text || '').join(' ')
-        if ((text.includes('挂号') || text.includes('医院') || text.includes('就医')) && (text.includes('高铁') || text.includes('车票') || text.includes('酒店') || text.includes('出行'))) {
-          return '跨城就医出行协同'
+        if ((text.includes('挂号') || text.includes('医院') || text.includes('就医')) && (text.includes('路线') || text.includes('怎么去') || text.includes('出行'))) {
+          return '就近就医出行协同'
         }
         if (text.includes('挂号') || text.includes('医院') || text.includes('就医') || text.includes('门诊')) {
           return '健康医疗就诊规划'
         }
-        if (text.includes('高铁') || text.includes('车次') || text.includes('车票') || text.includes('酒店') || text.includes('出行')) {
-          return '交通住宿出行规划'
+        if (text.includes('路线') || text.includes('出行') || text.includes('怎么走') || text.includes('散步')) {
+          return '本市出行路线规划'
         }
         if (text.includes('用药') || text.includes('配药') || text.includes('服药') || text.includes('慢病')) {
           return '慢病用药管理服务'
         }
-        if (text.includes('陪诊') || text.includes('助餐') || text.includes('助老') || text.includes('社区') || text.includes('食堂')) {
-          return '邻里居家便民服务'
+        if (text.includes('食堂') || text.includes('便民') || text.includes('助老')) {
+          return '邻里助老便民服务'
+        }
+        if (text.includes('活动') || text.includes('散步') || text.includes('菜谱') || text.includes('陪') || text.includes('社区')) {
+          return '社区活动与陪伴'
         }
         return '智能协同任务规划'
       }
@@ -1041,10 +1044,20 @@ export default {
         const hasTravel = this.travelTools.length > 0
         const hasCommunity = this.communityTools.length > 0
         const hasPlan = this.planBuilderTools.length > 0
-        if (hasHealth && hasTravel) return '跨城就医出行协同'
+        if (hasHealth && hasTravel) return '就近就医出行协同'
         if (hasHealth) return '健康医疗导诊服务'
-        if (hasTravel) return '银发交通出行规划'
-        if (hasCommunity) return '邻里助老便民服务'
+        if (hasTravel) return '本市出行路线规划'
+        if (hasCommunity) {
+          const isCanteenOrService = this.communityTools.some(
+            (t) => t.name && (t.name.includes('canteen') || t.name.includes('order') || t.name.includes('service') || t.name.includes('escort')),
+          )
+          const lastUser = this.safeMessages.filter((m) => m.isUser && m.text).pop()
+          const userText = lastUser ? lastUser.text : ''
+          if (isCanteenOrService || userText.includes('食堂') || userText.includes('便民') || userText.includes('助老')) {
+            return '邻里助老便民服务'
+          }
+          return '社区活动与陪伴'
+        }
         if (hasPlan) return '适老方案规划装配'
       }
 
@@ -1053,6 +1066,7 @@ export default {
       if (userMsgs.length > 0) {
         const last = userMsgs[userMsgs.length - 1].text
         if (last.includes('看病') || last.includes('医院') || last.includes('挂号') || last.includes('门诊') || last.includes('疼') || last.includes('病')) {
+          // 老人提到跨城时，康乐只做本市 —— 标成"超出服务范围"，不是"正在规划"
           const isIntercity =
             last.includes('高铁') ||
             last.includes('火车') ||
@@ -1064,8 +1078,8 @@ export default {
             last.includes('机票')
           return isIntercity ? '跨城就医出行规划' : '健康医疗咨询服务'
         }
-        if (last.includes('高铁') || last.includes('火车') || last.includes('车票') || last.includes('酒店') || last.includes('旅游') || last.includes('出行') || last.includes('打车') || last.includes('叫车')) {
-          return '交通出行预订规划'
+        if (last.includes('路线') || last.includes('出行') || last.includes('怎么走') || last.includes('怎么去') || last.includes('打车') || last.includes('叫车') || last.includes('散步')) {
+          return '本市出行路线规划'
         }
         if (last.includes('药') || last.includes('血压') || last.includes('血糖') || last.includes('慢病') || last.includes('提醒')) {
           return '健康慢病用药管理'
@@ -1076,8 +1090,8 @@ export default {
         if (last.includes('诈') || last.includes('骗')) {
           return '防诈预警与安全核验'
         }
-        if (last.includes('食堂') || last.includes('陪诊') || last.includes('助老') || last.includes('邻里') || last.includes('饭') || last.includes('订餐')) {
-          return '邻里生活便民关怀'
+        if (last.includes('活动') || last.includes('散步') || last.includes('棋牌') || last.includes('邻里') || last.includes('聊天') || last.includes('闷') || last.includes('菜谱') || last.includes('做什么吃')) {
+          return '社区活动与陪伴关怀'
         }
         if (last.includes('你好') || last.includes('您好') || last.includes('早上好') || last.includes('是谁') || last.includes('介绍')) {
           return '日常关怀与问候'
@@ -1105,7 +1119,7 @@ export default {
         }
         return `解析长辈诉求：“${last}” ➔ 意图理解完成，已协同处理回复。`
       }
-      return '等待长辈输入诉求… 可按住说话或打字告诉老友记，主调度将实时理解意图并下发协同网络。'
+      return '等待长辈输入诉求… 可按住说话或打字告诉康乐，主调度将实时理解意图并下发协同网络。'
     },
 
     // 智能体推理独白：真实模式下完全由会话真实上下文生成
@@ -1135,10 +1149,10 @@ export default {
         } else if (this.thinking || this.rootThinking) {
           orchestratorThought = `正在深度理解长辈诉求“${lastUser}”，解析意图与上下文，编排子智能体调度任务…`
         } else {
-          orchestratorThought = `长辈问询“${lastUser}”已完成意图解析与响应交付，老友记随时待命。`
+          orchestratorThought = `长辈问询“${lastUser}”已完成意图解析与响应交付，康乐随时待命。`
         }
       } else {
-        orchestratorThought = '老友记主调度处于就绪待命状态，长辈输入诉求后将实时拆解意图并下发专业子智能体。'
+        orchestratorThought = '康乐主调度处于就绪待命状态，长辈输入诉求后将实时拆解意图并下发专业子智能体。'
       }
 
       // 2. 健康智能体独白
@@ -1168,16 +1182,15 @@ export default {
               const fee = a.fee ? `，诊查费¥${a.fee}` : ''
               return `挂号预约（${hosp} ${doc}${fee}）`
             }
-            if (t.name === 'interpret_report' || t.name === 'explain_medical_report') {
+            if (t.name === 'interpret_report') {
               const title = a.title || '体检报告'
               return `解读${title}指标`
             }
-            if (t.name === 'add_medication' || t.name === 'set_medication_reminder') {
+            if (t.name === 'add_medication') {
               const drug = a.drug_name || a.medicine || a.name || '药品'
               const dose = a.dose ? `（${a.dose}）` : ''
               return `添加用药提醒（${drug}${dose}）`
             }
-            if (t.name === 'check_scam') return '排查疑似涉诈信息'
             if (t.name === 'diet_advice') {
               const pref = a.preference ? `（${a.preference}）` : ''
               return `提供适老健康饮食建议${pref}`
@@ -1194,10 +1207,10 @@ export default {
         }
       }
 
-      // 3. 银发导航独白
+      // 3. 银发导航独白（只认现在真挂着的三个工具：plan_route / hail_ride / get_weather）
       let travelThought = ''
       if (!this.isTravelActive) {
-        travelThought = '本轮未派发出行或住宿相关任务，银发导航助手处于待命状态。'
+        travelThought = '本轮未派发本地出行相关任务，银发导航助手处于待命状态。'
       } else {
         const tStatus = msgs.filter(
           (m) =>
@@ -1210,51 +1223,35 @@ export default {
         } else if (this.travelTools.length > 0) {
           const descs = this.travelTools.map((t) => {
             const a = t.args || {}
-            if (t.name === 'search_train') {
-              const r = (a.from_city || a.from_station || a.origin || '') + (a.to_city || a.to_station || a.destination ? `至${a.to_city || a.to_station || a.destination}` : '')
-              return `检索适老车次${r ? `（${r}）` : ''}`
-            }
-            if (t.name === 'book_ticket') {
-              const tr = a.train_no || a.train || ''
-              const f = a.price || a.amount ? `，票价¥${a.price || a.amount}` : ''
-              return `预订车票（${tr}${f}）`
-            }
-            if (t.name === 'search_hotel') {
-              const loc = (a.city || '') + (a.near_hospital ? ` ${a.near_hospital}` : (a.keyword ? ` ${a.keyword}` : ''))
-              return `检索无障碍适老住宿${loc ? `（${loc}）` : ''}`
-            }
-            if (t.name === 'book_hotel') {
-              const h = a.hotel || a.hotel_name || ''
-              const f = a.price || a.amount ? `，房费¥${a.price || a.amount}` : ''
-              return `预订适老酒店（${h}${f}）`
-            }
             if (t.name === 'plan_route') {
               const r = (a.origin || '') + (a.destination ? `至${a.destination}` : '')
-              return `规划出行路线${r ? `（${r}）` : ''}`
+              const mode = a.mode ? `（${a.mode}）` : ''
+              return `规划本市出行路线${r ? `：${r}` : ''}${mode}`
             }
             if (t.name === 'hail_ride') {
               const d = a.destination ? `前往${a.destination}` : ''
-              return `适老网约车呼叫${d ? `（${d}）` : ''}`
+              return `帮老人叫车${d ? `（${d}）` : ''}`
             }
             if (t.name === 'get_weather') {
-              return `查询目的地天气（${a.city || ''}）`
+              return `查询本市天气（${a.city || ''}）`
             }
             return `${t.summary || t.name}`
           })
-          travelThought = `银发导航已介入：${descs.join('；')}。核验无障碍设施配置与行程无缝衔接。`
+          travelThought = `银发导航已介入：${descs.join('；')}。只规划本市公交/地铁/步行的走法，出门前提醒天气。`
         } else if (this.thinking && this.isCurrentAgent('travel')) {
-          travelThought = '银发导航助手正在规划交通出行路线与适老住宿…'
+          travelThought = '银发导航助手正在规划本市出行路线…'
         } else if (tStatus.length > 0) {
           travelThought = tStatus[tStatus.length - 1].text
         } else {
-          travelThought = '银发导航助手已就绪，提供适老车票与无障碍酒店支持。'
+          travelThought = '银发导航助手已就绪，提供本市公交/地铁/步行路线与出行天气。'
         }
       }
 
-      // 4. 邻里帮独白
+      // 4. 邻里帮独白（只认现在真挂着的四个工具：
+      //    push_activities / suggest_call / suggest_walk / get_recipe）
       let communityThought = ''
       if (!this.isCommunityActive) {
-        communityThought = '本轮未派发社区便民或陪诊相关任务，邻里帮处于待命状态。'
+        communityThought = '本轮未派发社区活动或陪伴相关任务，邻里帮处于待命状态。'
       } else {
         const cStatus = msgs.filter(
           (m) =>
@@ -1267,27 +1264,27 @@ export default {
         } else if (this.communityTools.length > 0) {
           const descs = this.communityTools.map((t) => {
             const a = t.args || {}
-            if (t.name === 'canteen_order') {
-              const m = a.menu_item || '适老软食套餐'
-              const c = a.count ? ` ×${a.count}` : ''
-              return `社区食堂订餐（${m}${c}）`
+            if (t.name === 'push_activities') {
+              return `查最近的社区活动${a.kind ? `（${a.kind}）` : ''}`
             }
-            if (t.name === 'order_service') {
-              const sType = a.service_type === 'cleaning' ? '居家保洁' : '助老陪诊'
-              const d = a.date ? `，${a.date}` : ''
-              return `预约社区服务（${sType}${d}）`
+            if (t.name === 'suggest_call') {
+              return `把给${a.relation ? a.relation : '家人'}的一键拨号卡放到老人手边`
             }
-            if (t.name === 'query_order_status') return '查询社区服务订单进度'
-            if (t.name === 'push_activities') return '查询社区助老与文娱活动'
-            return `${t.summary || t.name}${a.service_type ? `（${a.service_type}）` : ''}`
+            if (t.name === 'suggest_walk') {
+              return `找一条散步环线${a.city ? `（${a.city}）` : ''}`
+            }
+            if (t.name === 'get_recipe') {
+              return `教一道家常菜${a.dish ? `（${a.dish}）` : ''}`
+            }
+            return `${t.summary || t.name}`
           })
-          communityThought = `邻里帮已介入：${descs.join('；')}。安排就医陪诊与助老生活服务支持。`
+          communityThought = `邻里帮已介入：${descs.join('；')}。推活动、送拨号卡、给散步环线、教家常菜。`
         } else if (this.thinking && this.isCurrentAgent('community')) {
-          communityThought = '邻里帮正在对接社区助老资源与陪诊人员…'
+          communityThought = '邻里帮正在给老人找活动、找人说说话…'
         } else if (cStatus.length > 0) {
           communityThought = cStatus[cStatus.length - 1].text
         } else {
-          communityThought = '邻里帮助手随时待命，提供陪诊引导与助老便民服务。'
+          communityThought = '邻里帮助手随时待命，帮您推活动、找人说话、出门走一走。'
         }
       }
 
@@ -1383,40 +1380,33 @@ export default {
           const name = rawName || `待办事项 ${idx + 1}`
           let st = t.status || 'in_progress'
 
-          // 动态核验工具完成态
+          // 动态核验工具完成态。工具名必须对得上现在真在册的（见 backend 各 tools 模块
+          // 的 register_*：出行只有 plan_route/hail_ride，社区只有 push_activities/
+          // suggest_call/suggest_walk/get_recipe）；车票、酒店、陪诊下单、社区食堂
+          // 这些工具已经随康乐收敛删掉，别再拿它们核状态 —— 那永远是 pending。
           const lower = name.toLowerCase()
-          if (lower.includes('挂号') || lower.includes('医院') || lower.includes('专家')) {
+          // 出行那步最优先：todo 里的原话是"规划从家怎么去医院"，含"医院"字样，
+          // 若让挂号那条先判会把它错认成挂号步。
+          if (lower.includes('怎么去') || lower.includes('怎么走') || lower.includes('路线') || lower.includes('导航')) {
+            if (this.statusOf('plan_route') === 'completed' || this.statusOf('hail_ride') === 'completed') st = 'completed'
+          } else if (lower.includes('挂号') || lower.includes('医院') || lower.includes('专家') || lower.includes('门诊')) {
             if (this.statusOf('register_appointment') === 'completed') st = 'completed'
             else if (this.statusOf('register_appointment') === 'rejected') st = 'rejected'
             else if (this.statusOf('register_appointment') === 'suspended') st = 'suspended'
             else if (this.statusOf('search_hospital') === 'completed' && !this.thinking) st = 'completed'
-          } else if (lower.includes('车次') || lower.includes('车票') || lower.includes('高铁') || lower.includes('订票')) {
-            if (this.statusOf('book_ticket') === 'completed') st = 'completed'
-            else if (this.statusOf('book_ticket') === 'rejected') st = 'rejected'
-            else if (this.statusOf('book_ticket') === 'suspended') st = 'suspended'
-            else if (this.statusOf('search_train') === 'completed' && !this.thinking) st = 'completed'
-          } else if (lower.includes('酒店') || lower.includes('住宿')) {
-            if (this.statusOf('book_hotel') === 'completed') st = 'completed'
-            else if (this.statusOf('book_hotel') === 'rejected') st = 'rejected'
-            else if (this.statusOf('book_hotel') === 'suspended') st = 'suspended'
-            else if (this.statusOf('search_hotel') === 'completed' && !this.thinking) st = 'completed'
+          } else if (lower.includes('天气') || lower.includes('穿衣')) {
+            if (this.statusOf('get_weather') === 'completed') st = 'completed'
           } else if (lower.includes('计划书') || lower.includes('装配') || lower.includes('聚合') || lower.includes('方案')) {
             if (this.isArtifactReady) st = 'completed'
             else if (this.hasAnyRejected) st = 'rejected'
-          } else if (lower.includes('陪诊') || lower.includes('保洁') || lower.includes('社区服务')) {
-            if (this.statusOf('order_service') === 'completed') st = 'completed'
-            else if (this.statusOf('order_service') === 'rejected') st = 'rejected'
-            else if (this.statusOf('order_service') === 'suspended') st = 'suspended'
-          } else if (lower.includes('食堂') || lower.includes('订餐') || lower.includes('助餐')) {
-            if (this.statusOf('canteen_order') === 'completed') st = 'completed'
-            else if (this.statusOf('canteen_order') === 'rejected') st = 'rejected'
-            else if (this.statusOf('canteen_order') === 'suspended') st = 'suspended'
+          } else if (lower.includes('活动') || lower.includes('散步') || lower.includes('菜谱')) {
+            if (this.statusOf('push_activities') === 'completed' ||
+                this.statusOf('suggest_walk') === 'completed' ||
+                this.statusOf('get_recipe') === 'completed') st = 'completed'
           } else if (lower.includes('用药') || lower.includes('服药') || lower.includes('药品')) {
             if (this.statusOf('add_medication') === 'completed') st = 'completed'
           } else if (lower.includes('报告') || lower.includes('体检')) {
             if (this.statusOf('interpret_report') === 'completed') st = 'completed'
-          } else if (lower.includes('反诈') || lower.includes('诈骗')) {
-            if (this.statusOf('check_scam') === 'completed') st = 'completed'
           }
 
           return { name, status: st }
@@ -1452,7 +1442,8 @@ export default {
     },
 
     highRiskToolNames() {
-      return ['register_appointment', 'book_ticket', 'book_hotel', 'order_service', 'pay_deposit']
+      // 包含后端真会拦截的金融支付与押金动作（pay、pay_deposit）。
+      return ['pay', 'pay_deposit']
     },
 
     healthTools() {
@@ -1576,7 +1567,10 @@ export default {
 
     travelStatusText() {
       const cls = this.travelStatusClass
-      if (cls === 'status-suspended') return '待子女确认票务/住宿'
+      // 本地出行（plan_route/hail_ride）都不进高危、不挂起，所以正常走不到
+      // status-suspended；万一别的路径让它挂起，也只说"出行安排待家人确认"——
+      // 原来的"待子女确认票务/住宿"在票务/住宿整条砍掉后已经没有对应物了。
+      if (cls === 'status-suspended') return '待家人确认出行安排'
       if (cls === 'status-rejected') return '子女已拒绝出行操作'
       if (cls === 'status-thinking') return '正在调用出行工具'
       if (cls === 'status-completed') return '出行任务已办结'
@@ -1676,7 +1670,7 @@ export default {
     },
 
     modalSubText() {
-      return '由老友记多智能体协同网络聚合生成 · 事实对齐已闭环'
+      return '由康乐多智能体协同网络聚合生成 · 事实对齐已闭环'
     },
 
     artifactPages() {
@@ -1705,7 +1699,7 @@ export default {
                 label,
                 val: String(val),
               })),
-              note: Array.isArray(realCard.notes) ? realCard.notes.join('；') : (realCard.note || '已完成事实对齐与家人核准。'),
+              note: Array.isArray(realCard.notes) ? realCard.notes.join('；') : (realCard.note || '已完成事实对齐，情况已告知家人。'),
             },
           ]
         }
@@ -1722,7 +1716,11 @@ export default {
             if (a.hospital) rows.push({ label: '就诊医院', val: a.hospital })
             if (a.doctor) rows.push({ label: '预约专家', val: a.doctor })
             if (a.date || a.time) rows.push({ label: '门诊时段', val: `${a.date || ''} ${a.time || ''}`.trim() })
-            if (a.fee || t.amount) rows.push({ label: '挂号费用', val: `¥${a.fee || t.amount}（家人已核准）` })
+            // 「知会不审批」：挂号当场办好，同一个动作里给绑定子女写一条知会。
+            // 这里写"已核准"是把康乐说成了审批制产品 —— 家人是**被告知**，不是**核准**。
+            // （对照 app/safety/risk_rules.py：register_appointment 在 NON_PAYMENT_TOOLS 里，
+            // 只有 pay 那类金融动作才走审批。）
+            if (a.fee || t.amount) rows.push({ label: '挂号费用', val: `¥${a.fee || t.amount}（已告知家人）` })
             if (t.result) rows.push({ label: '号源凭证', val: String(t.result) })
           })
           pages.push({
@@ -1735,18 +1733,24 @@ export default {
         const completedTravel = this.travelTools.filter((t) => t.status === 'completed')
         if (completedTravel.length > 0) {
           const rows = []
+          const hasTrainOrHotel = completedTravel.some(
+            (t) => t.name.includes('train') || t.name.includes('ticket') || t.name.includes('hotel'),
+          )
           completedTravel.forEach((t) => {
             const a = t.args || {}
             if (a.train_no || a.train) rows.push({ label: '出行车次', val: a.train_no || a.train })
             if (a.from_station || a.to_station) rows.push({ label: '行程区间', val: `${a.from_station || ''} ➔ ${a.to_station || ''}`.trim() })
             if (a.hotel || a.hotel_name) rows.push({ label: '适老酒店', val: a.hotel || a.hotel_name })
-            if (a.price || t.amount) rows.push({ label: '支付金额', val: `¥${a.price || t.amount}（家人已核准）` })
-            if (t.result) rows.push({ label: '行程凭证', val: String(t.result) })
+            if (a.origin || a.destination) rows.push({ label: '出行区间', val: `${a.origin || ''} ➔ ${a.destination || ''}` })
+            if (a.mode) rows.push({ label: '出行方式', val: a.mode })
+            if (t.name === 'plan_route' && t.result) rows.push({ label: '路线', val: String(t.result) })
+            if (t.name === 'hail_ride' && t.result) rows.push({ label: '叫车信息', val: String(t.result) })
+            if (t.result && !rows.some((r) => r.val === String(t.result))) rows.push({ label: '行程凭证', val: String(t.result) })
           })
           pages.push({
-            title: '交通住宿出行凭证',
-            rows: rows.length > 0 ? rows : [{ label: '出行状态', val: '车次与适老住宿已锁定' }],
-            note: '出行前请核对随身身份证件并关注目的地天气变化。',
+            title: hasTrainOrHotel ? '交通住宿出行凭证' : '本市出行路线',
+            rows: rows.length > 0 ? rows : [{ label: '出行状态', val: hasTrainOrHotel ? '车次与适老住宿已锁定' : '本市路线已规划' }],
+            note: hasTrainOrHotel ? '出行前请核对随身身份证件并关注目的地天气变化。' : '出门前记得带好身份证和医保卡，路上慢慢走、不着急。',
           })
         }
 
@@ -1755,15 +1759,16 @@ export default {
           const rows = []
           completedCommunity.forEach((t) => {
             const a = t.args || {}
-            if (a.service_type) rows.push({ label: '服务类型', val: a.service_type === 'cleaning' ? '居家保洁' : '助老陪诊' })
-            if (a.menu_item) rows.push({ label: '食堂订餐', val: a.menu_item })
-            if (a.date || a.deliver_time) rows.push({ label: '服务时间', val: a.date || a.deliver_time })
-            if (t.result) rows.push({ label: '订单状态', val: String(t.result) })
+            if (t.name === 'push_activities') rows.push({ label: '社区活动', val: a.kind || '最近的社区活动' })
+            if (t.name === 'suggest_call') rows.push({ label: '一键联系', val: `给${a.relation || '家人'}的拨号卡已放到老人手边` })
+            if (t.name === 'suggest_walk') rows.push({ label: '散步环线', val: a.city ? `${a.city}的环线` : '附近环线' })
+            if (t.name === 'get_recipe') rows.push({ label: '家常菜谱', val: a.dish || '按口味的家常菜' })
+            if (t.result) rows.push({ label: '结果', val: String(t.result) })
           })
           pages.push({
-            title: '社区便民服务确认单',
-            rows: rows.length > 0 ? rows : [{ label: '服务状态', val: '社区助老服务已排单' }],
-            note: '社区服务人员将按预定时间上门，有任何调整可随时告知。',
+            title: '社区活动与陪伴清单',
+            rows: rows.length > 0 ? rows : [{ label: '服务状态', val: '活动与陪伴安排已给到老人' }],
+            note: '活动以社区通知为准，出门前可以再跟社区确认一下。',
           })
         }
 
@@ -1789,8 +1794,10 @@ export default {
       if (targetKey === 'plan_builder' || targetKey === 'planBuilder' || targetKey === '方案建造师') {
         return a.includes('plan') || a.includes('建造师') || a.includes('方案')
       }
-      if (targetKey === 'main' || targetKey === 'orchestrator' || targetKey === '老友记') {
-        return a.includes('main') || a.includes('orchestrator') || a.includes('老友记') || a.includes('主调度')
+      // 英文键（main / orchestrator）是后端 agent_msg 实际带的键，必须保留；
+      // display_name“康乐”那条只是后端没给键时的兜底，别删任何一支。
+      if (targetKey === 'main' || targetKey === 'orchestrator' || targetKey === '康乐') {
+        return a.includes('main') || a.includes('orchestrator') || a.includes('康乐') || a.includes('主调度')
       }
       if (targetKey === 'safety' || targetKey === '风控') {
         return a.includes('safety') || a.includes('guard') || a.includes('风控') || a.includes('安全') || a.includes('护航')
@@ -2137,11 +2144,9 @@ export default {
         case 'completed':
         case 'executed':
           if (k.includes('appoint') || k.includes('register')) return '已预约 ✅'
-          if (k.includes('ticket')) return '已出票 ✅'
-          if (k.includes('hotel') && (k.includes('book') || status === 'executed')) return '已预订 ✅'
+          if (k.includes('route')) return '已规划 ✅'
+          if (k.includes('ride')) return '已叫到车 ✅'
           if (k.includes('compose') || k.includes('deliverable')) return '已装配 ✅'
-          if (k.includes('order') || k.includes('service') || k.includes('canteen')) return '已下单 ✅'
-          if (k.includes('pay') || k.includes('deposit')) return '已支付 ✅'
           return '已完成 ✅'
         case 'suspended':
           return '⏸️ 待确认'
@@ -2209,13 +2214,15 @@ export default {
     toolIcon(name) {
       const n = String(name || '')
       if (n.indexOf('appoint') !== -1 || n.indexOf('hospital') !== -1 || n.indexOf('register') !== -1) return '🏥'
-      if (n.indexOf('ticket') !== -1 || n.indexOf('train') !== -1) return '🚅'
-      if (n.indexOf('hotel') !== -1) return '🏨'
       if (n.indexOf('weather') !== -1) return '🌤️'
-      if (n.indexOf('ride') !== -1 || n.indexOf('taxi') !== -1 || n.indexOf('route') !== -1) return '🚖'
-      if (n.indexOf('order') !== -1 || n.indexOf('escort') !== -1 || n.indexOf('canteen') !== -1) return '🤝'
-      if (n.indexOf('medic') !== -1 || n.indexOf('drug') !== -1 || n.indexOf('report') !== -1) return '💊'
-      if (n.indexOf('deposit') !== -1 || n.indexOf('pay') !== -1) return '💰'
+      if (n.indexOf('ride') !== -1 || n.indexOf('route') !== -1) return '🚖'
+      if (n.indexOf('walk') !== -1) return '🚶'
+      if (n.indexOf('activit') !== -1) return '🎲'
+      if (n.indexOf('recipe') !== -1 || n.indexOf('diet') !== -1) return '🍲'
+      if (n.indexOf('call') !== -1) return '📞'
+      if (n.indexOf('medic') !== -1 || n.indexOf('drug') !== -1 || n.indexOf('report') !== -1
+          || n.indexOf('vital') !== -1 || n.indexOf('assess') !== -1 || n.indexOf('condition') !== -1) return '💊'
+      if (n.indexOf('pay') !== -1 || n.indexOf('deposit') !== -1) return '💰'
       return '🛡️'
     },
 
@@ -2310,7 +2317,7 @@ export default {
   border-left: 2rpx solid #e2e8f0;
   box-sizing: border-box;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: $lyj-font-family !important;
 }
 
 /* 顶部工作台标题栏 */
@@ -2351,6 +2358,8 @@ export default {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #ffffff;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .tree-sub-title {
@@ -2607,7 +2616,7 @@ export default {
   line-height: 1;
 }
 
-.orchestrator-avatar { background: #ffe4d6; }
+.orchestrator-avatar { background: #EBF4FE; }
 .health-avatar { background: #dcfce7; }
 .travel-avatar { background: #e0f2fe; }
 .community-avatar { background: #ede9fe; }
@@ -3105,8 +3114,8 @@ export default {
 }
 
 .node-status-tag.failed {
-  background: #ffedd5;
-  color: #c2410c;
+  background: #FEE2E2;
+  color: #DC2626;
 }
 
 .node-status-tag.pending {

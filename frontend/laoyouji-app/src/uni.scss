@@ -1,5 +1,5 @@
 /**
- * 老友记全局 SCSS 变量 —— 设计基线的唯一落点。
+ * 康乐全局 SCSS 变量 —— 设计基线的唯一落点。
  *
  * 规则（见 docs/DESIGN.md）：
  *   1. 页面与组件**只准引用变量**，不准写字面量颜色 / 字号 / 间距。
@@ -13,39 +13,38 @@
 /* ------------------------------------------------------------------ 色板 (晴空浅天蓝体系) */
 
 /* 品牌 */
-$lyj-primary: #2A82E4; // 主色：晴空天蓝（清澈、安心、充满生命力与信赖感）
-$lyj-primary-dark: #1967C2; // 按下/激活态：蔚深天蓝
-$lyj-primary-soft: #EBF4FE; // 主色浅底：晨云淡蓝（进行中、选中态、轻胶囊）
-$lyj-primary-light: #4DA1FF; // 渐变高光端：透亮晴空
-$lyj-gradient-primary: linear-gradient(135deg, #2A82E4 0%, #3B99FC 100%);
-$lyj-gradient-primary-active: linear-gradient(135deg, #1967C2 0%, #2A82E4 100%);
-$lyj-halo-mic: 0 0 0 12rpx rgba(42, 130, 228, 0.16), 0 0 0 24rpx rgba(42, 130, 228, 0.08), 0 16rpx 40rpx rgba(42, 130, 228, 0.35);
+$lyj-primary: #2A82E4; // 主色：晴空浅天蓝
+$lyj-primary-dark: #1967C2; // 按下态深天蓝
+$lyj-primary-soft: #EBF4FE; // 主色浅底：进行中、选中态
+$lyj-primary-light: #3B99FC; // 麦克风渐变高光端
 
 /* 底与面 */
-$lyj-bg: #F2F7FD; // 页面底：清透云天淡蓝底，消除眩光，更具现代呼吸感
-$lyj-card: #ffffff; // 卡片面：纯白雪映
-$lyj-line: #E1ECF7; // 分隔线、边框：浅云边线
+$lyj-bg: #F2F7FD; // 页面底：清透云天淡蓝底，防眩光
+$lyj-card: #FFFFFF; // 卡片面
+$lyj-line: #E1ECF7; // 分隔线、未激活底
 
-/* 文字 (WCAG AAA 9.2:1 超高对比度，适老化护眼) */
-$lyj-text: #1A2838; // 正文：深暮蓝灰，比死板纯黑柔和，对比度极佳
-$lyj-text-light: #5F758E; // 次要文字：雾蓝灰 (对比度 4.8:1)
-$lyj-text-on: #ffffff; // 主色底上的字：纯白
+/* 文字 */
+$lyj-text: #1A2838; // 正文：深暮蓝灰，满足 WCAG 2.1 AAA 级 9.2:1 适老高对比
+$lyj-text-light: #5F758E; // 次要文字：雾蓝灰
+$lyj-text-on: #FFFFFF; // 主色底上的字
 
 /* 语义 */
-$lyj-success: #16A34A; // 已完成、已服药：云杉翠绿
-$lyj-success-bg: #E8F8EE; // 已完成底
-$lyj-danger: #DC2626; // 金额、异常预警：明赤红
-$lyj-danger-bg: #FEE2E2; // 异常底
-$lyj-info: #2A82E4; // 链接、说明：天蓝色
+$lyj-success: #2e8b57; // 已完成、已服药
+$lyj-success-bg: #e3f2ea; // 已完成底（打卡后的格子）
+$lyj-danger: #d93025; // 金额、异常
+$lyj-danger-dark: #a51f16; // 录音态渐变深端
+$lyj-info: #1a73e8; // 链接、说明
 
-/* 待确认（挂起态）—— 招牌暖杏金色，在天蓝底色上视觉抓取力绝佳 */
+/* 待确认（挂起态）—— 本项目的招牌状态，需要一个稳定的颜色而不是页面里的字面量。
+   注意：挂起对老人是**一次进展**，不是错误，所以在天蓝底色下保持醒目温和暖金。 */
 $lyj-warn: #E89838;
 $lyj-warn-bg: #FFF7EC;
-$lyj-warn-text: #8A5200;
+$lyj-warn-soft: #FFF7EC;
+$lyj-warn-text: #9A6410;
 
-/* 状态与装饰 */
-$lyj-disabled: #C2D1E0; // 禁用底
-$lyj-field: #EBF2FA; // 输入框、未选中底
+/* 状态与装饰 —— 从页面里回收上来的字面量，不是新造的颜色 */
+$lyj-disabled: #C5D5E6; // 禁用底
+$lyj-field: #EBF2FA; // 输入框、未选中格子的底
 $lyj-muted-bg: #E6EFF8; // 流水提示条底
 
 /* ------------------------------------------------- 子女端（深邃天青蓝协同系） */
@@ -60,15 +59,28 @@ $lyj-info-bg: #EBF4FE; // info 浅底（选中态、胶囊）
 $lyj-info-line: #CBE0F5; // info 描边
 $lyj-dot-idle: #CBD8E6; // 路线上还没走到的点
 
+/* 子女端沉稳天青蓝体系与老人端协调统一 */
+$lyj-child-bg: #F2F7FD; // 页面底
+$lyj-child-head: #132438; // 深天青蓝顶栏
+$lyj-child-head-sub: #8A9BB0; // 深色顶栏上的次要字
+$lyj-child-text: #1A2838; // 标题与正文
+$lyj-child-body: #5F758E; // 说明性正文
+$lyj-child-muted: #8A9BB0; // 次要文字、空态
+$lyj-child-line: #E1ECF7; // 分隔线、未选中底、内嵌面板
+$lyj-info-bg: #F0F4F8; // info 浅底（选中态、胶囊）
+$lyj-info-line: #D9E2EC; // info 描边
+$lyj-dot-idle: #D3DCE6; // 路线上还没走到的点
+
 /* 渐变端点 */
-$lyj-danger-dark: #991B1B; // 录音态渐变深端
-$lyj-weather-from: #E3F0FC; // 天气卡浅蓝起点
-$lyj-weather-line: #D0E4F7; // 天气卡描边
+$lyj-weather-from: #E1EFFF; // 天气卡浅蓝起点
+$lyj-weather-line: #CCE2F8; // 天气卡描边
+
+/* ------------------------------------------------------------------ 字体栈 */
+$lyj-font-family: 'Noto Sans SC', 'MiSans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
 
 /* ------------------------------------------------------------------ 字阶 */
 
-/* 硬指标是"老人看的正文 ≥ 20px"。20px = 40rpx @375pt，所以正文地板是 40rpx。
-   （旧版把地板写成 34rpx 并注释成"≈20px"，那句换算是错的：34rpx = 17px。） */
+/* 硬指标是"老人看的正文 ≥ 20px"。20px = 40rpx @375pt，所以正文地板是 40rpx。 */
 $lyj-font-xl: 56rpx; // 28px 页面大标题
 $lyj-font-lg: 48rpx; // 24px 卡片标题、重点数字
 $lyj-font-md: 40rpx; // 20px 正文地板 —— 老人要读的字一律不低于此值
@@ -97,7 +109,11 @@ $lyj-radius-lg: 40rpx; // 气泡
 $lyj-radius-pill: 999rpx; // 分段控件、胶囊按钮
 
 $lyj-shadow-card: 0 8rpx 28rpx rgba(42, 130, 228, 0.06);
-$lyj-shadow-raised: 0 16rpx 40rpx rgba(42, 130, 228, 0.12);
+$lyj-shadow-raised: 0 16rpx 48rpx rgba(42, 130, 228, 0.12);
+
+/* 渐变工具变量 */
+$lyj-gradient-primary: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
+$lyj-gradient-primary-light: linear-gradient(135deg, #2A82E4 0%, #3B99FC 100%);
 
 /* ------------------------------------------------------- 命中区（适老硬指标） */
 

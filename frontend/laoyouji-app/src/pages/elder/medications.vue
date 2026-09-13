@@ -68,6 +68,7 @@
 import { get, post, del } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { speak } from '../../api/asr'
+import { syncAll } from '../../utils/native'
 
 export default {
   data() {
@@ -92,6 +93,9 @@ export default {
       return
     }
     this.load()
+    // 进这一页也同步一次闹钟（契约 §10.3）。首页 onShow 那次可能刚过去几秒，
+    // 会被 30 秒防抖挡掉，所以这里只是兜底；真正要紧的是下面增删成功后那次强制同步。
+    syncAll()
   },
   methods: {
     goBack() {
@@ -146,6 +150,9 @@ export default {
             await del(`/api/medications/${m.id}`)
             uni.showToast({ title: '已删除', icon: 'success' })
             await this.load()
+            // 删药是用户的显式改动：强制重排，不让 30 秒防抖把这次覆盖掉，
+            // 否则已删的这条提醒会继续在原生副本里响（契约 §10.3"用药计划变动后"）。
+            await syncAll({ force: true })
           } catch (e) {
             uni.showToast({ title: e.message || '删除失败', icon: 'none' })
           } finally {
@@ -186,6 +193,9 @@ export default {
         this.showAdd = false
         this.newMed = { drug_name: '', dose: '', times: '08:00', notes: '' }
         await this.load()
+        // 加药同理：必须强制重排，否则"刚加的提醒死活不响"—— 防抖窗口内
+        // syncAll() 只会复用首页那次的结果，这条新药根本进不了原生副本（契约 §10.3）。
+        await syncAll({ force: true })
       } catch (e) {
         uni.showToast({ title: e.message || '添加失败', icon: 'none' })
       } finally {
@@ -202,7 +212,7 @@ export default {
 .med-page {
   min-height: 100vh;
   background: $lyj-bg;
-  padding-bottom: $lyj-space-xl;
+  padding-bottom: calc(#{$lyj-tabbar-h} + #{$lyj-space-xl} + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 .topbar {
@@ -236,6 +246,8 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
   font-weight: 700;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .topbar-info {
   display: flex;
@@ -246,10 +258,15 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .sub {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .empty {
   display: flex;
@@ -274,17 +291,28 @@ export default {
 }
 .med-head {
   display: flex;
-  align-items: baseline;
-  gap: $lyj-space-md;
+  align-items: center;
+  justify-content: space-between;
+  gap: $lyj-space-sm;
 }
 .drug {
-  font-size: $lyj-font-lg;
+  flex: 1;
+  min-width: 0;
+  font-size: 40rpx;
   font-weight: 700;
   color: $lyj-text;
+  word-break: break-word;
 }
 .dose {
-  font-size: $lyj-font-md;
-  color: $lyj-text-light;
+  flex-shrink: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  background: $lyj-primary-soft;
+  border-radius: 12rpx;
+  padding: 4rpx 16rpx;
+  font-weight: 600;
 }
 .notes {
   display: block;
@@ -321,10 +349,13 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap;
 }
 .slot-state {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .slot.taken .slot-state {
   color: $lyj-success;
@@ -338,6 +369,8 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
   padding: 10rpx;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .del-btn.busy {
   opacity: 0.5;
@@ -354,6 +387,8 @@ export default {
   border-radius: $lyj-radius-pill;
   font-size: $lyj-font-lg;
   font-weight: 700;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 /* Modal styles */

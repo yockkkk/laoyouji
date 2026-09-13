@@ -4,7 +4,7 @@
     <view class="head">
       <view class="head-info">
         <text class="title">家庭成员管理</text>
-        <text class="sub">与长辈建立看护与审批关联</text>
+        <text class="sub">与长辈建立看护与知会关联</text>
       </view>
       <view class="head-actions">
         <button class="logout-btn" size="mini" @tap="logout">退出登录</button>
@@ -133,7 +133,7 @@ export default {
     unbind(m) {
       uni.showModal({
         title: '确认解除绑定',
-        content: `确定解除与 ${m.user ? m.user.name : ''} 的关联吗？解除后将无法查看数据与代审批。`,
+        content: `确定解除与 ${m.user ? m.user.name : ''} 的关联吗？解除后将无法查看长辈的健康与位置概况，也收不到就医知会。`,
         success: async (res) => {
           if (res.confirm) {
             try {

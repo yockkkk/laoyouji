@@ -1,7 +1,7 @@
 {
   "name": "laoyouji-app",
   "version": "0.1.0",
-  "description": "老友记 · 老年人多智能体生活助手（uni-app 单工程双角色：老人端 + 子女端）",
+  "description": "康乐 · 老年人健康陪伴助手（uni-app 单工程双角色：老人端 + 子女端）",
   "private": true,
   "scripts": {
     "dev:h5": "uni --port 5174",

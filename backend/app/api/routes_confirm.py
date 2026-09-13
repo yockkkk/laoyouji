@@ -1,4 +1,10 @@
-"""子女确认流 API：待确认列表 / 批准 / 拒绝。"""
+"""子女确认流 API：待确认列表 / 批准 / 拒绝。
+
+本路由服务**金融类**高危动作的审批（如 pay）：命中 ``HIGH_RISK_TOOLS`` 才会走到
+这里。就医挂号**不经过这里** —— 挂号已改为"知会不审批"（立即办好 + 写一条
+``appointment_notice`` 知会子女，见 tools/health_tools.py），老人看病不用等谁点头。
+下一位读者别看到"确认"两个字就以为挂号还挂在这儿。
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException

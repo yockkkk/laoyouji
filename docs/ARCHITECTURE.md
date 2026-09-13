@@ -1,4 +1,4 @@
-# ARCHITECTURE · 老友记多智能体系统
+# ARCHITECTURE · 康乐多智能体系统
 
 ## 0. 与 deepseek-harness 的关系（逐条对账）
 
@@ -17,46 +17,49 @@
 | 守卫分建议性与强制性 | `repeat-tool-reminder` 只提醒不阻断；`timeout-policy` 强制结算 | `core/guards.py` |
 | 一切皆插件 | 没有特权内核；注册返回可逆的 disposer | `core/bus.py` 的 `on()` 返回 disposer |
 
-**刻意没借的**：harness 自己的告诫"Don't split preemptively"—— 所以内核只开了 5 个新文件（`bus` / `session` / `subagents` / `todo` / `guards`），没有为了对称而拆碎。
+**刻意没借的**：harness 自己的告诫"Don't split preemptively"—— 所以内核没有为了对称而拆碎：harness 借来的机制只落在上表这 8 个模块（`bus` / `session` / `events` / `tool` / `subagents` / `todo` / `guards` / `registry`），与表逐条对应、关键清单见 §6。
 
 ## 1. 分层总览
 
 ```
-┌────────────────────────────────────────────────────────┐
-│  API 层  FastAPI (routes_chat SSE / asr / confirm /    │
-│          child / guardian / privacy / health / seed)   │
-├────────────────────────────────────────────────────────┤
-│  智能体层  main_agent(老友记) —— 调度器                  │
-│           ├─ travel_agent 银发导航                       │
-│           ├─ health_agent 安康助手                       │
-│           └─ community_agent 邻里帮                      │
-│     并行扇出 run_parallel → 结构化 AgentReport           │
-│     plan_builder：确定性交付物渲染（五页计划书 + 2 卡片） │
-├────────────────────────────────────────────────────────┤
-│  内核 core/  bus(四种派发) · session(Turn/Step + 预算)   │
-│              events(事件溯源 + 派生) · tool(流水线)      │
-│              subagents(接缝) · todo(真进度) · guards     │
-├────────────────────────────────────────────────────────┤
-│  安全管控中间层                                          │
-│    单调守卫 PaymentRiskRule / ScamContentRule            │
-│    出口改写 diagnosis-scrubber（R1/R2，agent/request）    │
-│    后置注入 HealthDisclaimerGuard（R4，post-execute）     │
-│    ConfirmationService（高危确认状态机 + 延迟重放，R5）   │
-│    PrivacyService（位置/健康分级裁剪，R6）                │
-├────────────────────────────────────────────────────────┤
-│  工具层  ToolRegistry + ToolDispatcher                  │
-│          （model-facing 工具，消费 Provider）           │
-├────────────────────────────────────────────────────────┤
-│  Provider 接缝层（一切皆插件）                           │
-│    llm: DeepSeekProvider | MockLLMProvider             │
-│    asr: IflytekProvider | MockASRProvider              │
-│    train/hospital/payment/hotel/weather/map/ride/       │
-│    community: Mock*Provider | Real*Provider(空壳)       │
-│    repos: SupabaseRepo | LocalFileRepo                 │
-├────────────────────────────────────────────────────────┤
-│  数据层  Supabase (Postgres, RLS 全拒+service key)      │
-│          session_events (append-only 唯一事实源)         │
-└────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  API 层  FastAPI (routes_chat SSE / asr / confirm /                │
+│          child / guardian / privacy / health /                     │
+│          auth / family / misc(seed / events / weather)             │
+├────────────────────────────────────────────────────────────────────┤
+│  智能体层  main_agent(康乐) —— 调度器                                │
+│           ├─ travel_agent 银发导航                                   │
+│           ├─ health_agent 安康助手                                   │
+│           └─ community_agent 邻里帮                                  │
+│     并行扇出 run_parallel → 结构化 AgentReport                       │
+│     plan_builder：确定性交付物渲染（四页计划书 + 2 卡片）             │
+├────────────────────────────────────────────────────────────────────┤
+│  内核 core/  bus(四种派发) · session(Turn/Step + 预算)               │
+│              events(事件溯源 + 派生) · tool(流水线)                  │
+│              subagents(接缝) · todo(真进度) · guards                 │
+│              registry(能力接缝之根)                                  │
+├────────────────────────────────────────────────────────────────────┤
+│  安全管控中间层                                                      │
+│    单调守卫 PaymentRiskRule / ScamContentRule                        │
+│    出口改写 diagnosis-scrubber（R1/R2，agent/request）                │
+│    后置注入 HealthDisclaimerGuard（R4，post-execute）                 │
+│    ConfirmationService（高危确认状态机 + 延迟重放，R5）               │
+│    PrivacyService（位置/健康分级裁剪，R6）                            │
+├────────────────────────────────────────────────────────────────────┤
+│  工具层  ToolRegistry + ToolDispatcher                              │
+│          （model-facing 工具，消费 Provider）                       │
+├────────────────────────────────────────────────────────────────────┤
+│  Provider 接缝层（一切皆插件）                                       │
+│    llm: DeepSeekProvider | MockLLMProvider                         │
+│    asr: TencentASRProvider | IflytekASRProvider | MockASRProvider  │
+│    hospital/payment/weather/ride/community:                         │
+│    Mock*Provider（五域全 Mock；Real* 空壳仅 hospital）              │
+│    map: AmapMapProvider（真实高德，默认装配）                        │
+│    repos: LocalFileRepo | SupabaseRepo | MariaDB | SFTP            │
+├────────────────────────────────────────────────────────────────────┤
+│  数据层  Supabase (Postgres, RLS 全拒+service key)                  │
+│          session_events (append-only 唯一事实源)                     │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 2. 核心抽象（core/）
@@ -64,16 +67,17 @@
 ### 2.1 ServiceRegistry —— "一切皆插件"的根
 
 ```python
-class ServiceDefinition(Protocol):  # 能力契约：名字 + 协议类型
-    name: str
-class ServiceProvider:              # 实现：create(ctx) -> 协议实例
-    def create(self, ctx: AppContext): ...
+class ServiceDefinition(Generic[P]):  # 能力契约：名字 + 协议类型
+    def __init__(self, name: str, protocol: type): ...
+class ServiceProvider(Generic[P]):    # 实现：create(ctx) -> 协议实例
+    def __init__(self, name: str, create: Callable): ...
+    def create(self, ctx): ...
 class ServiceRegistry:              # 注册表：register / resolve
     ...
 ```
 
-- 启动时 `main.py` 按 `.env` 选择实现装配：`ASR_PROVIDER=iflytek|mock`、`STORAGE_BACKEND=supabase|local`、`LLM_PROVIDER=deepseek|mock`。
-- **换真实 12306 = 只换一行 provider 注册**，agents/tools/safety 零改动。这就是"能力接缝"：Service Definition（接口）+ Service Provider（实现）+ Consumer（工具）三角色分离。
+- 启动时 `main.py` 按 `.env` 选择实现装配：`ASR_PROVIDER=tencent|iflytek|mock`、`STORAGE_BACKEND=local|mariadb|ssh|supabase`、`LLM_PROVIDER=deepseek|mock`。
+- **换真实医院号源 = 只换一行 provider 注册**（`map` 已经这样换过：`bootstrap.py:132` 无条件注册 `AmapMapProvider`，高德真接口即默认实现；只剩医院号源还没有真实现），agents/tools/safety 零改动。这就是"能力接缝"：Service Definition（接口）+ Service Provider（实现）+ Consumer（工具）三角色分离。
 
 ### 2.2 BaseAgent / AgentDriver（Turn-Step 分层）
 
@@ -123,6 +127,8 @@ class GuardVerdict(str, Enum):
     DENY       # 直接拒绝（如识别到诈骗话术），给出替代建议
 ```
 
+当前注册表里**没有会触发 `INTERCEPT` 的工具**：唯一的 `HIGH_RISK_TOOLS` 成员是 `pay`，而它不在 22 个在册工具之列；金额兜底那条规则又豁免了唯一带金额参数的工具（`register_appointment` 的挂号费）。所以下面这条流水线里的 INTERCEPT 分支、以及 §4 那台状态机，是给后续支付类工具预留的接缝 —— 今天的演示链路上不会出现"待确认"这一步（挂起卡数恒为 0）。
+
 单次调用的**确切顺序**（照 harness 的 tool-execution-pipeline）：
 
 ```
@@ -151,7 +157,7 @@ tool/call 先记账（先记再做：失败也留痕）
 - `session_events` 表 append-only，`(session_id, seq)` 全序。
 - **`seq` 由内存单调计数器分配**（`dict[session_id, int]`），`append()` 同步返回。旧实现"先读 max 再 +1"在并发下会撞号，"append-only 全序"这个承诺其实不成立。
 - **write-behind**：`append()` 只入 `_pending` 并同步返回（热路径不等 I/O），落库发生在轮次结束的 `session/flush` 检查点。`hydrate(session_id)` 用于跨请求场景（如子女批准后重放）先把库里的历史读回内存。
-- 事件类型：`user_msg / asr_result / assistant_message / plan / todo / tool_call / tool_result / suspended / confirmation_created / confirmation_resolved / card / guardian_alert / step_end / turn_end / error`。`delta` 与 `agent_msg` 只走 SSE 不落库（`persist=False`）。
+- 持久事件类型（`core/events.py` 的常量）：`turn/start` · `turn/end` · `step/start` · `step/end` · `user/message` · `assistant/message` · `assistant/final` · `tool/call` · `tool/result` · `todo/write` · `agent/report` · `artifact/card` · `confirmation/suspended` · `confirmation/resolved` · `guardian/alert`。SSE 线格式名（`user_msg` / `agent_msg` / `final` / `todo` / `card` / `report` / `suspended` …）由 `events.py` 的 `_SSE_TO_DURABLE` 映射成上面这套。`delta` 只走 SSE 不落库（`persist=False`）；`agent_msg` 的 emit 也是 `persist=False`，但它的正文已在同一步由 `_record_assistant` 落成 `assistant/message`（`core/session.py:332`）—— 事件不落、正文落。
 - **`derive_messages(session_id, *, scopes=[...])`** 是投影，不是拼字符串：
   - `assistant_message` 带 tool_calls → `{"role": "assistant", "tool_calls": [...]}`
   - `tool_result` → `{"role": "tool", "tool_call_id": ..., "content": ...}`
@@ -173,7 +179,7 @@ tool/call 先记账（先记再做：失败也留痕）
 AgentReport(agent, ok, summary, data: dict, missing: list[str], tools_used: list[str])
 ```
 
-`data` 的键来自工具声明的 `report_key`（如 `search_train` → `train_options`、`book_ticket` → `ticket`），`missing` 记录该 Agent 承诺过但没拿到的字段。**这是交付物生成器的唯一输入** —— 计划书不再由 LLM 自由拼字典。
+`data` 的键来自工具声明的 `report_key`（如 `search_hospital` → `hospital_options`、`register_appointment` → `appointment`、`plan_route` → `route`），`missing` 记录该 Agent 承诺过但没拿到的字段。**这是交付物生成器的唯一输入** —— 计划书不再由 LLM 自由拼字典。
 
 子智能体的预算比父更紧：token 与墙钟各按 0.6 折算，步数沿用它自己声明的上限（收紧"能烧多少 / 能拖多久"，不收紧"能想几步"）。
 
@@ -187,10 +193,11 @@ AgentReport(agent, ok, summary, data: dict, missing: list[str], tools_used: list
 
 ### ADR-1 高危确认采用"延迟执行"，不做跨请求协程挂起
 拦截时 AgentLoop 正常结束该轮（话术："已经发给您儿子确认啦"），工具调用参数**原样冻结**在 `confirmation_tasks.tool_args`。子女批准后由 `ConfirmationService` 在新的执行上下文中重放（带 bypass 凭证）。
+**前提限定**：如 §2.3 所述，当前 22 个在册工具里没有会触发 `INTERCEPT` 的，这条链路是给后续支付类工具预留的接缝 —— 演示时不会有真实的挂起卡走到这里。
 理由：跨 HTTP 请求暂停协程复杂且脆弱；延迟执行天然支持进程重启后恢复（状态全在表里）、支持审批排队、失败可独立重试。代价：批准后的"收尾话术生成"需要一次独立的 LLM 调用（不走完整 AgentLoop），可接受。
 
-### ADR-2 存储走 Repository 协议双实现，不做 SQLite 双 ORM
-`SupabaseRepo`（主）+ `LocalFileRepo`（JSON 文件，`STORAGE_BACKEND=local` 切换）。理由：会场断网兜底成本约半天；SQLAlchemy+SQLite 在 Windows 引入驱动与迁移负担，收益低。
+### ADR-2 存储走 Repository 协议四个实现，不做 SQLite 双 ORM
+`LocalFileRepo`（JSON 文件，默认）、`SupabaseRepo`、MariaDB（`SQLRepository`，可走 SSH 隧道）、SFTP（`SSHRepository`）四个实现，按 `STORAGE_BACKEND=local|mariadb|ssh|supabase` 切换。理由：会场断网兜底成本约半天；SQLAlchemy+SQLite 在 Windows 引入驱动与迁移负担，收益低。
 
 ### ADR-3 SSE 优先 / 轮询兜底，两套共用同一事件模型
 H5 端用浏览器 `fetch + ReadableStream` 手工解析 SSE（uni.request 不支持流式）；不支持/断线时降级 2s 轮询 `GET /api/sessions/{id}/events?after_seq=`。服务端事件只产出一次模型，两条通道消费同一份。
@@ -203,7 +210,7 @@ H5 端用浏览器 `fetch + ReadableStream` 手工解析 SSE（uni.request 不�
 **误杀比漏杀更隐蔽**：饮食推荐与用药提醒都是本项目声明过的正常能力，被筛子顺手杀掉会让功能静静地少一半而没人报错。所以处方规则刻意要求出现剂量单位或"药"字才算命中，`tests/test_medical_safety.py` 里两组反面测试与正面测试同等重要。
 
 ### ADR-5 Mock 数据确定性原则
-所有 Mock Provider：同输入同输出（fixture 固定 + 参数派生随机数），保证演示可复现、测试可断言。模拟延迟 0.4–1.0s 制造真实感。
+所有 Mock Provider：同输入同输出（fixture 固定 + 参数派生随机数），保证演示可复现、测试可断言。模拟延迟各异（0.1–3.0s 不等，其中叫车固定 3s）制造真实感。
 
 ### ADR-6 主智能体路由：LLM function-calling 为主，关键词规则兜底
 LLM 通过 `delegate(specs)` 工具完成路由，**参数接列表** —— 能并行的一次派多个，交给 `ctx.subagents.run_parallel`（提示词也从"一次派一个"改成了鼓励并行）。旧实现的 `route_to_agent` 是在父工具里 `await agent.run()`，既是串行的，也把子 Agent 的执行嵌在父的工具调用里，评委看不到"调度"这件事。LLM 不可用（MockLLM 离线演示）时退化为关键词规则表路由，保证离线剧本可演。
@@ -211,7 +218,7 @@ LLM 通过 `delegate(specs)` 工具完成路由，**参数接列表** —— 能
 ## 4. 高危确认状态机
 
 ```
- pending ──approve──► executing ──成功──► executed
+ pending ──approve──► approved ──成功──► executed
     │ │                                   │
     │ └──reject──► rejected          失败──► failed
     │
@@ -227,9 +234,9 @@ executed 记录 result（票号/订单号），写 audit_log。
 |---|---|
 | 后端 | Python 3.12 · FastAPI · uvicorn · sse-starlette · httpx · pydantic-settings |
 | LLM | DeepSeek chat API（OpenAI 兼容，流式 + function calling，3 次退避重试） |
-| ASR | 讯飞语音听写（方言版）WebSocket API；Web Speech API 前端降级 |
-| 存储 | Supabase Postgres（service key 仅后端，RLS 全拒） |
-| 前端 | uni-app (Vue 3) · H5 · pinia · fetch/ReadableStream SSE |
+| ASR | 腾讯一句话识别（方言，首选）｜讯飞语音听写（方言版，备选）；Web Speech API 前端降级 |
+| 存储 | Repository 协议四实现：local（JSON 文件，默认）/ MariaDB / SFTP / Supabase Postgres（service key 仅后端，RLS 全拒） |
+| 前端 | uni-app (Vue 3) · H5 · 模块级 store（`src/store/`，uni storage 持久化）· fetch/ReadableStream SSE |
 | 测试 | pytest + pytest-asyncio（MockLLM 全链路无 key 可测） |
 
 ## 6. 目录结构
@@ -248,7 +255,7 @@ executed 记录 result（票号/订单号），写 audit_log。
 
 **智能体**
 - `app/agents/main_agent.py` 总智能体：`todo_write` 规划 + `delegate` 并行调度
-- `app/agents/plan_builder.py` 确定性交付物渲染（五页计划书 + 两张轻量卡片）
+- `app/agents/plan_builder.py` 确定性交付物渲染（四页计划书 + 两张轻量卡片）
 
 **安全**
 - `app/safety/risk_rules.py` 单调守卫 + R1/R2 出口改写 + R4 免责声明注入

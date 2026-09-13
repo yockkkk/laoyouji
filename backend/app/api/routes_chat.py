@@ -204,7 +204,18 @@ async def list_chat_sessions(
     principal: Principal | None = Depends(get_optional_principal),
     ctx: AppContext = Depends(get_ctx),
 ):
-    user = await _resolve_user(ctx, principal, user_id)
+    """会话列表：只出**自己**的会话。
+
+    ``user_id`` 这条旁路以前是开的（``require_auth`` 默认 False）：不带头、只要
+    给 ``?user_id=<任意 id>`` 就 200，把那个人的**全部会话**连标题和最后一句
+    （"我血压 178/105，" / "号已经挂好啦，也把您的情况跟家里说了一声。"）一起端出去。
+    它和 ``/api/demo/family``（给 id）、``/api/sessions/{id}``（给完整对话）串起来
+    是一条零凭证链，所以这里必须走 ``require_auth=True``：**身份只从 token 来**。
+
+    参数保留不删：前端 ``pages/elder/chat.vue`` 仍带着 ``?user_id=<自己>``，
+    留着它就能在"传的 id 与 token 对不上"时给一个明确的 403，而不是把它当噪声
+    悄悄忽略掉（见 ``_resolve_user`` 的校验）。"""
+    user = await _resolve_user(ctx, principal, user_id, require_auth=True)
     sessions = await ctx.repos.list(
         "sessions",
         where={"user_id": user["id"]},
@@ -253,7 +264,7 @@ async def _enrich_session(ctx: AppContext, session: dict) -> dict:
         rows = []
 
     # 优先老人自己说的最后一句话（那才是这段对话的"内容书签"）；
-    # 一句都没有（比如只开了头）就退到老友记最后的定稿。
+    # 一句都没有（比如只开了头）就退到康乐最后的定稿。
     last_text = ""
     for wanted in ((USER_MESSAGE,), (ASSISTANT_FINAL, ASSISTANT_MESSAGE)):
         for row in rows:

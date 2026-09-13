@@ -212,13 +212,24 @@ async def get_plans(
 @router.get("/{child_id}/notifications")
 async def list_notifications(
     child_id: str,
+    type: str | None = None,
     principal: Principal = Depends(get_current_principal),
     ctx: AppContext = Depends(get_ctx),
 ):
+    """子女端通知中心。``type`` 只用来筛，不改变默认行为。
+
+    挂号知会（``appointment_notice``）和待审批（``confirmation_request``）在同一条
+    流里，但它们是两件性质完全不同的事：前者是"知道了一件事"，后者是"有件事等您办"。
+    前端要分开摆（或用小徽标区分）时，按 type 筛比在客户端过滤可靠 —— 20 条窗口
+    里有几条是待办这件事，客户端筛不出来。
+    """
     if principal.id != child_id or principal.role != "child":
         raise HTTPException(403, "无权访问其他子女通知")
+    where: dict = {"user_id": child_id}
+    if type:
+        where["type"] = type
     rows = await ctx.repos.list(
-        "notifications", where={"user_id": child_id}, order="-created_at", limit=50
+        "notifications", where=where, order="-created_at", limit=50
     )
     return {"items": rows}
 

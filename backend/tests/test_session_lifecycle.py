@@ -424,11 +424,13 @@ async def test_approve_and_execute_gated_with_turn_gate(ctx, elder, child):
     session = await ctx.event_log.create_session(elder["id"], "门禁审批并发测试")
     sid = session["id"]
     turn = TurnContext(ctx=ctx, session_id=sid, user=elder)
-    tool = ctx.tools.get("book_ticket")
+    tool = ctx.tools.get("register_appointment")
     suspend_res = await ctx.confirmation.suspend(
         turn, tool,
-        {"train_no": "G102", "date": "tomorrow", "seat_type": "二等座", "price": 553.5},
-        GuardResult(GuardVerdict.INTERCEPT, reason="车票 553.5 元", risk_level="high", amount=553.5),
+        {"hospital": "南京鼓楼医院", "department": "骨科", "doctor": "邱勇",
+         "date": "+1", "time": "上午 08:30", "fee": 70},
+        GuardResult(GuardVerdict.INTERCEPT, reason="挂号费 70 元，需要家人确认",
+                    risk_level="high", amount=70),
     )
     task_id = suspend_res["confirmation_id"]
 

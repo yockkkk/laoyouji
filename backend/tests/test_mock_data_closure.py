@@ -1,13 +1,20 @@
 """闭环护栏：没有第三方 API 的工具，假数据必须够整条链走完。
 
-这些工具（查车次/查医院/查酒店/规划路线/叫车/天气）背后没有真接口，全靠
+这些工具（查医院/规划路线/叫车/天气）背后没有真接口，全靠
 ``app/data/*.json``。它们中间**任何一环查不到**，主智能体拆出来的那条任务链就断在
 那儿：子智能体只能回一句"没查到"，《就医出行计划书》缺页，演示当场停住。
 
 所以这一组断言不测业务逻辑，测的是"数据够不够把流程走通"：
-症状能落到科室、科室在城市里有医院、医院旁边有酒店、去程有车回程也有车。
+症状能落到科室、科室在城市里有医院、医院的医生手里有号源、本地路线走得通。
 以前 fixture 里 ``上海`` 在 cities 里却没有一家医院、symptom_to_department 指向
 四个根本不存在的科室 —— 那些都是能查到但走不通的死路，这里就是防它们回来的。
+
+康乐收敛为本地就近就医后，城际车次/异地酒店整条砍掉（与"就近"矛盾），
+对应的"去程有车回程也有车""医院旁边有酒店"两条闭环断言随 provider 一起移除。
+
+健康档案（`app/db/seed.py` 里那四个演示剧本）也算在闭环之内：它是**合成的**，
+但合成不等于随便编 —— 四个档位各要有一份能真的走通"记录 → 分诊 → 就医"的数据，
+否则答辩现场那一档就演不出来。这一条在文件末尾，不建库、只问规则。
 """
 from __future__ import annotations
 
@@ -15,8 +22,10 @@ import asyncio
 
 import pytest
 
+from app.db.seed import SCENARIOS
 from app.providers.external.base import load_fixture
 from app.providers.external.services import MockMapProvider, MockRideProvider
+from app.safety import health_rules as hr
 
 # 每个"没有真接口"的数据源至少得有这么多条，才够演示挑一挑
 MIN_RECORDS = 2
@@ -61,52 +70,6 @@ def test_every_doctor_has_bookable_slots():
                     assert any(k in slot["time"] for k in ("上午", "下午")), slot
 
 
-# ------------------------------------------------------------------ 酒店
-
-def test_every_hospital_has_nearby_hotels():
-    """``search_hotel`` 按 city + near_hospital 精确过滤，没配酒店的医院就订不到房。"""
-    hospitals = load_fixture("hospitals")["hospitals"]
-    hotels = load_fixture("hotels")["hotels"]
-    for h in hospitals:
-        near = [x for x in hotels
-                if x["city"] == h["city"] and x["near_hospital"] == h["name"]]
-        assert len(near) >= MIN_RECORDS, \
-            f"{h['name']} 附近只有 {len(near)} 家酒店，家属陪住就没得选"
-        for x in near:
-            assert x["accessible"], f"{x['name']} 不是无障碍房，不该进演示库"
-            assert x["walk_min"] > 0 and x["distance_m"] > 0
-
-
-# ------------------------------------------------------------------ 车次
-
-def test_train_routes_have_a_way_back():
-    """只有去程没有回程 —— 老人到了北京就回不来了，计划书第二页缺一半。"""
-    routes = load_fixture("trains")["routes"]
-    pairs = {(r["from_city"], r["to_city"]) for r in routes}
-    for from_city, to_city in pairs:
-        assert (to_city, from_city) in pairs, f"{from_city}→{to_city} 没有回程"
-
-
-def test_every_train_route_has_choices_and_unique_numbers():
-    """车次号全局唯一：``book`` 是拿号在所有线路里找第一个匹配的。
-
-    两条线路重名的话，订南京→上海会订到南京→北京那趟车上去，
-    出票信息里的车站和时刻全是另一条线的。
-    """
-    routes = load_fixture("trains")["routes"]
-    assert len(routes) >= MIN_RECORDS
-    seen: dict[str, str] = {}
-    for route in routes:
-        assert len(route["trains"]) >= MIN_RECORDS, \
-            f"{route['from_city']}→{route['to_city']} 只有一趟车"
-        for train in route["trains"]:
-            no = train["train_no"]
-            line = f"{route['from_city']}→{route['to_city']}"
-            assert no not in seen, f"车次 {no} 在 {seen.get(no)} 和 {line} 里重名"
-            seen[no] = line
-            assert train["seats"], f"{no} 没有座位等级"
-
-
 # ------------------------------------------------------------------ 天气
 
 def test_weather_bias_covers_every_hospital_city():
@@ -119,12 +82,26 @@ def test_weather_bias_covers_every_hospital_city():
 # ------------------------------------------------------------------ 路线 / 叫车
 
 async def test_map_routes_are_matched_by_loose_place_names():
-    """模型填的地名粒度是不定的（北京 / 北京南站 / 北京积水潭医院），都得认。"""
+    """模型填的地名粒度是不定的（家 / 家（南京鼓楼区） / 南京鼓楼医院），都得认。
+
+    宽松匹配还在：出发地写"家（南京鼓楼区）"，fixture 里那条路的 ``from`` 只是"家"
+    —— ``name in text`` 命中，路线照样接上。但这层宽松现在多了一道**同城**门槛
+    （见 ``MockMapProvider.plan_route`` 里的 ``_cross_city``）：上一版这里拿
+    "家（南京鼓楼区）→北京积水潭医院"当宽松匹配的样板，那其实是一段跨城长途，
+    如今如实回 ``matched=False``（跨城由 ``test_map_admits_when_it_has_no_route``
+    那一族管）。所以举例换成同城的一对，宽松匹配照样要生效。
+    """
     provider = MockMapProvider()
-    route = await provider.plan_route("家（南京鼓楼区）", "北京积水潭医院")
+    route = await provider.plan_route("家（南京鼓楼区）", "南京鼓楼医院")
     assert route["matched"] is True
     assert len(route["polyline"]) >= MIN_RECORDS
     assert route["steps"] and route["duration"]
+
+    # 城里仅写一个"家"（正文里没有城名）也接得上同一条线 —— 证明确实是"松散"命中，
+    # 而不是把地名写死成 fixture 里那一串
+    loose = await provider.plan_route("家", "南京鼓楼医院")
+    assert loose["matched"] is True
+    assert loose["polyline"] == route["polyline"]
 
 
 async def test_map_admits_when_it_has_no_route():
@@ -173,18 +150,28 @@ async def test_ride_dispatches_different_drivers_for_different_trips(monkeypatch
     assert again["plate"] == results[0]["plate"]
 
 
-# ------------------------------------------------------------------ 社区 / 反诈
+# ------------------------------------------------------------------ 社区活动 / 反诈
 
 @pytest.mark.parametrize("fixture,key", [
-    ("canteen_menu", "meals"),
-    ("canteen_menu", "activities"),
+    ("activities", "activities"),
     ("scam_corpus", "corpus"),
 ])
 def test_community_fixtures_have_enough_records(fixture, key):
     assert len(load_fixture(fixture)[key]) >= MIN_RECORDS
 
 
-def test_service_catalog_has_providers_for_both_service_types():
-    providers = load_fixture("canteen_menu")["providers"]
-    for service_type in ("cleaning", "accompany"):
-        assert len(providers.get(service_type, [])) >= MIN_RECORDS, service_type
+# ------------------------------------------------------------------ 健康档案剧本
+
+@pytest.mark.parametrize("name", list(SCENARIOS))
+def test_persona_scenarios_cover_the_triage_chain(name):
+    """四个剧本的展示数，喂给真规则必须落回各自声明的那一档。
+
+    这是"假数据够不够把链走通"在健康这条线上的原意：数据是合成的，但**分诊的
+    四个档位都得有一份数据能演示到**。档位一律问 ``health_rules``，不在这里手写阈值 ——
+    阈值一调，测试得跟着报"这个剧本不再演示那一档"，而不是继续绿着骗人。
+    """
+    sc = SCENARIOS[name]
+    systolic, diastolic = sc["bp_tail"][0]
+    level, reason = hr.classify_reading("bp", systolic=systolic, diastolic=diastolic)
+    assert level == sc["level"], \
+        f"{name} 的 {systolic}/{diastolic} 现在落「{level}」：{reason}"

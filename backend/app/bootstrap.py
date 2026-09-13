@@ -32,14 +32,13 @@ from app.db.client import build_repo
 from app.providers.external.community import MockCommunityProvider
 from app.providers.external.services import (
     AmapMapProvider,
-    MockHotelProvider,
     MockMapProvider,
     MockPaymentProvider,
     MockRideProvider,
     MockWeatherProvider,
 )
-from app.providers.external.train_12306 import MockTrainProvider
 from app.providers.external.hospital import MockHospitalProvider
+from app.providers.external.mailer import Mailer, build_mailer
 from app.providers.llm.base import LLMProvider
 from app.providers.asr.base import ASRProvider
 from app.providers.llm.deepseek import DeepSeekProvider
@@ -77,9 +76,10 @@ def build_context(cfg: Settings | None = None) -> AppContext:
     # ---- Provider 声明（能力契约）----
     for name, proto in [
         ("llm", LLMProvider), ("asr", ASRProvider),
-        ("train", object), ("hospital", object), ("hotel", object),
+        ("hospital", object),
         ("weather", object), ("map", object), ("ride", object),
         ("community", object), ("payment", object), ("plain_language", object),
+        ("mail", Mailer),
     ]:
         registry.define(ServiceDefinition(name, proto))
 
@@ -127,14 +127,17 @@ def build_context(cfg: Settings | None = None) -> AppContext:
         registry.register(ServiceProvider("asr", lambda _ctx: MockASRProvider()))
 
     # 外部业务服务：竞赛原型全部 Mock（正式落地换 Real*Provider 注册行）
-    registry.register(ServiceProvider("train", lambda _ctx: MockTrainProvider()))
     registry.register(ServiceProvider("hospital", lambda _ctx: MockHospitalProvider()))
-    registry.register(ServiceProvider("hotel", lambda _ctx: MockHotelProvider()))
     registry.register(ServiceProvider("weather", lambda _ctx: MockWeatherProvider()))
     registry.register(ServiceProvider("map", lambda _ctx: AmapMapProvider()))
     registry.register(ServiceProvider("ride", lambda _ctx: MockRideProvider()))
     registry.register(ServiceProvider("community", lambda _ctx: MockCommunityProvider()))
     registry.register(ServiceProvider("payment", lambda _ctx: MockPaymentProvider()))
+
+    # 邮件送达：子女知会的跨设备兜底。**唯一**与 app 开关无关、又不要企业资质的
+    # 通道（App 是 WebView 壳，关掉就没有推送；厂商离线推送要资质）。缺 SMTP 配置
+    # 时 build_mailer 自动退回 mock，不抛异常 —— 评委的笔记本要能原样跑起来。
+    registry.register(ServiceProvider("mail", lambda _ctx: build_mailer(cfg)))
 
     # 大白话引擎（公共组件：词典 + LLM 润色）
     registry.register(ServiceProvider(

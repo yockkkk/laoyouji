@@ -1,4 +1,4 @@
-# TODO · 老友记实施任务清单
+# TODO · 康乐实施任务清单
 
 > 对标蓝图 todo_tasks 模式：任务带编号与依赖，完成打 [x]。每 Phase 末有验证门禁。
 >
@@ -34,14 +34,14 @@
 - 门禁 ✅ 2026-08-31：pytest 27/27 全绿；curl -N SSE 见 delta 流；MockLLM 无 key 全绿
 
 ## Phase 2 子智能体 + Mock Provider
-- [x] T2.1 data/ fixtures：hospitals/trains/hotels/weather/canteen_menu/scam_corpus.json
-- [x] T2.2 providers/external：train_12306 / hospital / payment / hotel / weather / amap / ride / community（各含 Mock+Real 空壳）
+- [x] T2.1 data/ fixtures（初版）：hospitals/trains/hotels/weather/canteen_menu/scam_corpus.json —— 康乐收敛后 `trains` / `hotels` / `canteen_menu` 已删，现存 `hospitals` / `routes` / `rides` / `activities` / `recipes` / `weather` / `scam_corpus` 七份
+- [x] T2.2 providers/external（初版）：train_12306 / hospital / payment / hotel / weather / amap / ride / community（各含 Mock+Real 空壳）—— 康乐收敛后 `train_12306.py` 已删，`payment` / `ride` / `weather` 等并入 `services.py`；现目录为 `hospital` / `community` / `amap_service` / `mailer` / `services`
 - [x] T2.3 shared/plain_language.py（术语词典 + LLM 改写 + 免责声明注入）
 - [x] T2.4 tools/：travel_tools / health_tools / community_tools / common_tools
 - [x] T2.5 agents/：travel / health / community 三个子智能体
-- [x] T2.6 agents/main_agent.py（老友记：路由/澄清/规划/聚合/关键词兜底）
+- [x] T2.6 agents/main_agent.py（康乐：路由/澄清/规划/聚合/关键词兜底）
 - [x] T2.7 safety/risk_rules.py（PaymentRiskRule/ScamContentRule/HealthDisclaimerGuard）
-- 门禁 ✅ 2026-08-31：demo_smoke.py 跑通"去北京看腿"→计划书；pytest mock 确定性
+- 门禁 ✅ 2026-08-31：demo_smoke.py 跑通"去北京看腿"→计划书（初版城际场景，康乐收敛为**本地就医**后该步改为南京就近挂号）；pytest mock 确定性
 
 ## Phase 3 确认流 + 守护 + 隐私
 - [x] T3.1 safety/confirmation.py（状态机 + 冻结重放 + 惰性过期 + audit）
@@ -49,7 +49,7 @@
 - [x] T3.3 api/routes_guardian.py（行程 + checkpoints 守护判定）
 - [x] T3.4 safety/privacy.py + api/routes_privacy.py
 - [x] T3.5 api/routes_health.py（用药计划 CRUD + 打卡）
-- 门禁 ✅ 2026-08-31：pytest 状态机全路径（重复审批 409 实测）；curl 走通拦截→批准→出票→落库→守护告警→dashboard
+- 门禁 ✅ 2026-08-31：pytest 状态机全路径（重复审批 409 实测）；curl 走通拦截→批准→执行落库→守护告警→dashboard（初版被拦的是订票，票务工具已删）
 
 ## Phase 4–6 前端与演示资产（初版）
 - [x] T4.1–T4.5 老人端 4 页 + api 三件套 + 组件五件
@@ -88,9 +88,9 @@
 - [x] TR2.1 `agents/base.py` 重写为薄壳，委托 `AgentDriver`
 - [x] TR2.2 `agents/main_agent.py` 重写为真调度器：`todo_write` 落事件、`delegate` 接列表规格走 `run_parallel`、删掉 `show_card` 的 LLM 自由拼字典
 - [x] TR2.3 `agents/plan_builder.py` 新建：确定性交付物渲染管线，三份交付物共用同一份 `AgentReport` 输入
-- [x] TR2.4 就医计划书做深（五页、页序写死、可打印）；用药卡与社区卡走轻量模式
+- [x] TR2.4 就医计划书做深（四页、页序写死、可打印）；用药卡与社区卡走轻量模式
 - [x] TR2.5 三个子 Agent 改为在隔离作用域运行并声明各自 report schema
-- 门禁 ✅ 2026-09-02：`test_plan_builder.py` 全绿；`demo_smoke.py` 六步跑通；E2E 实测五页计划书页名齐全
+- 门禁 ✅ 2026-09-02：`test_plan_builder.py` 全绿；`demo_smoke.py` 六步跑通（现 8 步）；E2E 实测四页计划书页名齐全
 
 ## Phase R3 安全管控中间层升级
 依赖：TR2.*
@@ -98,17 +98,17 @@
 - [x] TR3.2 `safety/risk_rules.py` 收紧医疗红线：`install_medical_safety` 挂 `agent/request`（order=-100）拦诊断口吻；`HealthDisclaimerGuard` 挂 `tools/post-execute`
 - [x] TR3.3 `safety/privacy.py` 分级裁剪：位置 realtime/city/off、健康 full/summary/off，接在子女端出库路径上
 - [x] TR3.4 修正 `allows_location` / `allows_health` 的 need 侧 fail-open（未识别的 need 现在 `return False`）
-- 门禁 ✅ 2026-09-02：`test_confirmation.py` / `test_privacy.py` / `test_medical_safety.py` / `test_scam_check.py` 全绿；E2E 实测拦截 3 笔 → 同意 1 笔 → 冻结重放执行
+- 门禁 ✅ 2026-09-02：`test_confirmation.py` / `test_privacy.py` / `test_medical_safety.py` 全绿；E2E 实测拦截 3 笔 → 同意 1 笔 → 冻结重放执行。（`test_scam_check.py` 已随 `check_scam` 下架删除，反诈规则现由 `test_guard.py` 覆盖）
 
 ## Phase R4 前端重建（以 `docs/DESIGN.md` 为准）
 依赖：TR0.* + TR1-3 契约确定
 - [x] TR4.1 `pages.json` 加真 `tabBar`（老人端 4 项）+ 子女端 4 页深色原生导航栏
-- [x] TR4.2 **删除 `components/LyjTabBar.vue`** —— 全仓零引用，`grep uni.redirectTo` 与页面级 hex 字面量随之归零
+- [x] TR4.2 **删除 `components/LyjTabBar.vue`** —— 该文件确已删、全仓零引用（`find` 无结果）；**但「`grep uni.redirectTo` 与页面级 hex 字面量随之归零」不成立**：删它只消掉了它自带那一处，全仓 `redirectTo` 仍有 2 处（`LyjSegment.vue:56`、`register.vue:118`）、`src/pages`+`src/components` 下 6 位 hex 仍有 505 行 / 13 文件，均未随之归零，见 `docs/DESIGN.md` §7
 - [x] TR4.3 `components/LyjSegment.vue` 新建（子女端顶部分段控件）
 - [x] TR4.4 `components/LyjMic.vue` 新建：120px 麦克风从 chat.vue 抽出，`touchcancel` + `beforeUnmount` 收尾
 - [x] TR4.5 `store/handoff.js` 新建：一次性话术交接（`switchTab` 不能带参数，这是绕开它的唯一干净办法）
 - [x] TR4.6 `StepTimeline.vue` 契约整体替换：吃 `todo` 快照，删掉 `tool_call` 启发式
-- [x] TR4.7 `PlanCard.vue` 契约整体替换：typed 五页 + `missing` 显式占位"待补" + 朗读按钮（文本从卡面合成）
+- [x] TR4.7 `PlanCard.vue` 契约整体替换：typed 四页 + `missing` 显式占位"待补" + 朗读按钮（文本从卡面合成）
 - [x] TR4.8 `ConfirmCard.vue` 契约修正：正文改用 `message`（老人那句话），`summary` 降为次要位
 - [x] TR4.9 老人端 4 页 + login 重写：token 化、导航模型归位、麦克风上首屏
 - [x] TR4.10 子女端 4 页重写：分段控件、`DENIED` 兜底、`/api/trips` 必带 `child_id`、去掉两处冗余请求
@@ -121,44 +121,45 @@
 
 ## Phase R5 验收门禁
 依赖：TR1-4
-- [x] TR5.1 新增测试文件：`test_kernel.py`（19）/ `test_subagents.py`（17）/ `test_budget.py`（18）/ `test_todo.py`（13）/ `test_plan_builder.py`（22）/ `test_privacy.py`（34）/ `test_medical_safety.py`（27 + 5 处 parametrize）；`test_confirmation.py` 扩到 13
+- [x] TR5.1 新增测试文件（**条数为本轮复跑实测** `grep -cE '^\s*(async )?def test_'`，与 TR5.5 的 494 同口径）：`test_kernel.py`（19）/ `test_subagents.py`（26）/ `test_budget.py`（18）/ `test_todo.py`（13）/ `test_plan_builder.py`（24）/ `test_privacy.py`（35）/ `test_medical_safety.py`（30 + 5 处 parametrize）；`test_confirmation.py` 扩到 26。（2026-09-02 首绿时这几个文件是 17 / 22 / 34 / 27 / 13，其后随产品收敛均有增长，此处已回填当前值。）
 - [x] TR5.2 `docs/DESIGN.md` 补全（§5.1 的 `announce` 误述已纠正、§6.3 覆盖规则、§6.5 子女端分级显示契约、§7 静态/实机分栏）
 - [x] TR5.3 `docs/API.md` 重写（两套事件名、`card` 无 `announce`、未绑定看板缺字段、`/api/trips` 的 owner 路径）
 - [x] TR5.4 `docs/ARCHITECTURE.md` 更新（把无凭据的 harness 对齐声明换成逐条列举真正借用的机制）
-- [x] TR5.5 **`pytest tests/ -q` 全绿** ✅ 2026-09-02 —— **219 passed**（12 个文件、203 个测试函数，
+- [x] TR5.5 **`pytest tests/ -q` 全绿** ✅ 2026-09-02 首绿 —— 当日 **219 passed**（12 个文件、203 个测试函数，
   其中 `test_medical_safety.py` 有 5 处 `@pytest.mark.parametrize`，展开成 21 个用例：6+6+4+3+2，
-  故 `203 − 5 + 21 = 219`）。**对外一律引 219** —— 那是 pytest 自己打印的数，别人重跑对得上；
-  203 是静态点算的函数数，只在解释这个差额时才提。27 是初版红线，只是下界
+  故 `203 − 5 + 21 = 219`）。**本轮复跑为 601 passed（29 个文件、494 个 `def test_`，差额来自 parametrize 展开）——
+  对外一律引当前值 601**，那是 pytest 自己打印的数，别人重跑对得上。27 是初版红线，只是下界
 - [x] TR5.6 `python -m compileall -q app tests scripts` 无报错 ✅ 2026-09-02
-- [x] TR5.7 `scripts/demo_smoke.py` 按新契约刷新（`todo` 事件名、`report`/`card` 打印、第 5 步反诈判定 + 自己的 flush、六步编号）—— 六步跑通 ✅ 2026-09-02
-- [x] TR5.8 `frontend/e2e/elder-flow.mjs` 按新契约整文重写 —— **46 条断言全绿、EXIT=0** ✅ 2026-09-02
-  （44 条无条件 + 看板有行程条目时多跑的 2 条守护断言，本次两条都跑到了）。
-  旧脚本已经测不了现在的应用：点 `.tab`（假底栏已删）、断言 2 张挂起卡（真是 3 张）、
+- [x] TR5.7 `scripts/demo_smoke.py` 按新契约刷新（`todo` 事件名、`report`/`card` 打印、自己的 flush、步骤编号）—— 六步跑通 ✅ 2026-09-02；本轮为 **8 步 / 53 条断言 / 56 个 ✅ / EXIT=0**，第 5 步是"报数→真分诊→真挂号→知会"（原第 5 步的反诈判定随 `check_scam` 下架删除）
+- [x] TR5.8 `frontend/e2e/elder-flow.mjs` 按新契约整文重写 —— **62 条断言全绿、EXIT=0**（2026-09-02 首版 46 条，其后随产品收敛扩写；
+  `grep -c 'assert(' = 63`，减去文件内 `assert` 辅助函数的定义那一处）
+  旧脚本已经测不了现在的应用：点 `.tab`（假底栏已删）、断言 3 张挂起卡（**现在一张都不该有** —— 就医知会不审批）、
   走 `?quick=` 自动发送通道（已改成只填输入框）、拿假底栏第 3 项去子女端隐私页（子女端没有底栏）。
   每条断言都对应 `DEMO_SCRIPT.md` 里会当众念的一句话，**下面这些数字现在是被脚本钉住的**：
-  - `/api/health` 的 **23 个工具 / 4 个 Agent**
+  - `/api/health` 的 **22 个工具 / 4 个 Agent**
   - 原生底栏**按文字**点（「聊天」「首页」），不按下标 —— 顺序以后能调，约定不能破
-  - 快捷入口跳到聊天页后**输入框有话、`.tool-bubble` 为 0**（只填不发，R5 的界面侧）
-  - 步骤条 4 项、两支子智能体各回一条 `.status-bubble`（扇出唯一的可见证据）
-  - 挂起卡 **=== 3** 且**逐笔对账 100 / 553.5 / 658、合计 1311.5**（等到 3 张后再稳 3 秒复查，多出第 4 张也要红）
-  - 计划书标题带「张桂芳」、`.section-heading` **=== 5** 且五个页标题关键词齐全、脚注含"模拟接口"与"不构成诊断"
-  - 子女端 `.seg-item === 3` 且 `.uni-tabbar__item === 0`（子女端不该有底栏）、待确认 3 → 同意 1 → 剩 2、`.result-text.executed`
-  - **老人端那张黄卡就地变绿**：`.s-executed === 1` / `.s-pending === 2` / 总数仍 3（是改状态，不是又推一张）
+  - 首页快捷入口 **4 个**；点进去后**输入框有话、`.card-wrap` 与 `.suspend-card` 都为 0**（只填不发，发送键还在老人手上）
+  - 链路抽屉里的真步骤条 **4 项**（后端 `todo_write` 的整表快照驱动）
+  - 老人端 **0 张挂起卡**（`.suspend-card === 0`）；卡片标题里没有"待确认"口吻
+  - 计划书标题带「张桂芳」与「南京」、页徽章写「共 4 页」、`.section-heading === 4` 且页序齐全、脚注含"模拟接口"与"不构成诊断"
+  - 子女端 `.seg-item === 5`（看板/家人/通知/守护/隐私）、`.uni-tabbar__item === 0`（子女端不该有底栏）、
+    看板 `.notice-title === 1` 且 **没有**同意/拒绝按钮、通知中心 `.confirm-card === 0`
+  - 反向链 138/86 → 老人听到「不用特意跑医院」，且 **0 张卡**（一个号都不挂）
   - 隐私页 6 个档位、**选中态恰好 2 个**（界面不能同时宣称两个权限档）
 - [x] TR5.9 前端 `npm run build:h5` 编译通过 ✅ 2026-09-02
 - [x] TR5.10 同步 `docs/PRD.md` / `DATA_MODEL.md` / `DEMO_SCRIPT.md` / `QA_ANSWERS.md`
-  - `DEMO_SCRIPT.md` 全文重写：三张挂起卡（100 / 553.5 / 658，合计 1311.5 元，原稿写"两张"）、
-    计划书真标题与五页真页名（原稿有一页"费用明细"，代码里不存在）、待确认 3 条、
-    日期按 `human_date` 渲染而非 `tomorrow`、子女端真实结果文案、黄卡**就地变绿**（原稿写"广播卡片"）、
-    反诈那一步换成语料库对得上的原文并**删掉"DENY 拦截演示"**（那是另一条线）、
-    用药计数改成按计划分别算、R4 免责声明用真实原文、23 个工具、`/api/health` 实际返回什么
-  - `QA_ANSWERS.md` 全文重写：22 → 23 个工具、"27 个测试" → 12 文件 219 用例、
+  - `DEMO_SCRIPT.md` 全文重写：就医**知会不审批**（0 张挂起卡，原稿的"三张黄卡 / 100 / 553.5 / 658 / 合计 1311.5 元"随审批链一起作废）、
+    计划书真标题与**四页**真页名（原稿有一页"费用明细"，代码里不存在）、
+    日期按 `human_date` 渲染而非 `tomorrow`、子女端真实结果文案、
+    反诈那段按后台 `ScamContentRule` 的硬 DENY 写（判定三档那套随 `check_scam` 一起下架）、
+    用药计数改成按计划分别算、R4 免责声明用真实原文、**22** 个工具、`/api/health` 实际返回什么
+  - `QA_ANSWERS.md` 全文重写：工具数（现 **22**）、测试数（现 29 文件 **601** 用例）、
     删掉"约 N 千行代码"这个从未填上的占位符、定价统一到 PRD 的 199 元/年（原稿 9.9~29 元/月）、
-    反诈口径拆成"判定三档"与"DENY 硬拦截"两条线、E2E 那一行如实记录 46 条断言的实跑结果
-  - `API.md` 补两节：`tool_result` 上 `suspended`/`denied` 的互斥语义、`check_scam` 的三档结果形状
-  - `DESIGN.md` 补 §6.7（反诈三档的显示契约，`unknown` 不许折叠）、改掉 §6.5 那个界面上不存在的"2/3"
+    反诈口径落到后台守卫、E2E 那一行如实记录 **62** 条断言的实跑结果
+  - `API.md` 补两节：`tool_result` 上 `suspended`/`denied` 的互斥语义、反诈落点（后台 `ScamContentRule` 硬 DENY，**现无 `check_scam` 工具**）
+  - `DESIGN.md` 补 §6.7（反诈三档的显示契约，`unknown` 不许折叠 —— 该节现已随工具下架标注为**历史**）、改掉 §6.5 那个界面上不存在的"2/3"
 
-## 门禁记录 · 2026-09-02 五条全绿
+## 门禁记录 · 2026-09-02 首轮五条全绿（数字已按本轮复跑更新）
 
 大改的代码/测试/文档任务（TR0.1 – TR5.10）到此**全部完成并且验证过了**。
 五条按顺序跑，前一条不绿不跑下一条，这次一路跑到底：
@@ -166,18 +167,18 @@
 ```bash
 cd backend
 .venv/Scripts/python.exe -m compileall -q app tests scripts   # ① 能被解析  → EXIT=0
-.venv/Scripts/python.exe -m pytest tests/ -q                  # ② 后端用例  → 219 passed in 28.78s
-.venv/Scripts/python.exe scripts/demo_smoke.py                # ③ 六步冒烟  → 全链路走完
+.venv/Scripts/python.exe -m pytest tests/ -q                  # ② 后端用例  → 601 passed（2026-09-02 首轮 219）
+.venv/Scripts/python.exe scripts/demo_smoke.py                # ③ 离线冒烟  → 8 步 / 53 条断言 / 56 个 ✅ / EXIT=0
 cd ../frontend/laoyouji-app && npm run build:h5               # ④ 前端编译  → DONE Build complete.
-node ../e2e/elder-flow.mjs                                    # ⑤ 双端 E2E  → 46 条断言全绿，EXIT=0
+node ../e2e/elder-flow.mjs                                    # ⑤ 双端 E2E  → 62 条断言全绿，EXIT=0（2026-09-02 首轮 46）
 ```
 
 第 ⑤ 条要前后端都起着；`LLM_PROVIDER=mock` + `STORAGE_BACKEND=local` 整条离线可跑。
 
-**这一跑钉住的数字**（台上会念，改代码后必须回来重跑）：
-23 个工具 · 4 个 Agent · **219 个用例**（12 个文件）· 步骤条 4 项 · 挂起卡 3 张 ·
-100 / 553.5 / 658 逐笔对账、合计 **1311.5 元** · 计划书 5 页 · 待确认 3 → 同意 1 → 剩 2 ·
-黄卡就地变绿（`.s-executed`=1 / `.s-pending`=2 / 总数仍 3）· 隐私 6 档位选中恰好 2。
+**这一跑钉住的数字**（台上会念，改代码后必须回来重跑；下列为**本轮复跑后的当前值**）：
+22 个工具 · 4 个 Agent · **601 个用例**（29 个文件）· 步骤条 4 项 · **挂起卡 0 张** ·
+计划书 **4 页** · 子女端只出现「就医知会」（0 个同意/拒绝按钮）· 反向链报 138/86 不挂号 · 隐私 6 档位选中恰好 2。
+（2026-09-02 收尾时的旧账：219 个用例 / 12 个文件、挂起卡 3 张、100 / 553.5 / 658 合计 **1311.5 元**、计划书 5 页、待确认 3 → 同意 1 → 剩 2 —— 审批链与跨城票务砍掉后全部作废。）
 
 **门禁绿 ≠ 全部验证过**，两处要说清楚：
 
@@ -199,13 +200,15 @@ node ../e2e/elder-flow.mjs                                    # ⑤ 双端 E2E  
       真 ASR 的方言识别质量
 - [ ] **A3 彩排 ×3**：照 `docs/DEMO_SCRIPT.md` 末尾的检查单走，演示机字号调大 + 关无关通知
 - [ ] **A4 竞赛提交物本身**：PPT / 演示视频 / 报名材料。**这一项我不知道你们赛事的要求**
-      （页数、模板、是否要录屏、截止时间），你给我要求我就能做；`docs/shots/` 里已经有三张
-      现成截图：`elder-chat.png`（三张黄卡 + 五页计划书）、`child-confirm.png`（子女端同意）、
-      `elder-card-green.png`（黄卡变绿）
-- [ ] **A5 走一遍 `docs/DESIGN.md` §7 的"仍要人手验"7 条**：老人端返回键 · 分段控件三页全走 ·
-      devtools 量字号命中区 · 两处故障注入（只发一次 `todo` 快照 / 抽掉酒店 report 看"待补"）·
+      （页数、模板、是否要录屏、截止时间），你给我要求我就能做；`docs/shots/` 里现成三张截图
+      `elder-chat.png` / `child-confirm.png` / `elder-card-green.png`，但都是**收敛前**的旧产品
+      （三张黄卡 + 五页计划书 + 子女端同意），与现在的"0 挂起卡 / 四页 / 就医知会"对不上，交付前需重截
+- [ ] **A5 走一遍 `docs/DESIGN.md` §7 的"仍要人手验"7 条**：老人端返回键 · 分段控件五项全走 ·
+      devtools 量字号命中区 · 两处故障注入（只发一次 `todo` 快照 / 抽掉路线 report 看"待补"）·
       改档位后回看子女端三页 · **点拒绝那一支**。
-      最后一条最值得补：三种结局（同意成了 / 家人不同意 / 同意了但没办成）里，脚本只走过第一种
+      最后一条现在**没法照原样补**：E2E 全程 0 张挂起卡，三种结局一支都没被脚本走过 ——
+      能触发高危拦截的工具一个都没注册（`HIGH_RISK_TOOLS` 只有 `pay`，22 个工具里没有它），
+      这条确认流目前只有 `test_confirmation.py` 的单测顶着
 
 ### B. 明确记账的欠账（正式落地才做，**不是**竞赛阻塞）
 
@@ -221,8 +224,8 @@ node ../e2e/elder-flow.mjs                                    # ⑤ 双端 E2E  
 
 ### C. 正式落地才谈的（方案层面，不写代码）
 
-真实业务 API 全部走 Mock（12306 / 挂号 / 支付 / 地图 / 天气 / 酒店），Provider 接缝已留 Real 空壳。
-披露落在三处：README、`DEMO_SCRIPT.md` 收尾台词、五页计划书最后一行脚注。**缺一处都算没披露。**
+挂号 / 支付 / 天气仍是 Mock（`MockHospitalProvider` / `MockPaymentProvider` / `MockWeatherProvider`），**地图与路线已接真实高德开放平台**（`providers/external/amap_service.py`，`bootstrap.py` 无条件注册 `AmapMapProvider`，含断网降级本地路线库）。
+披露落在三处：README、`DEMO_SCRIPT.md` 收尾台词、计划书最后一行脚注。**缺一处都算没披露。**
 
 ---
 
@@ -243,7 +246,7 @@ node ../e2e/elder-flow.mjs                                    # ⑤ 双端 E2E  
 **改代码时的两条硬约束**：
 
 1. **改了数字就回来改稿子。** `DEMO_SCRIPT.md` / `QA_ANSWERS.md` 里每个数字都会当众念出来，
-   E2E 的 46 条断言把它们钉住了 —— 数字漂了是**门禁红**，不是文档过期
+   E2E 的 62 条断言把它们钉住了 —— 数字漂了是**门禁红**，不是文档过期
 2. **六条红线不许松**：R1 不做诊断 · R2 不做处方 · R3 不碰真钱 · R4 免责声明由代码注入
    （`HealthDisclaimerGuard`，不靠模型自觉）· R5 高危工具一律拦 · R6 隐私不越级
 

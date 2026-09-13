@@ -1,12 +1,12 @@
 {
-  "name": "老友记",
+  "name": "康乐",
   "appid": "",
   "description": "老年人多智能体生活助手",
   "versionName": "0.1.0",
   "versionCode": "100",
   "transformPx": false,
   "h5": {
-    "title": "老友记",
+    "title": "康乐",
     "router": {
       "mode": "hash"
     }

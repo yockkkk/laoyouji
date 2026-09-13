@@ -46,18 +46,24 @@ export default {
   margin: $lyj-space-xs $lyj-space-md 0;
   padding: 10rpx 22rpx 10rpx 18rpx;
   border-radius: $lyj-radius-pill;
-  background: rgba(120, 90, 70, 0.08);
+  background: rgba(42, 130, 228, 0.08);
   color: $lyj-text-light;
   align-self: flex-start;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .lyj-back.pressed {
-  background: rgba(120, 90, 70, 0.18);
+  background: rgba(42, 130, 228, 0.18);
 }
 .arrow {
   font-size: 52rpx;
   line-height: 0.8;
+  flex-shrink: 0;
 }
 .label {
   font-size: 26rpx;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 </style>

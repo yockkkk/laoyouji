@@ -105,15 +105,16 @@ export default {
     hasRouteAction() {
       if (this.compact) return false
       const str = (this.title || '') + JSON.stringify(this.sections || [])
+      // 判据是"这份计划书讲的是不是一次要去某处的就医/出行"，与**哪座城市无关** ——
+      // 康乐在哪个城市都该工作，按"标题里有没有北京/上海/南京"来开关按钮，
+      // 等于把这个产品焊死在演示用的那座城上。
+      // 原来的 '车票' 也一并去掉：那是已砍掉的城际车票页留下的词，现在没有计划书
+      // 会提到它（对照 backend/app/agents/plan_builder.py 的四页）。
       return (
         str.includes('就医') ||
         str.includes('出行') ||
-        str.includes('车票') ||
         str.includes('路线') ||
-        str.includes('医院') ||
-        str.includes('北京') ||
-        str.includes('上海') ||
-        str.includes('南京')
+        str.includes('医院')
       )
     },
     missingCount() {
@@ -145,7 +146,11 @@ export default {
       if (!ok) uni.showToast({ title: '当前设备不支持语音播报', icon: 'none' })
     },
     goToRouteMap() {
-      let origin = '家（南京鼓楼区）'
+      // 出发地只写"家"，不写"家（南京鼓楼区）"—— 城市由后端按老人档案解析
+      // （见 app/providers/external/amap_service.py 的 home_coords/city_of，
+      // 裸"家"会落到这位老人所在城市的住址）。在这里写死城市，等于把所有老人的
+      // 家都搬到了南京。
+      let origin = '家'
       let hospital = ''
       let destination = ''
 
@@ -169,20 +174,14 @@ export default {
         destination = hospital
       }
 
+      // 原来这里有一串"标题里出现哪个城市名就凑哪家医院"的推断，最后兜底写死
+      // "北京积水潭医院"。那是个真 bug：计划书里根本没给出医院时（比如挂号那步
+      // 还没跑），点"查看路线"会把老人导去一个**本市产品够不到的城市**，而且
+      // 是静默的 —— 屏幕上会显示一条去北京的路线，看起来像真的。
+      // 拿不到目的地就不跳转：说清楚缺了什么，让老人回到能补上它的那一步。
       if (!destination) {
-        if (this.title) {
-          if (this.title.includes('协和')) destination = '北京协和医院'
-          else if (this.title.includes('积水潭')) destination = '北京积水潭医院'
-          else if (this.title.includes('鼓楼医院')) destination = '南京鼓楼医院'
-          else if (this.title.includes('第六人民')) destination = '上海市第六人民医院'
-          else if (this.title.includes('上海')) destination = '上海市第六人民医院'
-          else if (this.title.includes('杭州')) destination = '杭州市第一人民医院'
-          else if (this.title.includes('苏州')) destination = '苏州大学附属第一医院'
-          else if (this.title.includes('北京')) destination = '北京积水潭医院'
-        }
-      }
-      if (!destination) {
-        destination = '北京积水潭医院'
+        uni.showToast({ title: '这份计划书里还没有目的地，先让康乐挂好号再来看路线', icon: 'none' })
+        return
       }
 
       uni.navigateTo({
@@ -233,11 +232,14 @@ export default {
   font-weight: 700;
   color: $lyj-text;
   line-height: $lyj-line-height;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .card-badges {
   display: flex;
   align-items: center;
   gap: 12rpx;
+  flex-wrap: nowrap;
 }
 .page-badge {
   font-size: $lyj-font-xs;
@@ -246,16 +248,25 @@ export default {
   background: #eff6ff;
   color: #2563eb;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .card-todo {
   font-size: $lyj-font-xs;
   color: $lyj-warn-text;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .card-ready {
   font-size: $lyj-font-xs;
   color: $lyj-success;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex-shrink: 0;
 }
 .card-head-right {
   flex-shrink: 0;
@@ -271,6 +282,8 @@ export default {
   color: $lyj-primary;
   font-size: $lyj-font-xs;
   font-weight: 600;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 .plan-toggle-btn.open {
   background: $lyj-primary-soft;
@@ -364,11 +377,11 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 16rpx;
-  background: linear-gradient(135deg, $lyj-primary 0%, #3B99FC 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #3B99FC 100%);
   color: #ffffff;
   border: none;
   border-radius: 48rpx;
-  box-shadow: 0 8rpx 24rpx rgba(42, 130, 228, 0.32);
+  box-shadow: 0 6rpx 16rpx rgba(42, 130, 228, 0.28);
   cursor: pointer;
   padding: 0 32rpx;
   box-sizing: border-box;

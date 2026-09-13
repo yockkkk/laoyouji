@@ -28,18 +28,17 @@
     <view class="route-summary-bar">
       <view class="summary-line">
         <text class="summary-badge start">起</text>
-        <text class="summary-place">{{ originName }}</text>
+        <text class="summary-place">{{ originName || '待定' }}</text>
         <text class="summary-arrow">➔</text>
         <text class="summary-badge end">终</text>
-        <text class="summary-place">{{ destinationName }}</text>
+        <text class="summary-place">{{ destinationName || '待定' }}</text>
       </view>
       <view class="summary-meta">
-        <text class="meta-item">⏱️ {{ routeDuration }}</text>
+        <!-- 耗时/距离/交通方式三样都只认后端返回值：查不到就整条不显示，
+             绝不拿写死的"约4小时20分、1023公里、高铁"给老人看一条不存在的行程。 -->
+        <text class="meta-item" v-if="routeDuration">⏱️ {{ routeDuration }}</text>
         <text class="meta-item" v-if="routeDistance">🛣️ 约 {{ routeDistance }}</text>
-        <text class="meta-item">🚆 高铁+市内接驳</text>
-        <button class="expand-map-tag" size="mini" @tap="toggleMapFullscreen">
-          {{ isMapFullscreen ? '✕ 退出大图' : '⛶ 全屏大图' }}
-        </button>
+        <text class="meta-item" v-if="routeModeText">{{ routeModeText }}</text>
       </view>
     </view>
 
@@ -80,6 +79,13 @@
       <view class="section-header">
         <text class="section-title">🚶 换乘步骤大字指引</text>
         <text class="section-subtitle">字大清晰 · 跟着走不迷路</text>
+      </view>
+
+      <!-- 后端没查到路线时如实告知。以前这里会退回一组写死的跨城演示步骤，
+           等于给老人编一条 1023 公里的行程 —— 宁可说"没查到"，也不编。 -->
+      <view v-if="steps.length === 0" class="step-empty-card">
+        <text class="step-empty-icon">🧭</text>
+        <text class="step-empty-text">{{ routeNotice }}</text>
       </view>
 
       <view
@@ -135,53 +141,49 @@ export default {
       user: null,
       tripId: '',
       title: '',
-      originName: '家（南京鼓楼区）',
-      destinationName: '北京积水潭医院',
-      routeDuration: '约4小时20分',
-      routeDistance: '1023公里',
+      // 起终点一律以后端返回或跳转参数为准。没拿到就如实显示"待定"，绝不拿演示地名顶替 ——
+      // 之前写死的"家（南京鼓楼区）→ 北京积水潭医院"会让老人以为真有一条跨城行程。
+      originName: '家',
+      destinationName: '',
+      // 耗时 / 距离 / 交通方式：三样都只由后端路线返回值填充，查不到就留空不显示。
+      routeDuration: '',
+      routeDistance: '',
+      routeMode: '',
+      // 查不到路线时给老人看的那句实话（后端返回 summary 时优先用后端那句）
+      routeNotice: '没查到这条路线。康乐只做本市出行（公交、地铁、步行），跨城的车票机票不查。',
       mapLoading: true,
       mapFailed: false,
       isMapFullscreen: false,
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
-      elderCoords: [118.7732, 32.0618], // 默认起点坐标
+      elderCoords: [118.7732, 32.0618], // 默认起点坐标（老人常住地），拿到真实途经点后会被覆盖
       elderMarker: null,
       routePolyline: null,
       routeCasing: null,
       stationMarkers: [],
       tileLayer: null,
       leafletMap: null,
-      steps: [
-        {
-          title: '第 1 步：家 ➔ 南京南站',
-          content: '从家门口出发打车或乘坐网约车直达南京南站出发层，车程约 20 分钟。',
-          tip: '进站请提前备好身份证与老年优待卡，走无障碍快速通道。',
-          coords: [118.7981, 31.9696],
-        },
-        {
-          title: '第 2 步：南京南站 ➔ 北京南站',
-          content: '乘坐高铁 G12 次（二等座），途中经停济南西站，无需换车，车程约 3 小时 40 分钟。',
-          tip: '车上如有需要可随时按座席上方呼唤铃寻求列车员协助。',
-          coords: [116.3789, 39.8652],
-        },
-        {
-          title: '第 3 步：北京南站 ➔ 北京积水潭医院',
-          content: '从北京南站出站后跟随指示牌前往地下一层网约车乘车点，打车约 20 分钟到达积水潭医院新街口院区。',
-          tip: '到院后门诊一层大厅设有长辈便民服务台与免费轮椅租借。',
-          coords: [116.3748, 39.9485],
-        },
-      ],
-      // 真实规划路线经纬度点集
-      routePoints: [
-        { name: '家（南京鼓楼区）', lng: 118.7732, lat: 32.0618, type: 'start' },
-        { name: '南京南站', lng: 118.7981, lat: 31.9696, type: 'station' },
-        { name: '济南西站', lng: 116.8974, lat: 36.6669, type: 'station' },
-        { name: '北京南站', lng: 116.3789, lat: 39.8652, type: 'station' },
-        { name: '北京积水潭医院', lng: 116.3748, lat: 39.9485, type: 'end' },
-      ],
+      // 换乘步骤同样只来自后端。以前这里预置了"南京南站→北京南站 G12 次"三步演示，
+      // 后端一回空它们就原样显示，等于凭空造出一趟跨城高铁。
+      steps: [],
+      // 真实规划路线经纬度点集（全部来自后端，本地不再预置任何演示点）
+      routePoints: [],
       polylinePath: [],
     }
+  },
+  computed: {
+    // 交通方式徽标：本地出行只可能是公交/地铁/步行（打车走叫车卡），
+    // 认不出就原样显示后端给的 mode，不自己编一个方式上去。
+    routeModeText() {
+      const m = String(this.routeMode || '')
+      if (!m) return ''
+      if (m.includes('地铁') || m.includes('轨道') || m.includes('轻轨')) return '🚇 地铁'
+      if (m.includes('步行')) return '🚶 步行'
+      if (m.includes('公交') || m.includes('巴士')) return '🚌 公交'
+      if (m.includes('驾车') || m.includes('打车')) return '🚕 打车'
+      return m
+    },
   },
   onLoad(opts) {
     if (opts) {
@@ -270,11 +272,9 @@ export default {
           const r = routeResult
           if (r.duration) this.routeDuration = r.duration
           if (r.distance_km) this.routeDistance = `${r.distance_km}公里`
+          if (r.mode) this.routeMode = r.mode
           if (r.origin) this.originName = r.origin
           if (r.destination) this.destinationName = r.destination
-          if (Array.isArray(r.polyline) && r.polyline.length) {
-            this.polylinePath = r.polyline.map((p) => [p.lng, p.lat])
-          }
           if (Array.isArray(r.points) && r.points.length) {
             this.routePoints = r.points.map((p, idx) => ({
               name: p.location || p.name,
@@ -286,6 +286,12 @@ export default {
               this.elderCoords = [this.routePoints[0].lng, this.routePoints[0].lat]
             }
           }
+          if (Array.isArray(r.polyline) && r.polyline.length) {
+            this.polylinePath = r.polyline.map((p) => [p.lng, p.lat])
+          } else if (this.routePoints.length) {
+            // 后端只给了途经点、没给折线：按真实点连一条出来，用的仍是后端数据，不是本地编的
+            this.polylinePath = this.routePoints.map((p) => [p.lng, p.lat])
+          }
           if (Array.isArray(r.steps) && r.steps.length) {
             this.steps = r.steps.map((st, idx) => {
               const text = typeof st === 'string' ? st : (st.instruction || st.content || '')
@@ -294,19 +300,19 @@ export default {
               return {
                 title: `第 ${idx + 1} 步${ptName ? '：' + ptName : ''}`,
                 content: text,
-                tip: idx === 0 ? '出发请提前备好身份证与就医卡，可走绿色通道。' : idx === r.steps.length - 1 ? '到院后门诊大厅设有便民服务台与免费轮椅租借。' : '如有需要可随时向车站或现场工作人员寻求协助。',
+                tip: idx === 0 ? '出发前记得带好身份证和医保卡，路上慢慢走，不着急。' : idx === r.steps.length - 1 ? '到了医院，跟着大厅指示牌走，找不到就问导医台的工作人员。' : '要是走不动或找不到路，随时问路边的工作人员。',
                 coords: pt ? [pt.lng, pt.lat] : this.elderCoords,
               }
             })
+          } else {
+            // 后端把这趟路判成"不画"（跨城或库里没这条线）：如实转述后端那句话，
+            // 页面上不给任何步骤、不连线，让老人看到的就是"没查到"。
+            if (r.summary) this.routeNotice = r.summary
           }
         }
       } catch (e) {
-        console.warn('获取后端高德规划失败，采用本地适配航迹:', e)
-      }
-
-      // 如果后端未给具体点串，以标准途径点连线兜底
-      if (!this.polylinePath.length) {
-        this.polylinePath = this.routePoints.map((p) => [p.lng, p.lat])
+        // 拿不到路线就退成"没查到"这句话，不再退回任何本地演示航迹
+        console.warn('获取后端路线规划失败:', e)
       }
     },
     async initMap() {
@@ -393,7 +399,7 @@ export default {
         lineCap: 'round',
       }).addTo(this.leafletMap)
       this.routePolyline = L.polyline(latlngs, {
-        color: '#2563eb', // 沉稳高对比鲜艳蓝
+        color: '#2A82E4', // 晴空天蓝主品牌色
         weight: 7,
         opacity: 0.95,
         lineJoin: 'round',
@@ -466,6 +472,12 @@ export default {
       }
     },
     advanceLocation() {
+      // 没有步骤时无事可做：以前 steps 是写死的三步，这里不会空；现在步骤只来自后端，
+      // 空列表下取模会得到 NaN，必须先挡住。
+      if (!this.steps.length) {
+        uni.showToast({ title: '这条路线还没查到，没法模拟行进', icon: 'none' })
+        return
+      }
       // 模拟老人沿路线前进至下一步
       this.currentStepIndex = (this.currentStepIndex + 1) % this.steps.length
       const step = this.steps[this.currentStepIndex]
@@ -519,10 +531,13 @@ export default {
       }
     },
     speakFullRoute() {
-      const parts = [
-        `老友记为您规划的高德路线。从${this.originName}到${this.destinationName}。全程耗时${this.routeDuration}。`,
-      ]
+      const parts = [`康乐帮您看的路线，从${this.originName}到${this.destinationName}。`]
+      if (this.routeMode) parts.push(`出行方式是${this.routeMode}`)
+      if (this.routeDuration) parts.push(`全程耗时${this.routeDuration}`)
+      if (this.routeDistance) parts.push(`大约${this.routeDistance}`)
       this.steps.forEach((s) => parts.push(`${s.title}。${s.content}`))
+      // 没查到路线时，念的就是那句"没查到"，不念一串空句子
+      if (!this.steps.length) parts.push(this.routeNotice)
       const ok = speak(parts.join('。'))
       if (!ok) uni.showToast({ title: '当前设备不支持朗读', icon: 'none' })
     },
@@ -531,9 +546,12 @@ export default {
       if (!ok) uni.showToast({ title: '当前设备不支持朗读', icon: 'none' })
     },
     callFamily() {
+      // 没查到路线时不要拿空步骤取 title —— 那会让点按钮直接报错
+      const cur = this.steps[this.currentStepIndex]
+      const where = cur && cur.title ? cur.title : '当前位置'
       uni.showModal({
         title: '已向家人发送报平安提醒',
-        content: `已同步当前行进位置（${this.steps[this.currentStepIndex].title}）至子女看板。`,
+        content: `已同步当前行进位置（${where}）至子女看板。`,
         showCancel: false,
         confirmText: '好的',
       })
@@ -556,7 +574,7 @@ export default {
 .route-page {
   min-height: 100vh;
   background: $lyj-bg;
-  padding-bottom: 60rpx;
+  padding-bottom: calc(#{$lyj-space-xl} + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 
@@ -576,10 +594,10 @@ export default {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: $lyj-field;
+  background: $lyj-card;
   color: $lyj-text;
   border-radius: 48rpx;
-  border: none;
+  border: 2rpx solid $lyj-line;
   padding: 0 24rpx;
   margin: 0;
   cursor: pointer;
@@ -606,7 +624,7 @@ export default {
   background: $lyj-primary-soft;
   color: $lyj-primary;
   border-radius: 48rpx;
-  border: 2rpx solid $lyj-line;
+  border: 2rpx solid rgba(42, 130, 228, 0.25);
   padding: 0 28rpx;
   margin: 0;
   cursor: pointer;
@@ -667,7 +685,8 @@ export default {
   padding: 24rpx;
   background: #ffffff;
   border-radius: 24rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+  border: 2rpx solid $lyj-line;
+  box-shadow: $lyj-shadow-card;
 }
 .summary-line {
   display: flex;
@@ -723,35 +742,18 @@ export default {
   cursor: pointer;
 }
 
-/* 高德地图容器 */
+/* 高德地图容器 (58% 黄金分屏比例) */
 .map-section {
   position: relative;
   margin: 0 24rpx 24rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.08);
-  border: 2rpx solid #e2e8f0;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.map-section.fullscreen-mode {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 430px;
-  margin: 0 auto !important;
-  border-radius: 0 !important;
-  border: none !important;
-  z-index: 9999 !important;
-  box-shadow: none !important;
+  box-shadow: $lyj-shadow-card;
+  border: 2rpx solid $lyj-line;
 }
 .amap-box {
   width: 100%;
   height: 58vh;
-  min-height: 520rpx;
   background: #e2e8f0;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -832,7 +834,7 @@ export default {
 .map-retry-btn {
   margin-top: 16rpx;
   min-height: 72rpx;
-  background: #2563eb;
+  background: $lyj-primary;
   color: #ffffff;
   font-size: 28rpx;
   font-weight: 700;
@@ -887,19 +889,43 @@ export default {
   color: #64748b;
   margin-top: 4rpx;
 }
+/* 没查到路线时的如实提示卡：字大、居中，别让老人以为是自己没点开 */
+.step-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 48rpx 32rpx;
+  background: #ffffff;
+  border: 2rpx dashed #cbd5e1;
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+}
+.step-empty-icon {
+  font-size: 64rpx;
+}
+.step-empty-text {
+  font-size: 30rpx;
+  color: #475569;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+}
+
 .step-card {
   background: #ffffff;
   border-radius: 20rpx;
   padding: 24rpx;
   margin-bottom: 20rpx;
-  border: 2rpx solid #f1ede6;
-  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.03);
+  border: 2rpx solid $lyj-line;
+  box-shadow: $lyj-shadow-card;
   transition: all 0.2s ease;
 }
 .step-card.active {
-  border-color: #2563eb;
-  background: #f8faff;
-  box-shadow: 0 6rpx 16rpx rgba(37, 99, 235, 0.1);
+  border-color: $lyj-primary;
+  background: $lyj-primary-soft;
+  box-shadow: 0 6rpx 16rpx rgba(42, 130, 228, 0.12);
 }
 .step-card-head {
   display: flex;
@@ -911,7 +937,7 @@ export default {
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
-  background: #2563eb;
+  background: $lyj-primary;
   color: #ffffff;
   font-size: 26rpx;
   font-weight: 800;
@@ -927,10 +953,10 @@ export default {
   color: #1e293b;
 }
 .step-audio-btn {
-  background: #eff6ff;
-  color: #2563eb;
+  background: $lyj-primary-soft;
+  color: $lyj-primary;
   border-radius: 30rpx;
-  border: 1rpx solid #bfdbfe;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
   font-size: 22rpx;
   font-weight: 700;
   padding: 4rpx 16rpx;

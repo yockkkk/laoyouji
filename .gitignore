@@ -17,6 +17,13 @@ dist-ssr/
 *.local
 .hbuilderx/
 
+# ===== Android 壳的构建中间产物（android/CONTRACT.md §1）=====
+# 无 Gradle：aapt 产出的 R.java 落在 android/gen/，classes/dex/未对齐 apk 落在 android/build/。
+# build_apk.sh 正常收尾会自己删掉，但中断（Ctrl-C / set -e 中途退出）就会留盘 ——
+# 不忽略的话一次 `git add -A` 会把它们连同未签名的 apk 一起提交进去。
+android/gen/
+android/build/
+
 # ===== 演示运行时数据（可随时由 POST /api/seed 重建）=====
 backend/local_data/
 

@@ -13,7 +13,7 @@ let pending = null
 /**
  * 放一句话进交接位。
  * @param {string} text 要交给聊天页的文字
- * @param {boolean} autoSend true = 直接发给老友记；false = 只填进输入框等老人确认
+ * @param {boolean} autoSend true = 直接发给康乐；false = 只填进输入框等老人确认
  */
 export function putUtterance(text, autoSend) {
   const t = (text || '').trim()

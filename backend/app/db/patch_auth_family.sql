@@ -1,4 +1,4 @@
-﻿-- 老友记 · 鉴权与家庭关系扩展列补丁（幂等）
+﻿-- 康乐 · 鉴权与家庭关系扩展列补丁（幂等）
 -- 使用场景：针对在旧版本 schema.sql 下已创建 users / family_bindings 表的 Supabase 实例。
 -- 执行方式：Supabase Dashboard → SQL Editor → 粘贴并运行（Run）。
 
@@ -6,7 +6,10 @@
 alter table public.users
   add column if not exists username text unique,
   add column if not exists password_hash text,
-  add column if not exists status text not null default 'active' check (status in ('active', 'disabled'));
+  add column if not exists status text not null default 'active' check (status in ('active', 'disabled')),
+  -- 子女知会的跨设备送达地址（邮件）。App 是 WebView 壳，关掉即无推送通道；
+  -- 厂商离线推送要企业资质、短信要签名报备，故由 SMTP 邮件兜底。
+  add column if not exists email text;
 
 -- 2. 扩充 family_bindings 表状态与邀请流转字段
 alter table public.family_bindings

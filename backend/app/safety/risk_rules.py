@@ -1,6 +1,7 @@
 """风险规则 —— Guard 流水线的具体守卫（安全管控中间层）。
 
-- PaymentRiskRule：高危工具集 + 金额阈值 → INTERCEPT（子女确认）
+- PaymentRiskRule：金融动作（要花钱）+ 真花钱的金额阈值 → INTERCEPT（家人确认）。
+  就医挂号**不在**这条线上：挂号立即执行，办完知会子女（知会不审批）。
 - ScamContentRule：参数中出现疑似诈骗内容（可疑链接/话术）→ DENY
 - HealthDisclaimerGuard（后置过滤器）：健康域输出强制追加免责声明（红线 R4）
 - 诊断口吻改写（``install_medical_safety``）：红线 R1/R2 的最后一道 ——
@@ -20,21 +21,44 @@ from app.core.tool import Tool
 
 logger = logging.getLogger(__name__)
 
-# 红线 R5：高危工具集一律拦截（支付/订票/订酒店/挂号付费/服务下单）
+# 红线 R5：高危工具集 = **金融动作**（"要花钱"），一律拦截等家人确认。
+# 收敛后只剩这一个：出行订票/订酒店、社区付费下单整条砍掉，反诈降级为后台规则。
+#
+# 这里为什么**不再**装 register_appointment：原先"要花钱"和"要就医"被塞进同一个
+# 集合，等于让两件性质完全不同的事共用一道家人闸门 —— 老人看个病得等子女点头。
+# 这正是本项目要反的东西。现在两者拆开：
+#   · 钱：留在本集合，命中即 INTERCEPT → 挂起等家人确认（一分钱都别想偷偷花）；
+#   · 就医：移出本集合，挂号立即办好，办完那一刻由 health_tools 写一条
+#     ``appointment_notice`` 知会子女 —— **知会不审批**：老人不为看病等谁点头，
+#     但子女必须及时知道完整情况（医院/科室/医生/时间/挂号费 + 为什么要去）。
 HIGH_RISK_TOOLS = {
-    "book_ticket", "book_hotel", "register_appointment", "pay", "order_service",
+    "pay",
 }
 
+# 金额门槛的适用范围：**只有真会从老人钱包里出去的钱**才按金额审批。
+# 挂号费是个数，但它印在知会里给家人看，挂号本身不是"康乐替老人花出去的一笔钱"。
+# 不豁免的话，70 元的专家号会被下面那条金额规则重新拦回"等家人确认"，
+# "知会不审批"就只剩半个 —— 集合改了、行为没改，最容易被误读成改到位了。
+# 写成一张明账，而不是在 check 里内联一个工具名。
+NON_PAYMENT_TOOLS = {
+    "register_appointment",
+}
+
+# 强制追加免责声明（R4）的健康域工具。**判据是"这句话有没有对老人的身体下判断"** ——
+# 挂号回执、医院列表、慢病登记（只是把老人/医生说的话记下来）属于"办事"和"记账"，
+# 后面挂一句"以上是辅助提醒"只会稀释声明本身。而分诊（assess_health）、健康概览
+# （get_health_summary）、乃至**每记一条指标都会当场报档位的 log_vital**，都在说
+# "这个数怎么样" —— 那是 R4 要盖住的地方。
 HEALTH_TOOLS = {
     "interpret_report", "diet_advice", "register_appointment", "search_hospital",
-    "check_scam",
+    "assess_health", "get_health_summary", "log_vital",
 }
 
 # 口径按用户要求收紧：明说"辅助解读、不做诊断"，别让人误读成"AI 看过就算看过病"。
 #
 # 两版措辞，同一个口径。DISCLAIMER 是体检解读那一版 —— 它说的是"报告上的话"，
 # 只有 interpret_report 面前真有一份报告。GENERIC_DISCLAIMER 给其余健康域工具：
-# 反诈判定、挂号回执、医院列表、饮食建议后面挂一句"以上是把报告上的话换成大白话"，
+# 挂号回执、医院列表、饮食建议后面挂一句"以上是把报告上的话换成大白话"，
 # 老人听到的是一句对不上号的话，而对不上号的免责声明是会被当噪音跳过去的。
 #
 # 两版都含"辅助""不是诊断结论""遵医嘱"三要素 —— R4 的**实质**在哪个工具上都一样，
@@ -48,32 +72,24 @@ GENERIC_DISCLAIMER = ("（以上是帮您参考的，属于辅助提醒，"
 # 新增健康域工具时忘了登记，拿到的是那句放之四海皆可的，不是一句错的。
 _DISCLAIMER_BY_TOOL = {"interpret_report": DISCLAIMER}
 
-# 疑似诈骗信号（配合 check_scam 工具的语料库）。
+# 疑似诈骗信号：反诈已从卖点降级为**后台安全规则**，这份词表是仅存的一道防线。
 #
-# 这份词表看的是**工具参数**，命中就硬拒绝执行 —— 所以它必须窄，宽了会把正常
-# 下单也拒掉，而 DENY 没有"问一下家人"这个出口。老人念出来的原文由 check_scam
-# 自己那份更宽的词表判断（`tools/health_tools.py:_SCAM_MARKERS`），那一支只出
-# 判断、不动钱，宁可多提醒一句。改词表前先想清楚改的是哪一份。
+# 它看的是**工具参数**，命中就硬拒绝执行 —— 所以必须窄：宽了会把正常请求也拒掉，
+# 而 DENY 没有"问一下家人"这个出口。它默默地拦、不解释，宁可漏判也不误伤。
 _SCAM_PATTERNS = [
     r"转账", r"保证金", r"解冻费", r"安全账户", r"中奖.{0,6}领取",
     r"冒充.{0,4}(孙子|儿子|客服|公检法)", r"保健品.{0,8}(根治|神药|包治)",
 ]
 _URL_RE = re.compile(r"https?://[^\s\"']+")
 
-# 判断内容 ≠ 照着内容办事。
-#
-# 反诈工具的入参**就是**那条可疑短信，所以下面这条守卫每次都会在它身上命中：
-# 老人说"帮我看看这条短信是不是骗子"，被自己的反诈规则 DENY 掉，拿不到语料库
-# 那句具体建议（"挂了电话给孙子本人打一个"），健康档案里也不留痕 —— 反诈这个
-# 加分项因此在最该生效的那一刻是空的。
-#
-# 豁免的前提写死在这里：这类工具不动钱、不下单、不锁号源，只产出一个判断。
-# R5 管的是"不做无人监护的执行"，不是"不许看一眼"。
-_JUDGES_CONTENT = {"check_scam"}
-
 
 class PaymentRiskRule(Guard):
-    """高危操作拦截：触发子女确认机制。"""
+    """高危操作拦截：触发家人确认机制。
+
+    只管**金融动作**（``HIGH_RISK_TOOLS``）与**真花钱的金额**（阈值那一条）。
+    就医挂号不在这里 —— 见 ``HIGH_RISK_TOOLS`` 上方的说明：挂号立即办好，
+    事后知会子女，不走审批。
+    """
 
     name = "payment_risk"
 
@@ -90,7 +106,8 @@ class PaymentRiskRule(Guard):
                 risk_level="high" if (amount or 0) >= self._threshold else "medium",
                 amount=amount,
             )
-        if amount and amount >= self._threshold:
+        if (amount and amount >= self._threshold
+                and tool_name not in NON_PAYMENT_TOOLS):
             return GuardResult(
                 GuardVerdict.INTERCEPT,
                 reason=f"金额 {amount:.2f} 元超过阈值，需要家人确认",
@@ -105,8 +122,6 @@ class ScamContentRule(Guard):
     name = "scam_content"
 
     async def check(self, turn: TurnContext, tool_name: str, args: dict) -> GuardResult:
-        if tool_name in _JUDGES_CONTENT:
-            return GuardResult(GuardVerdict.ALLOW)  # 见 _JUDGES_CONTENT
         text = " ".join(str(v) for v in args.values())
         for pattern in _SCAM_PATTERNS:
             if re.search(pattern, text):
