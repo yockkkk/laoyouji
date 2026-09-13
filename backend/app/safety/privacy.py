@@ -231,6 +231,110 @@ def filter_health_text(grant: PrivacyGrant, text: str) -> str:
     return "老人有一份体检解读记录，具体内容未开放。"
 
 
+# 分诊概览的字段表。**每档都要把这份键集完整交出去**：响应形状随档位变，前端
+# 就得为"这个键这次有没有"写分支，漏一个分支就是白屏。少给靠值空，不靠键缺。
+def _empty_overview() -> dict:
+    """各键的"空"值，键集与 ``health_tools.triage_overview`` 的返回一致。
+    列表/字典都新建一份 —— 响应组装处还会往上面加 disclaimer，共用同一个对象
+    会让下一个请求读到上一条改过的内容。"""
+    return {"level": "", "advice": "", "headline": "", "drivers": [],
+            "readings": [], "latest": {}, "trends": {}, "conditions": [],
+            "symptom": ""}
+
+
+# "一条读数都没有"时给子女看的两句。说的必须是**"没有数据"这件事本身**，
+# 不能顺着那个兜底的"保健"档编一句"平稳"出来。这一屏上档位留空，前端
+# dashboard.vue 见到空档位会显示它自己的中性文案（"暂未算出"），这两句是
+# headline 与 advice 位上的如实交代 —— 不写的话前端会退回"档位细节未共享"
+# "哪条指标把它抬上去的"这类话，对一个从没记过数的老人同样是编。
+_NO_DATA_HEADLINE = "老人还没记过指标，这边暂时看不出身体情况。"
+_NO_DATA_ADVICE = "等老人记过一次血压或血糖，这里就会显示分诊档位。"
+
+
+def _known_advice() -> frozenset[str]:
+    """分诊引擎那张**按档位写死**的建议表（``health_rules._ADVICE``）的全部取值。
+
+    这是 summary 档 advice 的**放行名单**：只有恰好等于表里某一句的才原样给子女。
+
+    为什么不用"扫数字"（上一版就是 ``any(ch.isdigit() for ch in advice)``）：那张表里
+    "紧急"那一句写着"拨打 120"，而 **120 是急救电话、不是任何健康读数**，``isdigit()``
+    分不出这两种数字 —— 结果是家属在最需要动作指引的那一档上，唯一那句"打 120"被
+    整句砍掉，前端只好退回一句"具体是哪条指标把它抬上去的"（对一个危急情况，这是最
+    不该出现的搪塞）。判据不该是"句子里有没有数字"，而是"这句话是不是**原样出自那张
+    固定表**"——固定表本身不含任何读数，这一点由
+    ``test_every_fixed_advice_is_free_of_health_readings`` 逐句钉住。
+
+    "看来源"还顺手堵掉了另一半：哪天有人把 ``driver.reason`` 拼进 advice（那里面
+    就是"血压 178/105"，数字长在自由文本里，正则抠是抠不干净的），这条路会在名单
+    外被拦下。这正是"把那条路单独堵掉"，而不是用 digit-scan 一刀切误伤 120。
+    """
+    from app.safety.health_rules import _ADVICE
+    return frozenset(_ADVICE.values())
+
+
+def _summary_headline(level: str) -> str:
+    """summary 档的 headline：**重建**一句，而不是去洗 ``health_rules._headline``。
+
+    洗是洗不干净的：那一句现在拼的是 driver.reason（"血压 178/105，中重度偏高"），
+    数值长在自由文本里，靠正则抠等于赌它以后的措辞不变。按档位重写一句，天然不含
+    任何数字 —— 这也正是老人端报症状时"不改原文"、这里"换一句话"的分界。
+    """
+    if level == "保健":
+        # 与 full 档同一句，本身不含数，且它说的是"这个档位"而不是"哪个数"。
+        # 只有**真有读数**（都落在保健区间）且没报症状时才走到这里 ——
+        # "一条读数都没有"那一支在 filter_health_overview 里提前拦走了。
+        return "各项指标平稳，注意日常保健即可。"
+    return f"有需要留意的地方。分诊结论：{level}。"
+
+
+def filter_health_overview(grant: PrivacyGrant, overview: dict) -> dict:
+    """分诊概览按档裁剪。``full`` 原样；``summary`` 只留档位；``off`` 全空。
+
+    这一条是"子女端嘴上说看不到数、屏幕上却印着 178/105"那件事的正解。默认档
+    （``DEFAULT_HEALTH_LEVEL``）就是 summary，演示台上走的正是它，所以 summary
+    这一支必须**自己**保证不含数值，而不是指望调用方记得别渲染某个字段。
+    """
+    if grant.allows_health("full"):
+        return dict(overview)          # 一个字段都不动
+    if grant.health_off:
+        # 没绑定的子女走到这里。**不要**编一句"各项正常"之类的话来填空 ——
+        # 把"没数据"说成"没事"，方向错了不可逆。子女端自己有中性文案。
+        return _empty_overview()
+
+    if not overview.get("latest") and not overview.get("symptom"):
+        # 一条读数都没有。分诊引擎对空输入落"保健"（``overall = … if drivers else "保健"``，
+        # 那是"保健优先"的兜底：**没有哪条读数越界**，不是"一切平稳"）。顺着档位重写一句
+        # "平稳"，就是拿兜底当结论 —— 把"没数据"说成"没事"，方向错了不可逆，也正是
+        # dashboard.vue 那段中性文案要防的事。所以这里不报档位、不报建议，如实说没数据。
+        # 症状那份驱动不算数：真有症状时 level 不会是"保健"，走不到这一支。
+        return {**_empty_overview(),
+                "headline": _NO_DATA_HEADLINE,
+                "advice": _NO_DATA_ADVICE}
+
+    level = str(overview.get("level") or "")
+    advice = str(overview.get("advice") or "")
+    if advice not in _known_advice():
+        # 只放行固定表里的原句（见 _known_advice 的注释：为什么不用扫数字、为什么
+        # 保留 advice）。子女要的不只是"建议就医"四个字，还有"该怎么办" —— 知会子女
+        # 本来就是这一档的目的（就医本身不需要子女审批），最重的那一档尤其如此。
+        advice = ""
+    return {
+        "level": level,                # 子女该知道是"建议就医"还是"紧急"
+        "advice": advice,
+        "headline": _summary_headline(level),
+        # drivers 整个去空，而不是只清 reason：``label`` 是"血压/血糖"，
+        # 哪一类指标越的界属于明细，和 level 一起给出去就等于把 level 拆开讲了。
+        "drivers": [],
+        # 下面四项都是明细/原文：readings 每条带着 "178/105 mmHg"，latest 是原始
+        # 数据行，trends 说"上升"等于承认有个数在涨，conditions 是病历。
+        "readings": [],
+        "latest": {},
+        "trends": {},
+        "conditions": [],
+        "symptom": "",                 # 症状原文同样属明细
+    }
+
+
 def _rank(levels: tuple[str, ...], value: str | None) -> int:
     """粒度序：越细越小。不认识的值按最粗算（宁可少给）。"""
     try:

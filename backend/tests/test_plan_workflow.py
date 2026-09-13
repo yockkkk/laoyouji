@@ -12,7 +12,6 @@ from app.core.events import AGENT_REPORT
 from app.core.guard import GuardResult, GuardVerdict
 from app.core.subagents import AgentReport
 from app.main import app
-from app.providers.external.train_12306 import MockTrainProvider
 from app.shared.plan_helpers import (
     deduplicate_trips_for_elder,
     dispatch_plan_created_notification,
@@ -28,47 +27,41 @@ def mock_reports():
         AgentReport(
             agent="health",
             ok=True,
-            summary="北京协和医院骨科已查到",
+            summary="南京鼓楼医院骨科已查到",
             data={
                 "appointment": {
-                    "hospital": "北京协和医院",
+                    "hospital": "南京鼓楼医院",
                     "department": "骨科",
-                    "doctor": "张医生",
+                    "doctor": "邱勇",
                     "date": "2026-09-10",
-                    "time": "上午 09:00",
-                    "fee": 100,
-                    "address": "东城区帅府园1号",
+                    "time": "上午 08:30",
+                    "fee": 70,
+                    "address": "南京市鼓楼区中山路321号",
                 }
             },
         ),
         AgentReport(
             agent="travel",
             ok=True,
-            summary="G102次高铁已查到",
+            summary="从家到南京鼓楼医院的本地路线已规划",
             data={
-                "ticket": {
-                    "train_no": "G102",
-                    "date": "2026-09-09",
-                    "from_station": "南京南站",
-                    "to_station": "北京南站",
-                    "depart": "08:00",
-                    "arrive": "12:18",
-                    "seat": "05车厢 12A",
-                    "price": 553.5,
-                },
-                "hotel": {
-                    "hotel": "北京王府井希尔顿酒店",
-                    "address": "王府井东街8号",
-                    "phone": "010-58128888",
-                    "checkin": "2026-09-09",
-                    "nights": 2,
-                    "total": 800,
+                "route": {
+                    "origin": "家",
+                    "destination": "南京鼓楼医院",
+                    "mode": "市内公交或打车",
+                    "duration": "约25分钟",
+                    "distance_km": 4,
+                    "steps": [
+                        "小区门口坐 3 路公交，坐 4 站到鼓楼站下。",
+                        "下车过一个红绿灯就是医院南门，走路 5 分钟。",
+                    ],
+                    "summary": "从家到南京鼓楼医院：市内公交或打车，全程约25分钟。",
                 },
                 "weather": {
-                    "city": "北京",
-                    "date": "2026-09-09",
-                    "condition": "晴",
-                    "temp_range": "18℃~28℃",
+                    "city": "南京",
+                    "date": "2026-09-10",
+                    "condition": "多云",
+                    "temp_range": "8~16 ℃",
                     "umbrella": False,
                 },
             },
@@ -132,7 +125,7 @@ async def test_plan_upsert_and_deduplication(ctx, elder):
 
 
 async def test_dispatch_notification_on_plan_creation(ctx, elder, child, mock_reports):
-    card = plan_builder.build("medical_plan", elder, mock_reports, city="北京")
+    card = plan_builder.build("medical_plan", elder, mock_reports, city="南京")
     notifs = await dispatch_plan_created_notification(
         ctx.repos, elder, card, "trip-123", "medical_plan"
     )
@@ -150,7 +143,7 @@ async def test_compose_deliverable_creates_notification(ctx, elder, child, mock_
     for r in mock_reports:
         ctx.event_log.append("s-plan-1", elder["id"], AGENT_REPORT, r.to_dict())
 
-    result = await compose_deliverable(turn, {"kind": "medical_plan", "city": "北京"})
+    result = await compose_deliverable(turn, {"kind": "medical_plan", "city": "南京"})
     assert result["ok"] is True
 
     # 验证 trips 插入成功且唯一
@@ -165,34 +158,17 @@ async def test_compose_deliverable_creates_notification(ctx, elder, child, mock_
     assert f"老人{elder['name']}已规划" in latest_notif["title"]
 
 
-async def test_train_search_nanjing_hangzhou():
-    provider = MockTrainProvider()
-    trains = await provider.search("南京", "杭州", "tomorrow")
-    assert len(trains) > 0
-    assert any(t["train_no"] == "G7615" for t in trains)
-    assert trains[0]["from_station"] == "南京南站"
-    assert trains[0]["to_station"] == "杭州东站"
-
-    # 查杭州到上海
-    trains_hz_sh = await provider.search("杭州", "上海", "tomorrow")
-    assert len(trains_hz_sh) > 0
-    assert any(t["train_no"] == "G7302" for t in trains_hz_sh)
-
-    # 订票成功
-    book_res = await provider.book("G7615", "tomorrow", "张桂芳", "二等座")
-    assert book_res["ok"] is True
-    assert book_res["price"] == 117.5
-
-
 async def test_child_dashboard_and_notification_endpoints(ctx, elder, child):
     # 创建一条待确认任务
     turn = TurnContext(ctx=ctx, session_id="s-confirm-test", user=elder)
-    tool = ctx.tools.get("book_ticket")
+    tool = ctx.tools.get("register_appointment")
     suspend_res = await ctx.confirmation.suspend(
         turn,
         tool,
-        {"train_no": "G102", "date": "tomorrow", "seat_type": "二等座", "price": 553.5},
-        GuardResult(GuardVerdict.INTERCEPT, reason="金额超限", risk_level="high", amount=553.5),
+        {"hospital": "南京鼓楼医院", "department": "骨科", "doctor": "邱勇",
+         "date": "+1", "time": "上午 08:30", "fee": 70},
+        GuardResult(GuardVerdict.INTERCEPT, reason="挂号费 70 元，需要家人确认",
+                    risk_level="high", amount=70),
     )
     task_id = suspend_res["confirmation_id"]
 
@@ -233,8 +209,10 @@ async def test_child_dashboard_and_notification_endpoints(ctx, elder, child):
             suspend_res2 = await ctx.confirmation.suspend(
                 turn,
                 tool,
-                {"train_no": "G104", "date": "tomorrow", "seat_type": "二等座", "price": 553.5},
-                GuardResult(GuardVerdict.INTERCEPT, reason="金额超限", risk_level="high", amount=553.5),
+                {"hospital": "南京鼓楼医院", "department": "骨科", "doctor": "邱勇",
+                 "date": "+2", "time": "上午 09:00", "fee": 70},
+                GuardResult(GuardVerdict.INTERCEPT, reason="挂号费 70 元，需要家人确认",
+                            risk_level="high", amount=70),
             )
             task_id2 = suspend_res2["confirmation_id"]
 
@@ -251,8 +229,8 @@ async def test_child_dashboard_and_notification_endpoints(ctx, elder, child):
                 {
                     "user_id": child["id"],
                     "elder_id": elder["id"],
-                    "title": f"老人{elder['name']}已规划《西湖两日游玩计划书》",
-                    "summary": "已生成共 5 页计划书",
+                    "title": f"老人{elder['name']}已规划《南京就医出行计划书》",
+                    "summary": "已生成共 4 页计划书",
                     "type": "plan_created",
                     "is_read": False,
                     "created_at": "2026-09-06T12:00:00Z",

@@ -19,6 +19,8 @@ TABLES = [
     "audit_log",
     "privacy_permissions",
     "orders",
+    "health_metrics",
+    "health_conditions",
     "health_records",
     "medication_logs",
     "medication_plans",

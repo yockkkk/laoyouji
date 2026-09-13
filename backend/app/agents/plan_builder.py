@@ -1,15 +1,15 @@
 """交付物渲染管线 —— 确定性、可打印、绝不编造。
 
-方案书第三步（20 分）要的是一份"**可以直接打印出来照着做的傻瓜式攻略**"，
-页序在原文里就写死了：
+方案书第三步（20 分）要的是一份"**可以直接打印出来照着做的傻瓜式攻略**"。
+康乐收敛为本地就医后，页序改成四页（城际车票/异地酒店整条砍掉，与"就近就医"矛盾）：
 
-  ①挂号信息 ②去程车票信息 + 返程建议 ③酒店信息（地址/电话/步行距离）
-  ④行李清单（身份证/医保卡/既往病历/老花镜/常备药）⑤当地天气及穿衣建议
+  ①挂号信息 ②怎么去医院（本地公交/步行/打车路线 + 分步走法）
+  ③随身清单（身份证/医保卡/既往病历/老花镜/常备药）④当地天气及穿衣建议
 
 旧实现把这活交给了 LLM：``show_card`` 的 ``body`` 是个无 schema 的
 ``{"type":"object"}``，模型现编一个字典。后果是三样都不保：**页数**（少一页没人发现）、
-**字段**（票价可能和查询结果不一致）、**可复现性**（同一句话两次演示两个结果）。
-评委现场追问"这个 553.5 是哪来的"，答不上来。
+**字段**（费用可能和查询结果不一致）、**可复现性**（同一句话两次演示两个结果）。
+评委现场追问"这个挂号费是哪来的"，答不上来。
 
 这里换成一条**确定性管线**：
 
@@ -17,12 +17,12 @@
                      → 本文件的模板 → 定型卡片
 
 三份交付物共用同一份 report 输入，区别只在模板：
-- ``build_medical_trip_plan``  《XX老人·北京就医出行计划书》—— 五页，做深，可打印
+- ``build_medical_trip_plan``  《XX老人·就医出行计划书》—— 四页，做深，可打印
 - ``build_health_card``        《本周用药与复查安排》—— 轻量
-- ``build_community_card``     《社区服务预约单》—— 轻量
+- ``build_community_card``     《社区活动推荐单》—— 轻量
 
 **缺字段策略（三份统一）**：取不到就渲染 ``待补`` 并把字段名回填 ``missing``，
-**绝不用模型的话去圆**。人为抽掉酒店 report，第三页就该明明白白写"待补"。
+**绝不用模型的话去圆**。人为抽掉路线 report，第二页就该明明白白写"待补"。
 """
 from __future__ import annotations
 
@@ -47,17 +47,9 @@ BASE_CHECKLIST = [
     "常备药（按平时的量多带两天）",
 ]
 
-BASE_TOURISM_CHECKLIST = [
-    "身份证及老年人优待证（进站、住店、景区优惠都要用）",
-    "医保卡 / 电子医保码（随身备用）",
-    "老花镜 / 放大镜",
-    "常备药与急救盒（按平时的量多带两天）",
-    "保温水杯与轻便遮阳帽",
-]
-
-DISCLAIMER = ("本计划书由老友记根据查询结果自动生成，仅供出行参考。"
+DISCLAIMER = ("本计划书由康乐根据查询结果自动生成，仅供出行参考。"
               "医疗相关内容不构成诊断意见，请以医生面诊结论为准。")
-MOCK_NOTE = "（竞赛原型：车次、号源、酒店数据来自模拟接口，正式落地对接官方开放 API）"
+MOCK_NOTE = "（竞赛原型：号源、路线、天气数据来自模拟接口，正式落地对接官方开放 API）"
 
 
 @dataclass
@@ -110,34 +102,22 @@ def _empty(value: Any) -> bool:
 def _enrich(data: dict) -> dict:
     """用"这次查询的结果"补全"这次选定的项"里缺的字段。
 
-    为什么需要这一步：旗舰演示里挂号和订票**都会被安全中间层拦下**，等家人手机
-    确认。此刻并不存在"已出的票"，能确定的只有**冻结的调用参数**（车次、日期、
-    座位、价格）。而计划书第二页还要印车站和时刻 —— 那些就在同一批
-    ``search_train`` 的结果里躺着。
+    为什么需要这一步：旗舰演示里挂号**会被安全中间层拦下**，等家人手机确认。
+    此刻并不存在"已挂的号"，能确定的只有**冻结的调用参数**（医院、科室、医生、
+    日期）。而计划书第一页还要印医院地址 —— 那就在同一批 ``search_hospital``
+    的结果里躺着。
 
-    所以这里做一次**严格按标识符匹配的连接**：车次号对上才补时刻表，酒店名对上
-    才补地址电话，医院名对上才补地址。对不上就一个字都不补，让它去渲染"待补"。
-    这是同一批结构化查询结果内部的 join，不经过模型，也不做任何推测 ——
-    和"让 LLM 照着印象把票价重写一遍"是两件完全不同的事。
+    所以这里做一次**严格按标识符匹配的连接**：医院名对上才补地址、挂号费、医生
+    职称。对不上就一个字都不补，让它去渲染"待补"。这是同一批结构化查询结果内部
+    的 join，不经过模型，也不做任何推测 —— 和"让 LLM 照着印象把费用重写一遍"是
+    两件完全不同的事。
+
+    路线（``route``）的字段是 ``plan_route`` 整包吐回来的，不需要在这里连接。
     """
     out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in data.items()}
 
-    _join(out, "ticket", "train_options.trains", key="train_no",
-          fields=("from_station", "to_station", "depart", "arrive", "duration"))
-    _join(out, "hotel", "hotel_options.hotels", key="hotel", cand_key="name",
-          fields=("address", "phone", "walk_min", "distance_m",
-                  # price 也连过来：挂起时冻结的参数里只有酒店名和晚数，房价躺在
-                  # 同一批 search_hotel 的结果里。连过来 _price_row 才能印
-                  # "每晚 329 元 × 2 晚"，否则第三页的房费永远是"待补"。
-                  "price", "accessible_note", "city"))
     _join(out, "appointment", "hospital_options.hospitals", key="hospital",
           fields=("address", "city", "specialty", "level"))
-
-    hotel = out.get("hotel")
-    if isinstance(hotel, dict) and not hotel.get("walk") and hotel.get("walk_min"):
-        hotel["walk"] = (f"步行约 {hotel['walk_min']} 分钟"
-                         + (f"（{hotel['distance_m']} 米）"
-                            if hotel.get("distance_m") else ""))
 
     weather = out.get("weather")
     if isinstance(weather, dict) and not weather.get("temp_range"):
@@ -247,7 +227,7 @@ def _row(label: str, source: dict, path: str | tuple[str, ...], *,
         if missing_list is not None and hit not in missing_list:
             missing_list.append(hit)
         return Row(label=label, value=MISSING, missing=True)
-    return _label_service(Row(label=label, value=fmt.format(value), missing=False))
+    return Row(label=label, value=fmt.format(value), missing=False)
 
 
 _WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
@@ -295,47 +275,32 @@ def _status_row(source: dict, key: str, missing_list: list[str]) -> Row:
     return Row(label="状态", value="已办好")
 
 
-_SERVICE_LABELS = {"cleaning": "保洁上门", "accompany": "陪诊陪护",
-                   "canteen": "社区食堂送餐"}
-
-
-def _label_service(row: Row) -> Row:
-    """把 ``cleaning`` 这种机器词换成老人看得懂的中文。只换词，不改值的来源。"""
-    if row.label == "服务" and not row.missing:
-        row.value = _SERVICE_LABELS.get(row.value, row.value)
-    return row
-
-
 # ---------------------------------------------------------------- ①就医计划书
 
 def build_medical_trip_plan(elder: dict, reports: Iterable[AgentReport], *,
                             city: str = "", today: str | None = None,
                             kind: str = "trip_plan") -> dict:
-    """《XX老人·XX出行计划书》—— 五页，页序写死，缺字段渲染"待补"。"""
+    """《XX老人·就医出行计划书》—— 四页，页序写死，缺字段渲染"待补"。
+
+    康乐收敛后只做本地就医：①挂号 ②怎么去（本地公交/步行/打车路线）③随身清单
+    ④天气穿衣。城际车票、异地酒店整条砍掉（与"就近就医"矛盾），对应的两页也随之
+    撤掉 —— 不再留永远"待补"的空页。
+    """
     data = _enrich(merge_reports(reports))
     missing: list[str] = []
     name = elder.get("name") or "老人"
-    city = city or _dig(data, "appointment.city") or _guess_city(data) or "外地"
-
-    has_appointment = bool(_dig(data, "appointment.hospital") or _dig(data, "appointment.department"))
-    is_tourism = (kind in ("tourism_plan", "travel_plan")) or (
-        not has_appointment and any(k in f"{city} {data}" for k in ("西湖", "旅游", "文旅", "游玩", "杭州"))
-    )
-    is_medical = not is_tourism
-    title_suffix = "就医出行计划书" if is_medical else "文旅出行计划书"
-    page1 = _page_appointment(data, missing) if is_medical else _page_tourism(data, missing, city)
+    city = city or _dig(data, "appointment.city") or _guess_city(data) or "本地"
 
     pages = [
-        page1,
-        _page_ticket(data, missing),
-        _page_hotel(data, missing),
-        _page_checklist(data, is_medical=is_medical),
+        _page_appointment(data, missing),
+        _page_route(data, missing),
+        _page_checklist(data),
         _page_weather(data, missing, city),
     ]
 
     return {
         "type": kind,
-        "title": f"{name} · {city}{title_suffix}",
+        "title": f"{name} · {city}就医出行计划书",
         "subtitle": f"共 {len(pages)} 页，可以直接打印带着走",
         "city": city,
         "destination": city,
@@ -348,27 +313,6 @@ def build_medical_trip_plan(elder: dict, reports: Iterable[AgentReport], *,
         "disclaimer": DISCLAIMER,
         "footnote": MOCK_NOTE,
     }
-
-
-def _page_tourism(data: dict, missing: list[str], city: str) -> Page:
-    page = Page(no=1, title=f"第一页 · {city}出行与游玩概况")
-    destination = city
-    hotel_name = str(_dig(data, "hotel.hotel") or _dig(data, "hotel.name") or "")
-    landmark = "西湖" if ("西湖" in hotel_name or "杭州" in city) else city
-    page.rows = [
-        Row(label="目的地", value=f"{destination}（{landmark}游玩）"),
-        Row(label="行程主题", value="休闲漫游 · 适老文旅"),
-        Row(label="出行方式", value="高铁动车"),
-        _row("推荐下榻", data, ("hotel.hotel", "hotel.name"), missing_list=missing),
-        _row("适老保障", data, ("hotel.accessible_note", "hotel.barrier_free"), missing_list=missing),
-        Row(label="游玩建议", value=f"适老慢游，游览{landmark}，劳逸结合，多坐休息"),
-        _status_row(data, "ticket", missing),
-    ]
-    page.notes = [
-        "带好老年人优待证及身份证，多数景区享受免票或半价优惠。",
-        f"游览{landmark}建议慢走慢看，景区内乘坐无障碍摆渡车或电瓶车代步，避免长途徒步疲累。",
-    ]
-    return page
 
 
 def _page_appointment(data: dict, missing: list[str]) -> Page:
@@ -391,79 +335,42 @@ def _page_appointment(data: dict, missing: list[str]) -> Page:
     return page
 
 
-def _page_ticket(data: dict, missing: list[str]) -> Page:
-    page = Page(no=2, title="第二页 · 去程车票 + 返程建议")
-    page.rows = [
-        _row("车次", data, "ticket.train_no", missing_list=missing),
-        _date_row("乘车日期", data, "ticket.date", missing_list=missing),
-        _row("出发", data, "ticket.from_station", missing_list=missing),
-        _row("开车时间", data, "ticket.depart", missing_list=missing),
-        _row("到达", data, "ticket.to_station", missing_list=missing),
-        _row("到站时间", data, "ticket.arrive", missing_list=missing),
-        _row("座位", data, ("ticket.seat", "ticket.seat_type"), missing_list=missing),
-        _row("票价", data, "ticket.price", fmt="{} 元", missing_list=missing),
-        _status_row(data, "ticket", missing),
-    ]
-    ticket_no = _dig(data, "ticket.ticket_no")
-    if ticket_no:
-        page.rows.insert(0, Row(label="取票号", value=str(ticket_no)))
+def _page_route(data: dict, missing: list[str]) -> Page:
+    """第二页 · 怎么去医院。数据全部来自 ``plan_route``（本地公交/步行/打车）。
 
-    # 返程建议是"建议"，不伪装成已订的票：不写车次，只给时间窗口和渠道
-    visit_date = _human_date(_dig(data, "appointment.date"))
-    page.notes = [
-        (f"建议返程：{visit_date} 看完病，当天下午或第二天上午回。"
-         if visit_date else "建议返程：看完病当天下午或第二天上午回。"),
-        "返程票等家人确认挂号后再买，车站窗口和 12306 都可以。",
-        "回程前给家里人打个电话，说一声几点的车。",
+    路线没查到（子智能体没跑 plan_route，或库里没这条线）时，出发地/目的地照旧
+    尽力取，走法字段落"待补" —— 宁可让老人看见"这段还没定"，也不编一个时间出来
+    让他照着出门。分步走法进 notes，这是老人真正照着走的那几句。
+    """
+    page = Page(no=2, title="第二页 · 怎么去医院")
+    page.rows = [
+        _row("从哪儿出发", data, "route.origin", missing_list=missing),
+        _row("到哪儿", data, ("route.destination", "appointment.hospital"),
+             missing_list=missing),
+        _row("怎么走", data, "route.mode", missing_list=missing),
+        _row("大概多久", data, "route.duration", missing_list=missing),
     ]
+    distance = _dig(data, "route.distance_km")
+    if distance is not None:
+        page.rows.append(Row(label="全程", value=f"约 {distance} 公里"))
+
+    steps = _dig(data, "route.steps")
+    if isinstance(steps, list) and steps:
+        page.notes = [f"{i + 1}. {s}" for i, s in enumerate(steps)]
+    else:
+        page.notes = ["具体坐几路车、在哪儿下，出门前再问一下家里人或路口的志愿者。"]
     return page
 
 
-def _page_hotel(data: dict, missing: list[str]) -> Page:
-    page = Page(no=3, title="第三页 · 酒店信息")
-    page.rows = [
-        _row("酒店", data, ("hotel.hotel", "hotel.name"), missing_list=missing),
-        _row("地址", data, "hotel.address", missing_list=missing),
-        _row("电话", data, "hotel.phone", missing_list=missing),
-        _row("到医院", data, "hotel.walk", missing_list=missing),
-        _date_row("入住日期", data, "hotel.checkin", missing_list=missing),
-        _row("住几晚", data, "hotel.nights", fmt="{} 晚", missing_list=missing),
-        _price_row(data, missing),
-        _row("无障碍", data, "hotel.accessible_note", missing_list=missing),
-        _status_row(data, "hotel", missing),
-    ]
-    page.notes = ["到酒店说“我有预订”，报您的名字和电话就行。",
-                  "房间钥匙别随身丢，出门前拍张门牌号的照片。"]
-    return page
-
-
-def _price_row(data: dict, missing: list[str]) -> Row:
-    """房费：订成了就印总价；只是选定还没锁定，就印单价×晚数（算术，非编造）。"""
-    total = _dig(data, "hotel.total")
-    if total is not None:
-        return Row(label="房费", value=f"共 {total} 元")
-    price = _dig(data, "hotel.price") or _dig(data, "hotel.room_price")
-    nights = _dig(data, "hotel.nights")
-    if price is not None and nights:
-        return Row(label="房费",
-                   value=f"每晚 {price} 元 × {nights} 晚 ≈ {price * int(nights)} 元")
-    if price is not None:
-        return Row(label="房费", value=f"每晚 {price} 元")
-    missing.append("hotel.total")
-    return Row(label="房费", value=MISSING, missing=True)
-
-
-def _page_checklist(data: dict, *, is_medical: bool = True) -> Page:
-    """行李清单：政策模板 + 按天气追加。不涉及查询字段，所以永不"待补"。"""
-    page = Page(no=4, title="第四页 · 随身清单（出门前一样一样对）")
-    items = list(BASE_CHECKLIST if is_medical else BASE_TOURISM_CHECKLIST)
+def _page_checklist(data: dict) -> Page:
+    """随身清单：政策模板 + 按天气追加。不涉及查询字段，所以永不"待补"。"""
+    page = Page(no=3, title="第三页 · 随身清单（出门前一样一样对）")
+    items = list(BASE_CHECKLIST)
     if _dig(data, "weather.umbrella"):
-        items.append("一把伞（当地那几天有雨）")
+        items.append("一把伞（这几天有雨）")
     low = _dig(data, "weather.temp_low")
     if isinstance(low, (int, float)) and low <= 10:
-        items.append("厚外套（当地早晚凉）")
-    if _dig(data, "hotel.hotel") or _dig(data, "hotel.name"):
-        items.append("酒店订单信息（这张纸就够）")
+        items.append("厚外套（早晚凉）")
     page.rows = [Row(label=f"{i + 1}", value=text)
                  for i, text in enumerate(items)]
     page.notes = ["装好一样，在前面画个勾。",
@@ -472,7 +379,7 @@ def _page_checklist(data: dict, *, is_medical: bool = True) -> Page:
 
 
 def _page_weather(data: dict, missing: list[str], city: str) -> Page:
-    page = Page(no=5, title=f"第五页 · {city}天气与穿衣")
+    page = Page(no=4, title=f"第四页 · {city}天气与穿衣")
     page.rows = [
         _date_row("日期", data, "weather.date", missing_list=missing),
         _row("天气", data, "weather.condition", missing_list=missing),
@@ -494,14 +401,8 @@ def _page_weather(data: dict, missing: list[str], city: str) -> Page:
 
 def _guess_city(data: dict) -> str | None:
     """从已有结构化字段推目的地城市（不猜、不编：取不到就返回 None）。"""
-    for path in ("weather.city", "ticket.to_city", "hotel.city"):
-        value = _dig(data, path)
-        if value:
-            return str(value)
-    station = _dig(data, "ticket.to_station")
-    if station:
-        return str(station).replace("南站", "").replace("站", "") or None
-    return None
+    value = _dig(data, "weather.city")
+    return str(value) if value else None
 
 
 # ---------------------------------------------------------------- ②健康轻卡片
@@ -530,6 +431,25 @@ def build_health_card(elder: dict, reports: Iterable[AgentReport], *,
     notes = ["到点手机会响，响了就吃，别自己加量减量。"]
     if reading:
         notes.insert(0, f"上次报告的大白话：{reading}")
+
+    # —— 康乐左翼：最近测的指标 + 分诊结论。**有才贴** —— 没量过就一个空行都不加，
+    # 免得这张"用药与复查"卡被 6 行"待补"淹掉。指标本身在 health_summary 里，
+    # 结论（该保健还是该去医院）在 assessment 里，两个都来自工具的 report_key。
+    readings = _dig(data, "health_summary.readings")
+    if isinstance(readings, list) and readings:
+        for item in readings[:3]:
+            value = str(item.get("display") or "")
+            if item.get("trend") and item["trend"] != "平稳":
+                value += f"，最近{item['trend']}"
+            page.rows.append(Row(label=f"最近{item.get('label') or '指标'}", value=value))
+        level = str(_dig(data, "health_summary.level") or "保健")
+        page.rows.append(Row(label="分诊结论", value=level))
+        if level in ("建议就医", "紧急"):
+            notes.insert(0, f"指标到了“{level}”这一档，别拖，照分诊那句话办。")
+    advice = _dig(data, "assessment.advice")
+    if advice:
+        page.rows.append(Row(label="建议", value=str(advice)))
+
     page.notes = notes
 
     return {
@@ -550,33 +470,35 @@ def build_health_card(elder: dict, reports: Iterable[AgentReport], *,
 
 def build_community_card(elder: dict, reports: Iterable[AgentReport], *,
                          today: str | None = None) -> dict:
-    """《社区服务预约单》—— 轻量卡片。"""
+    """《社区活动推荐单》—— 轻量卡片：把线下活动列成"出门和人在一起"的清单。
+
+    康乐收敛后，邻里帮从"付费社区服务"转成"心理·社交线"：这张单子的每一行都是
+    一个可以约上老伙计一起去的线下活动（棋牌室/养老院/公园），来源是
+    ``push_activities`` 的结构化结果（report_key=activities，一层包在
+    ``activities.activities`` 里）。一条查不到就整单标"待补"，绝不编活动。
+    """
     data = _enrich(merge_reports(reports))
     missing: list[str] = []
     name = elder.get("name") or "老人"
 
-    page = Page(no=1, title="服务预约")
-    source = "service_order" if _dig(data, "service_order") else "canteen"
-    # 两种取法：下单成功 → ``<key>.order.*``；被拦下等家人确认 → 冻结参数在 ``<key>.*``
-    page.rows = [
-        _row("服务", data, (f"{source}.order.service_type",
-                            f"{source}.service_type", f"{source}.order.items",
-                            f"{source}.menu_item"), missing_list=missing),
-        _date_row("日期", data, (f"{source}.date", f"{source}.deliver_time"),
-                  missing_list=missing),
-        _row("服务方", data, f"{source}.order.provider_name", missing_list=missing),
-        _row("金额", data, (f"{source}.order.amount", f"{source}.amount"),
-             fmt="{} 元", missing_list=missing),
-        _status_row(data, source, missing),
-    ]
-    page.rows = [_label_service(r) for r in page.rows]
-    page.notes = ["师傅上门会先打电话，不认识的号码也接一下。",
-                  "有问题找社区居委会，别自己跟人争。"]
+    page = Page(no=1, title="最近的社区活动")
+    activities = _dig(data, "activities.activities")
+    if isinstance(activities, list) and activities:
+        page.rows = [
+            Row(label=str(a.get("date") or "近期"),
+                value=f"{a.get('title', '')}（{a.get('place', '')}）".strip())
+            for a in activities
+        ]
+    else:
+        missing.append("activities.activities")
+        page.rows = [Row(label="活动", value=MISSING, missing=True)]
+    page.notes = ["挑一个近的、当天能去的，约上老伙计一块儿。",
+                  "出门前跟社区再确认下时间地点，别白跑一趟。"]
 
     return {
         "type": "community_card",
-        "title": f"{name} · 社区服务预约单",
-        "subtitle": "轻量卡片，办完一项划一项",
+        "title": f"{name} · 社区活动推荐单",
+        "subtitle": "轻量卡片，挑一个就出门",
         "printable": True,
         "generated_on": today or date.today().isoformat(),
         "pages": [page.to_dict()],

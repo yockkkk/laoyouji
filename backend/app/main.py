@@ -1,4 +1,4 @@
-"""老友记后端入口：uvicorn app.main:app --reload"""
+"""康乐后端入口：uvicorn app.main:app --reload"""
 from __future__ import annotations
 
 import logging
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     """
     ctx = get_app_context()  # 提前装配，启动即暴露配置错误
     logging.getLogger(__name__).info(
-        "老友记启动完成：llm=%s asr=%s storage=%s agents=%s",
+        "康乐启动完成：llm=%s asr=%s storage=%s agents=%s",
         ctx.registry.provider_name("llm"),
         ctx.registry.provider_name("asr"),
         ctx.settings.storage_backend,
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="老友记 · 老年人多智能体生活助手",
+        title="康乐 · 老年人健康生活多智能体助手",
         version="0.1.0",
         lifespan=lifespan,
     )

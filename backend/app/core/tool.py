@@ -61,11 +61,18 @@ DEFAULT_CONCURRENCY = 4
 
 # to_model_content 的实体字段白名单：多轮对话要引用的事实（车次、医院、
 # 医生、价格、时间、地点）。键名是工具结果的通用词表，不是某个工具的私有契约。
+#
+# ``level`` 在这里是**承重的**，不只是"顺便带上"：分诊档位
+# （保健/观察/建议就医/紧急）是主智能体决定下一步走哪条路的唯一依据
+# （见 main_agent SYSTEM_PROMPT 第 4 条"你照档位办事"）。它只写在工具结果的
+# summary 中文里的话，模型看到的就是一句人话、读不出结构，"照档位办事"落空 ——
+# 而落空的代价是不对称的：读不出"建议就医"就照保健处理，等于漏诊。
 _ENTITY_KEYS = {
     "id", "name", "doctor", "hospital", "department", "time_slot",
     "train_no", "flight_no", "price", "departure_time", "arrival_time",
     "origin", "destination", "seat_type", "date", "time", "city",
     "hotel_name", "address", "phone", "status", "confirmation_id",
+    "level",
 }
 _ENTITY_LIST_CAP = 5    # 列表最多给模型看前几项：够引用，不撑上下文
 _ENTITY_DEPTH_CAP = 3
@@ -98,16 +105,18 @@ class Tool:
     description: str                       # 供 LLM function-calling 的工具说明
     parameters: dict                       # JSON Schema（function calling 格式）
     handler: Callable[..., Awaitable[dict]]
-    # 生成子女端确认卡片的大白话摘要（仅高危工具有意义）
+    # 生成子女端确认卡片的大白话摘要（金融类确认卡；就医挂号已走
+    # ``appointment_notice`` 知会，不再经由确认卡）
     child_summary: Callable[[dict], str] | None = None
     agent: str = "common"                  # 归属子智能体，供路由与免责声明判定
-    # 高危/写操作设成 BARRIER：绝不允许两笔支付并发发出
+    # 高危/写操作设成 BARRIER：绝不允许两笔支付并发发出（含写操作串行；
+    # 与审批无关 —— 挂号也是 BARRIER，但它不等家人确认，只是不许并发）
     execution_mode: str = CONCURRENT
     timeout_s: float | None = None          # 覆盖全局单工具超时
     # 这个工具的结果在 AgentReport.data 里占哪个键。空 = 不进回报。
     # 交付物渲染器只认这些键（见 agents/plan_builder.py），所以键名就是契约：
     # search_hospital→hospital_options · register_appointment→appointment
-    # search_train→train_options · book_ticket→ticket · book_hotel→hotel …
+    # plan_route→route · get_weather→weather · push_activities→activities …
     report_key: str = ""
 
 

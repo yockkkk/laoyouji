@@ -57,6 +57,20 @@ class Settings(BaseSettings):
     risk_amount_threshold: float = 50.0
     confirm_timeout_min: int = 30
 
+    # 邮件送达通道：子女知会/告警的**跨设备兜底**（见 providers/external/mailer.py）。
+    # mail_provider=mock  → 不联网，邮件收进 local_data/mail_outbox.jsonl（默认）
+    # mail_provider=smtp  → 真投递；SMTP_HOST 留空会自动退回 mock，不是报错
+    # 之所以是邮件：App 是 WebView 壳，关掉就没有推送通道；厂商离线推送要企业
+    # 资质（平台决策②：不做），短信要签名报备。邮件零资质、真送达、与 app 开关无关。
+    mail_provider: str = "mock"  # smtp | mock
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""          # 留空则用 SMTP_USER
+    smtp_use_ssl: bool = True    # 465 隐式 SSL；其它端口走 STARTTLS
+    smtp_timeout_s: float = 10.0
+
     # 账号鉴权（开发环境请通过 .env 覆盖 JWT_SECRET）
     jwt_secret: str = ""
     jwt_access_minutes: int = 30

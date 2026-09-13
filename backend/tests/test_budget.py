@@ -195,7 +195,7 @@ def test_snapshot_is_the_shape_the_turn_end_event_carries():
 def test_tokens_come_from_the_provider_when_it_reports_them():
     """DeepSeek 会报 usage，报了就用它 —— 估算只是退路。"""
     reported = LLMResponse(content="好", usage={"total_tokens": 1234})
-    assert _tokens_of([{"role": "user", "content": "查明天去北京的高铁"}],
+    assert _tokens_of([{"role": "user", "content": "查明天去南京鼓楼医院的路线"}],
                       reported) == 1234
 
 
@@ -283,7 +283,9 @@ async def test_a_runaway_child_is_stopped_by_its_own_budget(ctx, elder):
     assert report.ok is True, "桩工具确实办成了事，预算耗尽不等于失败"
     # 无 report_key 的工具走兜底归档（按工具名），同名只留第一次
     assert report.data == {"probe": {"i": 1}}
-    assert report.missing == ["service_order"]
+    # 邻里帮承诺 ("activities", "call_action", "walk_route", "recipe")，
+    # 这一轮只跑了 probe，四项一个都没产出 —— missing 是"能报但没报"的提示，不是判决
+    assert report.missing == ["activities", "call_action", "walk_route", "recipe"]
 
 
 # ------------------------------------------------------------------ 单工具超时
