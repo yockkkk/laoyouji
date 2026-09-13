@@ -69,7 +69,8 @@ export default {
   /* 正文地板 20px —— 老人要读的字一律不低于此值 */
   font-size: $lyj-font-md;
   line-height: $lyj-line-height;
-  word-break: break-all;
+  overflow-wrap: break-word;
+  word-break: normal;
   white-space: pre-wrap;
 }
 .replay {

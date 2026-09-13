@@ -82,8 +82,8 @@
     }
   ],
   "tabBar": {
-    "color": "#8a8078",
-    "selectedColor": "#e8541e",
+    "color": "#5F758E",
+    "selectedColor": "#2A82E4",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "fontSize": "28rpx",
@@ -98,7 +98,7 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "康乐",
-    "navigationBarBackgroundColor": "#faf6f0",
-    "backgroundColor": "#faf6f0"
+    "navigationBarBackgroundColor": "#F2F7FD",
+    "backgroundColor": "#F2F7FD"
   }
 }

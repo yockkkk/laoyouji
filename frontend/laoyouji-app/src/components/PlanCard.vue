@@ -363,11 +363,11 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 16rpx;
-  background: linear-gradient(135deg, #e8541e 0%, #ff7836 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #3B99FC 100%);
   color: #ffffff;
   border: none;
   border-radius: 48rpx;
-  box-shadow: 0 6rpx 16rpx rgba(232, 84, 30, 0.28);
+  box-shadow: 0 6rpx 16rpx rgba(42, 130, 228, 0.28);
   cursor: pointer;
   padding: 0 32rpx;
   box-sizing: border-box;

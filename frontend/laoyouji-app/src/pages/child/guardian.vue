@@ -583,7 +583,7 @@ export default {
           lineCap: 'round',
         }).addTo(this.leafletMap)
         this.routePolyline = L.polyline(latlngs, {
-          color: '#2563eb', // 专业沉稳高德蓝
+          color: '#2A82E4', // 晴空浅天蓝主线
           weight: 7,
           opacity: 0.92,
           lineJoin: 'round',
@@ -892,11 +892,11 @@ export default {
 /* 行程选择器与多行程切换栏 */
 .trip-selector-box {
   margin: $lyj-space-sm $lyj-space-md;
-  background: #ffffff;
-  border-radius: 16rpx;
-  border: 1rpx solid #e2e8f0;
+  background: $lyj-card;
+  border-radius: $lyj-radius;
+  border: 2rpx solid $lyj-line;
   padding: 18rpx 20rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  box-shadow: $lyj-shadow-card;
 }
 .selector-head {
   display: flex;
@@ -914,33 +914,34 @@ export default {
 .selector-label {
   font-size: 28rpx;
   font-weight: 700;
-  color: #1e293b;
+  color: $lyj-child-text;
 }
 .picker-current-pill {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #eff6ff;
-  border: 1rpx solid #bfdbfe;
+  background: $lyj-primary-soft;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
   border-radius: 30rpx;
   padding: 6rpx 20rpx;
   cursor: pointer;
 }
 .picker-text {
   font-size: 26rpx;
-  color: #1d4ed8;
+  color: $lyj-primary-dark;
   font-weight: 700;
+  white-space: nowrap;
 }
 .picker-dropdown-icon {
   font-size: 22rpx;
-  color: #3b82f6;
+  color: $lyj-primary;
 }
 .trip-tags-scroll {
   width: 100%;
   white-space: nowrap;
   margin-top: 14rpx;
   padding-top: 10rpx;
-  border-top: 1rpx dashed #f1f5f9;
+  border-top: 1rpx dashed $lyj-line;
 }
 .trip-tags-wrap {
   display: flex;
@@ -950,20 +951,22 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  background: #f1f5f9;
-  border-radius: 10rpx;
+  background: $lyj-field;
+  border-radius: 12rpx;
   padding: 8rpx 16rpx;
-  border: 1rpx solid #e2e8f0;
+  border: 1rpx solid $lyj-line;
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .trip-tag-item.active {
-  background: #1e293b;
-  border-color: #1e293b;
+  background: $lyj-primary;
+  border-color: $lyj-primary;
 }
 .tag-name {
   font-size: 24rpx;
-  color: #475569;
+  color: $lyj-child-body;
   font-weight: 600;
 }
 .trip-tag-item.active .tag-name {
@@ -1039,15 +1042,15 @@ export default {
 .gaode-guard-card {
   position: relative;
   margin: $lyj-space-sm $lyj-space-md;
-  background: #ffffff;
-  border-radius: 20rpx;
+  background: $lyj-card;
+  border-radius: $lyj-radius;
   overflow: hidden;
-  border: 2rpx solid #e2e8f0;
-  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.06);
+  border: 2rpx solid $lyj-line;
+  box-shadow: $lyj-shadow-card;
 }
 .child-amap-canvas {
   width: 100%;
-  height: 580rpx;
+  height: 58vh;
   background: #f1f5f9;
 }
 .map-loading-overlay {
@@ -1083,7 +1086,7 @@ export default {
   line-height: 1.6;
 }
 .map-retry-btn {
-  background: #2563eb;
+  background: $lyj-primary;
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 700;
@@ -1190,14 +1193,16 @@ export default {
   gap: 10rpx;
 }
 .ctrl-btn {
-  background: #f1f5f9;
-  color: #334155;
-  border: 1rpx solid #cbd5e1;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
   border-radius: 20rpx;
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 700;
-  padding: 4rpx 16rpx;
+  padding: 6rpx 20rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 /* 模拟操作栏 */
@@ -1220,11 +1225,13 @@ export default {
   border-radius: 20rpx;
   padding: 2rpx 16rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .sim-pill-btn.normal {
-  background: #e0f2fe;
-  color: #0369a1;
-  border: 1rpx solid #bae6fd;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
 }
 .sim-pill-btn.warn {
   background: #fee2e2;
@@ -1401,10 +1408,16 @@ export default {
   cursor: pointer;
 }
 .inline-status {
-  font-size: $lyj-font-xs;
+  font-size: $lyj-font-sm;
   font-weight: 600;
-  padding: 4rpx 16rpx;
-  border-radius: 999rpx;
+  padding: 8rpx 20rpx;
+  border-radius: $lyj-radius-pill;
+  min-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 .inline-status.success {
   background: #dcfce7;
@@ -1416,27 +1429,36 @@ export default {
 }
 .pending-btns {
   display: flex;
-  gap: $lyj-space-xs;
+  align-items: center;
+  gap: $lyj-space-sm;
 }
 .btn-approve {
   background: #10b981;
   color: #ffffff;
-  font-size: $lyj-font-xs;
+  font-size: $lyj-font-sm;
   font-weight: 700;
   border: none;
-  border-radius: 8rpx;
-  padding: 0 20rpx;
-  min-height: 32px;
+  border-radius: $lyj-radius;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .btn-reject {
   background: #f1f5f9;
   color: #64748b;
-  font-size: $lyj-font-xs;
+  font-size: $lyj-font-sm;
   font-weight: 700;
   border: 1rpx solid #cbd5e1;
-  border-radius: 8rpx;
-  padding: 0 20rpx;
-  min-height: 32px;
+  border-radius: $lyj-radius;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .empty-card {
   margin: $lyj-space-md;

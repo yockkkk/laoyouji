@@ -19,13 +19,17 @@ export default {
  */
 @import './uni.scss';
 
-page {
+page, uni-page-body, body {
   background-color: $lyj-bg;
   font-size: $lyj-font-md; /* 20px 正文地板 */
   color: $lyj-text;
-  font-family: 'Nunito', 'Rounded Mplus 1c', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: $lyj-font-family;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button, input, textarea {
+  font-family: $lyj-font-family;
 }
 
 button {
@@ -62,30 +66,33 @@ input, textarea {
   }
 }
 
-/* 通用大按钮。高度按硬指标给到 80px —— 原来是 96rpx（48px），不够。 */
+/* 通用大按钮 */
 .btn-main {
   min-height: $lyj-btn-main;
   border-radius: $lyj-radius;
-  background: $lyj-primary;
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   color: $lyj-text-on;
   font-size: $lyj-font-md;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 8rpx 24rpx rgba(255, 107, 53, 0.25);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8rpx 24rpx rgba(42, 130, 228, 0.28);
+  letter-spacing: 1rpx;
 }
 
 .btn-main:active {
-  transform: scale(0.96);
-  box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.2);
+  transform: scale(0.97);
+  background: linear-gradient(135deg, $lyj-primary-dark 0%, $lyj-primary 100%);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.2);
 }
 
 .btn-main.disabled {
   background: $lyj-disabled;
   box-shadow: none;
   transform: none;
+  color: #7A8E9F;
 }
 
 .btn-ghost {
@@ -99,12 +106,12 @@ input, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-ghost:active {
   background: $lyj-primary-soft;
-  transform: scale(0.96);
+  transform: scale(0.97);
 }
 
 page, uni-page-body {
@@ -116,42 +123,89 @@ page, uni-page-body {
   border-radius: $lyj-radius;
   padding: $lyj-space-lg;
   margin: $lyj-space-md;
-  box-shadow: $lyj-shadow-card;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 8rpx 28rpx rgba(42, 130, 228, 0.08);
+  border: 2rpx solid $lyj-line;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:active {
   transform: translateY(2rpx);
-  box-shadow: 0 4rpx 12rpx rgba(43, 45, 66, 0.04);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.08);
 }
 
 /* #ifdef H5 */
-/* PC 桌面端宽屏自适应：统摄在 960px 舒适操作与阅读区，消除大面积空洞留白与背景撕裂 */
-@media screen and (min-width: 768px) {
+/* PC 桌面端：真机沙盒模拟容器（430px 居中标准手机比例，外围清爽灰蓝底，真机 100% 满屏原生适配） */
+@media screen and (min-width: 481px) {
   body {
-    background-color: #ede7de !important;
+    background-color: #E2EAF4 !important;
+    background-image: radial-gradient(#CBDCEE 1px, transparent 1px);
+    background-size: 20px 20px;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   uni-app {
-    max-width: 960px;
-    margin: 0 auto;
-    min-height: 100vh;
+    max-width: 430px;
+    width: 100%;
+    height: 100vh;
+    max-height: 920px;
+    margin: 16px auto;
     position: relative;
+    transform: translate(0, 0); /* 确立包含块 (Containing Block)，锁定 position: fixed 子元素于手机沙盒内 */
     background-color: $lyj-bg;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 20px 60px rgba(19, 36, 56, 0.16), 0 0 0 8px #D0DFEE;
+    border-radius: 36px;
+    overflow: hidden;
   }
   uni-page-head {
-    max-width: 960px;
+    max-width: 430px !important;
     left: 0 !important;
     right: 0 !important;
     margin: 0 auto !important;
   }
   uni-tabbar,
   .uni-tabbar {
-    max-width: 960px;
+    max-width: 430px !important;
     left: 0 !important;
     right: 0 !important;
     margin: 0 auto !important;
+    border-top: 1px solid #E1ECF7 !important;
+  }
+}
+
+/* 移动端真机 (<= 480px)：100% 满屏无缝贴合与安全区适配 */
+@media screen and (max-width: 480px) {
+  body {
+    background-color: $lyj-bg;
+    margin: 0;
+    padding: 0;
+  }
+  uni-app {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  uni-page-head {
+    max-width: 100% !important;
+  }
+  uni-tabbar,
+  .uni-tabbar {
+    max-width: 100% !important;
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 /* #endif */
+
+/* 全局安全区工具类 */
+.safe-area-bottom {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
 </style>

@@ -3,6 +3,14 @@ import uni from '@dcloudio/vite-plugin-uni'
 
 export default defineConfig({
   plugins: [uni()],
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+        silenceDeprecations: ['legacy-js-api', 'import'],
+      },
+    },
+  },
   server: {
     port: 5174, // 5173 被本机 zncp 项目的 vite 占着 ::1，localhost 会撞过去
     host: '0.0.0.0',

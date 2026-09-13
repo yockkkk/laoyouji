@@ -130,7 +130,7 @@
         <!-- 晨间问候：本机定时，后端没有接口（契约 §10.2）。改了立刻重排闹钟。 -->
         <view class="pref-row">
           <text class="pref-label">每天晨间问候</text>
-          <switch :checked="greetingEnabled" color="#FF6B35" @change="toggleGreeting" />
+          <switch :checked="greetingEnabled" color="#2A82E4" @change="toggleGreeting" />
         </view>
         <view class="pref-row">
           <text class="pref-label">问候时间</text>
@@ -555,7 +555,7 @@ export default {
 .profile-page {
   min-height: 100vh;
   background: $lyj-bg;
-  padding-bottom: $lyj-space-xl;
+  padding-bottom: calc(#{$lyj-tabbar-h} + #{$lyj-space-xl} + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 .topbar {
@@ -673,14 +673,18 @@ export default {
 .mini-btn {
   font-size: $lyj-font-sm;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .mini-btn.ok {
   background: $lyj-success;
   color: #fff;
 }
 .mini-btn.no {
-  background: $lyj-muted-bg;
+  background: $lyj-field;
   color: $lyj-text;
+  border: 2rpx solid $lyj-line;
 }
 .empty-note {
   font-size: $lyj-font-sm;
@@ -853,13 +857,5 @@ export default {
 }
 .guide-close {
   margin-top: $lyj-space-lg;
-}
-
-@media screen and (min-width: 768px) {
-  .profile-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 20rpx 40rpx 120rpx;
-  }
 }
 </style>

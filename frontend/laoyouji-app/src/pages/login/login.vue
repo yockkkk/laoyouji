@@ -272,7 +272,7 @@ export default {
 
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #FAF7F2 0%, #F5ECE3 100%);
+  background: linear-gradient(180deg, #F2F7FD 0%, #EBF4FE 100%);
   position: relative;
   overflow-x: hidden;
   box-sizing: border-box;
@@ -282,7 +282,7 @@ export default {
   padding: 40rpx 28rpx;
 }
 
-/* 顶部柔和暖阳微光 */
+/* 顶部柔和晴空微光 */
 .ambient-glow {
   position: absolute;
   top: -100rpx;
@@ -290,7 +290,7 @@ export default {
   transform: translateX(-50%);
   width: 720rpx;
   height: 480rpx;
-  background: radial-gradient(circle, rgba(255, 122, 61, 0.22) 0%, rgba(255, 220, 180, 0.08) 60%, transparent 100%);
+  background: radial-gradient(circle, rgba(42, 130, 228, 0.18) 0%, rgba(235, 244, 254, 0.08) 60%, transparent 100%);
   border-radius: 50%;
   pointer-events: none;
   filter: blur(48rpx);
@@ -329,12 +329,12 @@ export default {
 .brand-badge {
   width: 116rpx;
   height: 116rpx;
-  background: linear-gradient(135deg, #FF7A3D 0%, #E85D04 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   border-radius: 38rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14rpx 32rpx rgba(232, 93, 4, 0.28);
+  box-shadow: 0 14rpx 32rpx rgba(42, 130, 228, 0.28);
   border: 4rpx solid #FFFFFF;
 }
 
@@ -346,7 +346,7 @@ export default {
   position: absolute;
   width: 136rpx;
   height: 136rpx;
-  border: 2rpx dashed rgba(255, 107, 53, 0.38);
+  border: 2rpx dashed rgba(42, 130, 228, 0.38);
   border-radius: 46rpx;
   animation: rotateRing 24s linear infinite;
 }
@@ -374,13 +374,13 @@ export default {
 .brand-slogan {
   font-size: 32rpx;
   font-weight: 800;
-  color: #D9480F;
+  color: #1967C2;
   letter-spacing: 1rpx;
 }
 
 .slogan-divider {
   font-size: 28rpx;
-  color: #FFB38A;
+  color: #93C5FD;
 }
 
 .brand-desc {
@@ -396,13 +396,13 @@ export default {
   border-radius: 36rpx;
   padding: 36rpx 32rpx;
   box-shadow: 0 16rpx 48rpx rgba(71, 55, 41, 0.08), 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
-  border: 2rpx solid #EFE6DA;
+  border: 2rpx solid #E1ECF7;
 }
 
 /* 模式 Tabs */
 .mode-tabs {
   display: flex;
-  background: #F5EFE8;
+  background: #F2F7FD;
   border-radius: 20rpx;
   padding: 6rpx;
   margin-bottom: 32rpx;
@@ -423,7 +423,7 @@ export default {
 
 .tab-item.active {
   background: #FFFFFF;
-  color: #D9480F;
+  color: #2A82E4;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
@@ -457,13 +457,13 @@ export default {
 }
 
 .role-elder {
-  background: linear-gradient(135deg, #FFF9F3 0%, #FFF2E3 100%);
-  border-color: #FED7AA;
+  background: linear-gradient(135deg, #F8FAFC 0%, #EDF4FB 100%);
+  border-color: #CCE2F8;
 }
 
 .role-elder:hover {
-  border-color: #FDBA74;
-  box-shadow: 0 8rpx 20rpx rgba(255, 107, 53, 0.12);
+  border-color: #93C5FD;
+  box-shadow: 0 8rpx 20rpx rgba(42, 130, 228, 0.12);
 }
 
 .role-child {
@@ -494,8 +494,8 @@ export default {
 }
 
 .elder-avatar {
-  background: #FFE8D6;
-  border: 2rpx solid #FED7AA;
+  background: #EBF4FE;
+  border: 2rpx solid #CCE2F8;
 }
 
 .child-avatar {
@@ -534,8 +534,8 @@ export default {
 }
 
 .elder-tag {
-  background: #FFEDD5;
-  color: #C2410C;
+  background: #EBF4FE;
+  color: #1967C2;
 }
 
 .child-tag {
@@ -575,9 +575,9 @@ export default {
 }
 
 .elder-btn {
-  background: #FF6B35;
+  background: #2A82E4;
   color: #FFFFFF;
-  box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
 }
 
 .child-btn {
@@ -630,8 +630,8 @@ export default {
 
 .input-wrapper.focused {
   background: #FFFFFF;
-  border-color: #FF6B35;
-  box-shadow: 0 0 0 6rpx rgba(255, 107, 53, 0.14);
+  border-color: #2A82E4;
+  box-shadow: 0 0 0 6rpx rgba(42, 130, 228, 0.14);
 }
 
 .input-icon {
@@ -663,13 +663,13 @@ export default {
 .submit-button {
   width: 100%;
   height: 104rpx;
-  background: linear-gradient(135deg, #FF7A3D 0%, #E85D04 100%);
+  background: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
   border-radius: 22rpx;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(232, 93, 4, 0.3);
+  box-shadow: 0 8rpx 24rpx rgba(42, 130, 228, 0.28);
   margin-top: 10rpx;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -677,7 +677,7 @@ export default {
 
 .submit-button:active {
   transform: translateY(2rpx);
-  box-shadow: 0 4rpx 12rpx rgba(232, 93, 4, 0.25);
+  box-shadow: 0 4rpx 12rpx rgba(42, 130, 228, 0.25);
 }
 
 .submit-text {
@@ -703,7 +703,7 @@ export default {
 .prompt-link {
   font-size: 28rpx;
   font-weight: 700;
-  color: #FF6B35;
+  color: #2A82E4;
   cursor: pointer;
 }
 
@@ -720,7 +720,7 @@ export default {
   gap: 10rpx;
   padding: 10rpx 20rpx;
   background: rgba(255, 255, 255, 0.65);
-  border: 1rpx solid #E7DFD5;
+  border: 1rpx solid #E1ECF7;
   border-radius: 999rpx;
 }
 

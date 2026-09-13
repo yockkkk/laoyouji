@@ -46,12 +46,12 @@ export default {
   margin: $lyj-space-xs $lyj-space-md 0;
   padding: 10rpx 22rpx 10rpx 18rpx;
   border-radius: $lyj-radius-pill;
-  background: rgba(120, 90, 70, 0.08);
+  background: rgba(42, 130, 228, 0.08);
   color: $lyj-text-light;
   align-self: flex-start;
 }
 .lyj-back.pressed {
-  background: rgba(120, 90, 70, 0.18);
+  background: rgba(42, 130, 228, 0.18);
 }
 .arrow {
   font-size: 52rpx;

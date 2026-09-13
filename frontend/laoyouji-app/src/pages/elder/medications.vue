@@ -212,7 +212,7 @@ export default {
 .med-page {
   min-height: 100vh;
   background: $lyj-bg;
-  padding-bottom: $lyj-space-xl;
+  padding-bottom: calc(#{$lyj-tabbar-h} + #{$lyj-space-xl} + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 .topbar {
@@ -284,17 +284,28 @@ export default {
 }
 .med-head {
   display: flex;
-  align-items: baseline;
-  gap: $lyj-space-md;
+  align-items: center;
+  justify-content: space-between;
+  gap: $lyj-space-sm;
 }
 .drug {
-  font-size: $lyj-font-lg;
+  flex: 1;
+  min-width: 0;
+  font-size: 40rpx;
   font-weight: 700;
   color: $lyj-text;
+  word-break: break-word;
 }
 .dose {
-  font-size: $lyj-font-md;
-  color: $lyj-text-light;
+  flex-shrink: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  font-size: $lyj-font-sm;
+  color: $lyj-primary;
+  background: $lyj-primary-soft;
+  border-radius: 12rpx;
+  padding: 4rpx 16rpx;
+  font-weight: 600;
 }
 .notes {
   display: block;
@@ -331,10 +342,13 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text;
+  white-space: nowrap;
 }
 .slot-state {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .slot.taken .slot-state {
   color: $lyj-success;
@@ -348,6 +362,8 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
   padding: 10rpx;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .del-btn.busy {
   opacity: 0.5;
@@ -364,6 +380,8 @@ export default {
   border-radius: $lyj-radius-pill;
   font-size: $lyj-font-lg;
   font-weight: 700;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 /* Modal styles */
@@ -416,13 +434,5 @@ export default {
 .modal-btn.confirm {
   background: $lyj-primary;
   color: white;
-}
-
-@media screen and (min-width: 768px) {
-  .med-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 20rpx 40rpx 120rpx;
-  }
 }
 </style>

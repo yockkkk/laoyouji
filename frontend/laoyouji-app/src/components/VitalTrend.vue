@@ -96,6 +96,7 @@ export default {
   border-radius: $lyj-radius;
   padding: $lyj-space-md;
   margin-bottom: $lyj-space-md;
+  box-shadow: $lyj-shadow-card;
 }
 .trend-head {
   display: flex;
@@ -112,6 +113,9 @@ export default {
   font-weight: 700;
   padding: 4rpx 16rpx;
   border-radius: $lyj-radius-pill;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .trend-tag.rising {
   color: $lyj-danger;
@@ -173,10 +177,13 @@ export default {
   font-size: $lyj-font-xl;
   font-weight: 800;
   color: $lyj-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .trend-normal {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 </style>

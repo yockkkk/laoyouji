@@ -575,12 +575,4 @@ export default {
   color: $lyj-text-light;
   line-height: $lyj-line-height;
 }
-
-@media screen and (min-width: 768px) {
-  .health-page {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 20rpx 40rpx 120rpx;
-  }
-}
 </style>

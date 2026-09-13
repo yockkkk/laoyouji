@@ -385,7 +385,7 @@ export default {
         lineCap: 'round',
       }).addTo(this.leafletMap)
       this.routePolyline = L.polyline(latlngs, {
-        color: '#2563eb', // 沉稳高对比鲜艳蓝
+        color: '#2A82E4', // 晴空天蓝主品牌色
         weight: 7,
         opacity: 0.95,
         lineJoin: 'round',
@@ -542,8 +542,8 @@ export default {
 
 .route-page {
   min-height: 100vh;
-  background: #faf6f0;
-  padding-bottom: 60rpx;
+  background: $lyj-bg;
+  padding-bottom: calc(#{$lyj-space-xl} + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 
@@ -554,7 +554,7 @@ export default {
   justify-content: space-between;
   padding: 24rpx 24rpx 16rpx;
   background: #ffffff;
-  border-bottom: 2rpx solid #e2dcd5;
+  border-bottom: 2rpx solid $lyj-line;
   min-height: 100rpx;
 }
 .nav-back-btn {
@@ -563,10 +563,10 @@ export default {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #f1ede6;
-  color: #1e293b;
+  background: $lyj-card;
+  color: $lyj-text;
   border-radius: 48rpx;
-  border: none;
+  border: 2rpx solid $lyj-line;
   padding: 0 24rpx;
   margin: 0;
   cursor: pointer;
@@ -583,17 +583,17 @@ export default {
 .nav-title {
   font-size: 38rpx;
   font-weight: 800;
-  color: #1e293b;
+  color: $lyj-text;
 }
 .nav-speak-btn {
   min-height: 96rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #fff3eb;
-  color: #e8541e;
+  background: $lyj-primary-soft;
+  color: $lyj-primary;
   border-radius: 48rpx;
-  border: 2rpx solid #ffccb3;
+  border: 2rpx solid rgba(42, 130, 228, 0.25);
   padding: 0 28rpx;
   margin: 0;
   cursor: pointer;
@@ -654,7 +654,8 @@ export default {
   padding: 24rpx;
   background: #ffffff;
   border-radius: 24rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+  border: 2rpx solid $lyj-line;
+  box-shadow: $lyj-shadow-card;
 }
 .summary-line {
   display: flex;
@@ -698,18 +699,18 @@ export default {
   font-weight: 600;
 }
 
-/* 高德地图容器 */
+/* 高德地图容器 (58% 黄金分屏比例) */
 .map-section {
   position: relative;
   margin: 0 24rpx 24rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.08);
-  border: 2rpx solid #e2e8f0;
+  box-shadow: $lyj-shadow-card;
+  border: 2rpx solid $lyj-line;
 }
 .amap-box {
   width: 100%;
-  height: 520rpx;
+  height: 58vh;
   background: #e2e8f0;
 }
 .map-loading-mask {
@@ -736,7 +737,7 @@ export default {
 .map-retry-btn {
   margin-top: 16rpx;
   min-height: 72rpx;
-  background: #2563eb;
+  background: $lyj-primary;
   color: #ffffff;
   font-size: 28rpx;
   font-weight: 700;
@@ -815,14 +816,14 @@ export default {
   border-radius: 20rpx;
   padding: 24rpx;
   margin-bottom: 20rpx;
-  border: 2rpx solid #f1ede6;
-  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.03);
+  border: 2rpx solid $lyj-line;
+  box-shadow: $lyj-shadow-card;
   transition: all 0.2s ease;
 }
 .step-card.active {
-  border-color: #2563eb;
-  background: #f8faff;
-  box-shadow: 0 6rpx 16rpx rgba(37, 99, 235, 0.1);
+  border-color: $lyj-primary;
+  background: $lyj-primary-soft;
+  box-shadow: 0 6rpx 16rpx rgba(42, 130, 228, 0.12);
 }
 .step-card-head {
   display: flex;
@@ -834,7 +835,7 @@ export default {
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
-  background: #2563eb;
+  background: $lyj-primary;
   color: #ffffff;
   font-size: 26rpx;
   font-weight: 800;
@@ -850,10 +851,10 @@ export default {
   color: #1e293b;
 }
 .step-audio-btn {
-  background: #eff6ff;
-  color: #2563eb;
+  background: $lyj-primary-soft;
+  color: $lyj-primary;
   border-radius: 30rpx;
-  border: 1rpx solid #bfdbfe;
+  border: 1rpx solid rgba(42, 130, 228, 0.3);
   font-size: 22rpx;
   font-weight: 700;
   padding: 4rpx 16rpx;

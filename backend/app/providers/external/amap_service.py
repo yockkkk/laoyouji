@@ -540,8 +540,13 @@ class AmapWebClient:
                 plan = await self.plan_driving_2(orig_coords, dest_coords)
 
         if plan:
+            orig_name = origin
+            if is_home(origin) and elder_city:
+                h = (load_fixture("hospitals").get("elder_homes") or {}).get(elder_city)
+                if h and h.get("name"):
+                    orig_name = h["name"]
             points = [
-                {"location": origin, "lng": orig_coords[0], "lat": orig_coords[1], "desc": "起点"},
+                {"location": orig_name, "lng": orig_coords[0], "lat": orig_coords[1], "desc": "起点"},
                 {"location": destination, "lng": dest_coords[0], "lat": dest_coords[1], "desc": "终点"},
             ]
             return {

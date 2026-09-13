@@ -375,7 +375,7 @@ export default {
       if (this.isDesktop) {
         return this.treeExpanded ? '智能体链路 [收起]' : '智能体链路 [展开]'
       }
-      return '智能体链路'
+      return this.treeDrawerVisible ? '链路 [收起]' : '智能体链路'
     },
     currentAgent() {
       for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -467,18 +467,10 @@ export default {
   },
   methods: {
     _updateViewport() {
-      const wasDesktop = this.isDesktop
-      if (typeof window !== 'undefined') {
-        this.isDesktop = window.innerWidth >= 768
-      } else {
-        try {
-          const info = uni.getSystemInfoSync()
-          this.isDesktop = (info.windowWidth || 0) >= 768
-        } catch (e) {}
-      }
-      if (!wasDesktop && this.isDesktop) {
-        this.closeDrawer()
-      }
+      // 430px PC 沙盒与手机端真机统一：长辈端采用专注全宽消息流与底部向上滑出的抽屉卡片 (Bottom Sheet)，
+      // 确保单列适老大字气泡不受挤压
+      this.isDesktop = false
+      this.treeExpanded = false
     },
 
     normalizeAgent(agent) {
@@ -1359,6 +1351,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   /* #endif */
   /* #ifndef H5 */
   height: 100vh;
@@ -1524,10 +1518,10 @@ export default {
   background: $lyj-bg;
 }
 .stream-inner {
-  padding: $lyj-space-md 0 40rpx;
+  padding: 16rpx 0 16rpx;
 }
 .bottom-anchor {
-  height: 40rpx;
+  height: 16rpx;
 }
 
 /* 历史记录弹层：模板用了很久但一条样式都没有 —— 裸元素盖在页面上既点不准
@@ -1538,6 +1532,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   background: rgba($lyj-text, 0.45);
   display: flex;
   align-items: center;
@@ -1716,6 +1712,8 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 430px;
+  margin: 0 auto;
   background: rgba(15, 23, 42, 0.55);
   z-index: 150;
   display: flex;
@@ -1773,80 +1771,6 @@ export default {
   to { opacity: 1; }
 }
 
-/* 电脑端宽屏自适应：双栏工作台架构 (R1) */
-@media screen and (min-width: 768px) {
-  .chat-page {
-    max-width: 960px;
-    left: 0 !important;
-    right: 0 !important;
-    margin: 0 auto !important;
-    border-left: 2rpx solid $lyj-line;
-    border-right: 2rpx solid $lyj-line;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
-    transition: max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .chat-page.split-mode {
-    max-width: 1600px !important;
-    width: 98vw;
-  }
-
-  .workbench-body.workbench-split {
-    display: flex;
-    flex-direction: row;
-  }
-
-  .workbench-body.workbench-split .workbench-chat-pane {
-    flex: 1.15;
-    border-right: 2rpx solid $lyj-line;
-    max-width: 58%;
-    min-width: 340px;
-  }
-
-  .workbench-tree-pane {
-    flex: 1;
-    min-width: 380px;
-    max-width: 50%;
-    height: 100%;
-    overflow: hidden;
-    background: #ffffff;
-    box-shadow: -4rpx 0 20rpx rgba(0, 0, 0, 0.03);
-    animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @media screen and (max-width: 1024px) {
-    .workbench-body.workbench-split .workbench-chat-pane {
-      flex: 1;
-      min-width: 300px;
-      max-width: 54%;
-    }
-    .workbench-tree-pane {
-      flex: 1;
-      min-width: 320px;
-      max-width: 50%;
-    }
-  }
-
-  .topbar {
-    padding: 24rpx 32rpx;
-  }
-  .stream-inner {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 24rpx 20rpx 40rpx;
-  }
-  .input-bar {
-    max-width: 860px;
-    margin: 0 auto;
-  }
-}
-
-/* 超宽 4K 屏幕优化：适度延展双栏宽度 */
-@media screen and (min-width: 2560px) {
-  .chat-page.split-mode {
-    max-width: 1800px !important;
-  }
-}
 
 /* 移动端狭窄屏自适应 (< 480px / 375px / 360px)：防止顶栏按钮折行和截断 */
 @media screen and (max-width: 480px) {

@@ -193,7 +193,7 @@ export default {
   align-items: center;
   justify-content: center;
   gap: $lyj-space-xs;
-  box-shadow: 0 10rpx 30rpx rgba(232, 84, 30, 0.4);
+  box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.4);
   transition: transform 0.15s;
   user-select: none;
 }
@@ -207,9 +207,9 @@ export default {
   animation: pulse 1.5s infinite ease-in-out;
 }
 @keyframes pulse {
-  0% { box-shadow: 0 10rpx 30rpx rgba(232, 84, 30, 0.4); }
-  50% { box-shadow: 0 10rpx 50rpx rgba(232, 84, 30, 0.8); }
-  100% { box-shadow: 0 10rpx 30rpx rgba(232, 84, 30, 0.4); }
+  0% { box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.4); }
+  50% { box-shadow: 0 10rpx 50rpx rgba(42, 130, 228, 0.8); }
+  100% { box-shadow: 0 10rpx 30rpx rgba(42, 130, 228, 0.4); }
 }
 .mic.disabled {
   filter: grayscale(0.8);
@@ -245,7 +245,7 @@ export default {
     flex-direction: row;
     justify-content: center;
     gap: $lyj-space-sm;
-    box-shadow: 0 4rpx 16rpx rgba(232, 84, 30, 0.25);
+    box-shadow: 0 4rpx 16rpx rgba(42, 130, 228, 0.25);
     .mic-icon {
       font-size: 48rpx;
     }
@@ -261,7 +261,7 @@ export default {
     background: $lyj-primary-soft;
     color: $lyj-primary;
     transform: scale(1.02);
-    box-shadow: 0 4rpx 20rpx rgba(232, 84, 30, 0.4);
+    box-shadow: 0 4rpx 20rpx rgba(42, 130, 228, 0.4);
   }
   .interim {
     position: absolute;

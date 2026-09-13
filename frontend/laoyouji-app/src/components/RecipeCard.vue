@@ -120,7 +120,14 @@ export default {
   background: $lyj-primary-soft;
   color: $lyj-primary-dark;
   font-weight: 600;
+  white-space: nowrap;
+  word-break: keep-all;
+
+  &.time {
+    font-variant-numeric: tabular-nums;
+  }
 }
+
 
 .block {
   margin-top: $lyj-space-md;
@@ -159,6 +166,7 @@ export default {
   color: $lyj-primary-dark;
   font-size: $lyj-font-sm;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .step-text {

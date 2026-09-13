@@ -311,8 +311,9 @@ async def test_home_point_agrees_across_three_sources(city):
 
 
 @pytest.mark.asyncio
-async def test_amap_bare_home_plus_city_plans_and_detects_cross_city():
+async def test_amap_bare_home_plus_city_plans_and_detects_cross_city(monkeypatch):
     """裸"家" + 城市上下文：同城画得出线，去了外地照样按跨城拦下。"""
+    monkeypatch.setattr(AmapWebClient, "_http_get", lambda *a, **k: None)
     client = AmapWebClient()
 
     # 老人在北京：从家去积水潭医院是本市的一趟，起点必须是北京的家门口
@@ -448,8 +449,9 @@ async def test_amap_dispatch_by_mode(monkeypatch, mode, expected):
 
 
 @pytest.mark.asyncio
-async def test_amap_intracity_route_planning():
+async def test_amap_intracity_route_planning(monkeypatch):
     """市内就医出行：连不上高德时落回演示路线库，三种走法都不许留白。"""
+    monkeypatch.setattr(AmapWebClient, "_http_get", lambda *a, **k: None)
     client = AmapWebClient()
     for mode in ("", "公交", "地铁", "步行"):
         route = await client.plan_route(_HOME, _GULOU, mode)

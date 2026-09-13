@@ -149,9 +149,9 @@ export function ensureAmapMarkerStyles() {
 .elder-map-marker.badge-station{background:#2563eb;}
 .elder-map-marker.badge-end{background:#ef4444;}
 .elder-live-pulse-marker{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;}
-.elder-live-pulse-marker .pulse-ring{position:absolute;width:50px;height:50px;border-radius:50%;background:rgba(232,84,30,.35);animation:elderBreathe 1.8s infinite ease-out;}
+.elder-live-pulse-marker .pulse-ring{position:absolute;width:50px;height:50px;border-radius:50%;background:rgba(42,130,228,.35);animation:elderBreathe 1.8s infinite ease-out;}
 @keyframes elderBreathe{0%{transform:scale(.6);opacity:1;}100%{transform:scale(1.6);opacity:0;}}
-.elder-live-pulse-marker .pulse-core{position:relative;z-index:2;background:#e8541e;color:#fff;font-size:12px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;}
+.elder-live-pulse-marker .pulse-core{position:relative;z-index:2;background:#2A82E4;color:#fff;font-size:12px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;}
 /* —— 子女端 guardian 标记 —— */
 .child-map-station-badge{display:inline-block;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;line-height:1.2;color:#fff;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:auto;}
 .child-elder-breathe-marker{position:relative;width:90px;height:40px;display:flex;align-items:center;justify-content:center;}

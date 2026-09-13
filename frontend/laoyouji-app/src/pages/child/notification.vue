@@ -462,9 +462,11 @@ export default {
 .sub {
   font-size: $lyj-font-sm;
   color: $lyj-child-head-sub;
+  white-space: nowrap;
 }
 .refresh {
-  min-height: $lyj-hit-min;
+  min-height: 88rpx;
+  line-height: 88rpx;
   display: flex;
   align-items: center;
   background: rgba(255, 255, 255, 0.15);
@@ -472,6 +474,10 @@ export default {
   font-size: $lyj-font-sm;
   border-radius: $lyj-radius;
   margin: 0 0 0 $lyj-space-md;
+  padding: 0 28rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .sections-grid {
   display: flex;
@@ -482,6 +488,7 @@ export default {
   border-radius: $lyj-radius;
   margin: $lyj-space-sm $lyj-space-md;
   padding: $lyj-space-md;
+  border: 2rpx solid $lyj-line;
   box-shadow: $lyj-shadow-card;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
@@ -545,7 +552,8 @@ export default {
 .confirm-amount {
   font-size: $lyj-font-md;
   font-weight: 800;
-  color: #dc2626;
+  color: $lyj-danger;
+  font-variant-numeric: tabular-nums;
 }
 .confirm-reason {
   font-size: $lyj-font-sm;
@@ -556,6 +564,8 @@ export default {
   font-size: $lyj-font-xs;
   color: $lyj-child-muted;
   margin-top: 2rpx;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .confirm-action-bar {
   display: flex;
@@ -568,6 +578,7 @@ export default {
   font-size: $lyj-font-sm;
   color: $lyj-primary;
   cursor: pointer;
+  white-space: nowrap;
 }
 .pending-btns {
   display: flex;
@@ -580,10 +591,13 @@ export default {
   font-size: $lyj-font-sm;
   font-weight: 600;
   border-radius: $lyj-radius;
-  padding: 0 24rpx;
-  min-height: 60rpx;
-  line-height: 60rpx;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .reject-btn {
   background: #e5e7eb !important;
@@ -591,18 +605,25 @@ export default {
   font-size: $lyj-font-sm;
   font-weight: 600;
   border-radius: $lyj-radius;
-  padding: 0 24rpx;
-  min-height: 60rpx;
-  line-height: 60rpx;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .inline-status {
   display: flex;
   align-items: center;
   font-size: $lyj-font-sm;
   font-weight: 600;
-  padding: 6rpx 16rpx;
+  padding: 8rpx 20rpx;
   border-radius: $lyj-radius-pill;
+  min-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .inline-status.success {
   background: #dcfce7;
@@ -667,6 +688,8 @@ export default {
 .notif-time {
   font-size: $lyj-font-xs;
   color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 /* 告警条 */
 .alert-item {
@@ -694,6 +717,7 @@ export default {
 .alert-meta {
   font-size: $lyj-font-sm;
   color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
 }
 /* 家庭邀请条 */
 .member-item {
@@ -718,36 +742,28 @@ export default {
 }
 .member-actions {
   display: flex;
+  align-items: center;
   gap: $lyj-space-xs;
 }
 .mini-btn {
   font-size: $lyj-font-sm;
+  font-weight: 600;
   margin: 0;
-  border-radius: $lyj-radius-pill;
+  border-radius: $lyj-radius;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  padding: 0 32rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .mini-btn.ok {
   background: $lyj-success;
   color: #fff;
 }
 .mini-btn.no {
-  background: $lyj-muted-bg;
+  background: $lyj-field;
   color: $lyj-text;
-}
-
-@media screen and (min-width: 768px) {
-  .notification-page {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 30rpx 32rpx 100rpx;
-  }
-  .sections-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24rpx;
-    align-items: start;
-  }
-  .section {
-    margin: 0;
-  }
+  border: 1rpx solid $lyj-line;
 }
 </style>

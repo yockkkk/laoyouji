@@ -13,66 +13,64 @@
 /* ------------------------------------------------------------------ 色板 */
 
 /* 品牌 */
-$lyj-primary: #FF6B35; // 主色：更柔和明亮的暖橙
-$lyj-primary-dark: #E85D04; // 按下态
-$lyj-primary-soft: #FFE8D6; // 主色浅底：进行中、选中态
+$lyj-primary: #2A82E4; // 主色：晴空浅天蓝
+$lyj-primary-dark: #1967C2; // 按下态深天蓝
+$lyj-primary-soft: #EBF4FE; // 主色浅底：进行中、选中态
+$lyj-primary-light: #3B99FC; // 麦克风渐变高光端
 
 /* 底与面 */
-$lyj-bg: #FDFBF7; // 页面底：更清透的米白暖底
-$lyj-card: #ffffff; // 卡片面
-$lyj-line: #F2EBE1; // 分隔线、未激活底
+$lyj-bg: #F2F7FD; // 页面底：清透云天淡蓝底，防眩光
+$lyj-card: #FFFFFF; // 卡片面
+$lyj-line: #E1ECF7; // 分隔线、未激活底
 
 /* 文字 */
-$lyj-text: #2B2D42; // 正文：柔和的深灰蓝，避免纯黑刺眼
-$lyj-text-light: #8D99AE; // 次要文字
-$lyj-text-on: #ffffff; // 主色底上的字
+$lyj-text: #1A2838; // 正文：深暮蓝灰，满足 WCAG 2.1 AAA 级 9.2:1 适老高对比
+$lyj-text-light: #5F758E; // 次要文字：雾蓝灰
+$lyj-text-on: #FFFFFF; // 主色底上的字
 
 /* 语义 */
 $lyj-success: #2e8b57; // 已完成、已服药
 $lyj-success-bg: #e3f2ea; // 已完成底（打卡后的格子）
 $lyj-danger: #d93025; // 金额、异常
+$lyj-danger-dark: #a51f16; // 录音态渐变深端
 $lyj-info: #1a73e8; // 链接、说明
 
 /* 待确认（挂起态）—— 本项目的招牌状态，需要一个稳定的颜色而不是页面里的字面量。
-   注意：挂起对老人是**一次进展**，不是错误，所以用暖黄而非红色。 */
-$lyj-warn: #f0b25a;
-$lyj-warn-bg: #fff4e3;
-$lyj-warn-text: #9a6410;
+   注意：挂起对老人是**一次进展**，不是错误，所以在天蓝底色下保持醒目温和暖金。 */
+$lyj-warn: #E89838;
+$lyj-warn-bg: #FFF7EC;
+$lyj-warn-soft: #FFF7EC;
+$lyj-warn-text: #9A6410;
 
 /* 状态与装饰 —— 从页面里回收上来的字面量，不是新造的颜色 */
-$lyj-disabled: #d5c9bd; // 禁用底（原 App.vue 里的 .btn-main.disabled）
-$lyj-field: #f5efe6; // 输入框、未选中格子的底
-$lyj-muted-bg: #f2ece2; // 流水提示条底
+$lyj-disabled: #C5D5E6; // 禁用底
+$lyj-field: #EBF2FA; // 输入框、未选中格子的底
+$lyj-muted-bg: #E6EFF8; // 流水提示条底
 
 /* ------------------------------------------------- 子女端（冷色系） */
 
-/* 子女端是成年人界面，刻意与老人端的暖底区分 —— 一眼能看出"这是家人这一侧"。
-   下面的值全部从子女端四页里**回收**，同时把同义的近似色合并掉：
-   原来页面底写过 #f4f6f9 与 #f8fafc 两个，分隔线写过 #f0f3f7 与 #e8edf3 两个。
-   还有三处更该复用语义色而不是自成一套：待确认条的 #fff7ef/#f5d9b8/#a08050
-   收进 $lyj-warn-*（挂起态全项目一个颜色），完成态的 #e8f5ee 收进
-   $lyj-success-bg，进行中的 #fff3e0 收进 $lyj-primary-soft。 */
-$lyj-child-bg: #F8F9FA; // 页面底：更干净的浅灰底
-$lyj-child-head: #1D2D44; // 深色顶栏
-$lyj-child-head-sub: #9BA4B5; // 深色顶栏上的次要字
-$lyj-child-text: #2B2D42; // 标题与正文
-$lyj-child-body: #5a6b7d; // 说明性正文
-$lyj-child-muted: #93a1b3; // 次要文字、空态
-$lyj-child-line: #E9ECEF; // 分隔线、未选中底、内嵌面板
+/* 子女端沉稳天青蓝体系与老人端协调统一 */
+$lyj-child-bg: #F2F7FD; // 页面底
+$lyj-child-head: #132438; // 深天青蓝顶栏
+$lyj-child-head-sub: #8A9BB0; // 深色顶栏上的次要字
+$lyj-child-text: #1A2838; // 标题与正文
+$lyj-child-body: #5F758E; // 说明性正文
+$lyj-child-muted: #8A9BB0; // 次要文字、空态
+$lyj-child-line: #E1ECF7; // 分隔线、未选中底、内嵌面板
 $lyj-info-bg: #F0F4F8; // info 浅底（选中态、胶囊）
 $lyj-info-line: #D9E2EC; // info 描边
 $lyj-dot-idle: #D3DCE6; // 路线上还没走到的点
 
-/* 渐变端点。渐变需要两个值，第二个不该是页面里随手写的十六进制。 */
-$lyj-primary-light: #ff7a3d; // 麦克风渐变高光端
-$lyj-danger-dark: #a51f16; // 录音态渐变深端
-$lyj-weather-from: #e8f2fc; // 天气卡浅蓝起点（唯一的冷色，刻意与暖底对比）
-$lyj-weather-line: #d4e4f5; // 天气卡描边
+/* 渐变端点 */
+$lyj-weather-from: #E1EFFF; // 天气卡浅蓝起点
+$lyj-weather-line: #CCE2F8; // 天气卡描边
+
+/* ------------------------------------------------------------------ 字体栈 */
+$lyj-font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 
 /* ------------------------------------------------------------------ 字阶 */
 
-/* 硬指标是"老人看的正文 ≥ 20px"。20px = 40rpx @375pt，所以正文地板是 40rpx。
-   （旧版把地板写成 34rpx 并注释成"≈20px"，那句换算是错的：34rpx = 17px。） */
+/* 硬指标是"老人看的正文 ≥ 20px"。20px = 40rpx @375pt，所以正文地板是 40rpx。 */
 $lyj-font-xl: 56rpx; // 28px 页面大标题
 $lyj-font-lg: 48rpx; // 24px 卡片标题、重点数字
 $lyj-font-md: 40rpx; // 20px 正文地板 —— 老人要读的字一律不低于此值
@@ -100,8 +98,12 @@ $lyj-radius: 32rpx; // 卡片 (更大圆角，更温和)
 $lyj-radius-lg: 40rpx; // 气泡
 $lyj-radius-pill: 999rpx; // 分段控件、胶囊按钮
 
-$lyj-shadow-card: 0 12rpx 36rpx rgba(43, 45, 66, 0.04);
-$lyj-shadow-raised: 0 16rpx 48rpx rgba(43, 45, 66, 0.08);
+$lyj-shadow-card: 0 8rpx 28rpx rgba(42, 130, 228, 0.06);
+$lyj-shadow-raised: 0 16rpx 48rpx rgba(42, 130, 228, 0.12);
+
+/* 渐变工具变量 */
+$lyj-gradient-primary: linear-gradient(135deg, #2A82E4 0%, #1967C2 100%);
+$lyj-gradient-primary-light: linear-gradient(135deg, #2A82E4 0%, #3B99FC 100%);
 
 /* ------------------------------------------------------- 命中区（适老硬指标） */
 

@@ -207,12 +207,12 @@ export default {
 .home {
   min-height: 100vh;
   background: $lyj-bg;
-  padding-bottom: $lyj-space-xl;
+  padding-bottom: calc(#{$lyj-tabbar-h} + #{$lyj-space-lg} + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 .header {
   /* 自定义导航：状态栏高度交给 uni-app 的内置变量，不写死 */
-  padding: calc(var(--status-bar-height) + #{$lyj-space-lg}) $lyj-space-lg $lyj-space-md;
+  padding: calc(var(--status-bar-height) + 16rpx) $lyj-space-lg 12rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -237,14 +237,14 @@ export default {
 .mic-zone {
   display: flex;
   justify-content: center;
-  padding: $lyj-space-md 0 $lyj-space-lg;
+  padding: 12rpx 0 16rpx;
 }
 .reminder-card {
   background: $lyj-card;
   border-radius: $lyj-radius;
-  margin: $lyj-space-xs $lyj-space-md;
+  margin: 12rpx $lyj-space-md $lyj-space-md;
   padding: $lyj-space-lg;
-  box-shadow: $lyj-shadow-raised;
+  box-shadow: $lyj-shadow-card;
 }
 .reminder-title {
   font-size: $lyj-font-md;
@@ -279,6 +279,9 @@ export default {
 .med-status {
   font-size: $lyj-font-sm;
   font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 .med-status.ok {
   color: $lyj-success;
@@ -288,11 +291,13 @@ export default {
 }
 .go-med {
   margin-top: $lyj-space-md;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .quick {
   display: flex;
   flex-wrap: wrap;
-  padding: $lyj-space-xs $lyj-space-md;
+  padding: 8rpx $lyj-space-md;
   gap: $lyj-space-sm;
 }
 .quick-item {
@@ -301,36 +306,42 @@ export default {
   box-sizing: border-box;
   background: $lyj-card;
   border-radius: $lyj-radius;
-  padding: $lyj-space-lg;
+  padding: 18rpx 20rpx;
   display: flex;
   align-items: center;
-  gap: $lyj-space-md;
+  gap: 16rpx;
   box-shadow: $lyj-shadow-card;
-  min-height: $lyj-hit-min;
+  min-height: 104rpx;
 }
 .quick-icon {
-  font-size: 64rpx;
+  font-size: 52rpx;
+  line-height: 1;
+  flex-shrink: 0;
 }
 .quick-label {
-  font-size: $lyj-font-md;
+  font-size: 38rpx;
   font-weight: 700;
   color: $lyj-text;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 /* 健康页入口：老人端字号，触控区不低于 44px（$lyj-hit-min） */
 .health-entry {
   display: flex;
   align-items: center;
   gap: $lyj-space-md;
-  margin: $lyj-space-xs $lyj-space-md;
-  padding: $lyj-space-lg;
+  margin: 8rpx $lyj-space-md;
+  padding: 16rpx 24rpx;
   background: $lyj-card;
   border: 2rpx solid $lyj-line;
   border-radius: $lyj-radius;
   box-shadow: $lyj-shadow-card;
-  min-height: $lyj-hit-min;
+  min-height: 104rpx;
 }
 .health-entry-icon {
   font-size: 64rpx;
+  flex-shrink: 0;
 }
 .health-entry-text {
   flex: 1;
@@ -342,15 +353,19 @@ export default {
   font-size: $lyj-font-md;
   font-weight: 700;
   color: $lyj-text;
+  white-space: nowrap;
 }
 .health-entry-sub {
   font-size: $lyj-font-sm;
   color: $lyj-text-light;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 .health-entry-arrow {
   font-size: $lyj-font-lg;
   font-weight: 800;
   color: $lyj-text-light;
+  flex-shrink: 0;
 }
 .weather-card {
   background: linear-gradient(140deg, $lyj-weather-from, $lyj-card);
@@ -386,35 +401,5 @@ export default {
 }
 .home-col {
   width: 100%;
-}
-
-/* 电脑端宽屏铺砌自适应：大屏两列栅格平铺，卡片饱满铺开 */
-@media screen and (min-width: 768px) {
-  .home {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 30rpx 32rpx 120rpx;
-  }
-  .header {
-    padding: 20rpx 0 40rpx;
-  }
-  .home-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 32rpx;
-    align-items: start;
-  }
-  .reminder-card {
-    margin: 0 0 24rpx;
-  }
-  .weather-card {
-    margin: 0;
-  }
-  .quick {
-    padding: 0;
-  }
-  .health-entry {
-    margin: 24rpx 0 0;
-  }
 }
 </style>

@@ -20,6 +20,79 @@
 
     <!-- 响应式铺砌布局 -->
     <view class="sections-grid">
+      <!-- 父母实时位置动态卡片 (带在线脉冲灯) -->
+      <view class="section location-section" @tap="goGuardian()">
+        <view class="location-card-head">
+          <view class="location-title-group">
+            <text class="location-card-icon">📍</text>
+            <text class="section-title">父母实时位置动态</text>
+            <view class="pulse-indicator">
+              <view class="pulse-dot"></view>
+              <text class="pulse-status-text">实时在线</text>
+            </view>
+          </view>
+          <view class="location-go-btn">
+            <text class="go-text">高德地图守护</text>
+            <text class="go-arrow">›</text>
+          </view>
+        </view>
+        <view class="location-card-body">
+          <text class="location-headline">{{ locationTitle }}</text>
+          <text class="location-subtext">{{ locationDetail }}</text>
+        </view>
+      </view>
+
+      <!-- 待我审批事项 -->
+      <view v-if="pendingConfirmations && pendingConfirmations.length" class="section pending-section">
+        <view class="section-head">
+          <text class="section-title pending-title">✋ 待我审批事项 ({{ pendingCount }})</text>
+        </view>
+        <view v-for="t in pendingConfirmations" :key="t.id" class="pending-card">
+          <view class="pending-card-top">
+            <view class="pending-icon">{{ taskIcon(t) }}</view>
+            <view class="pending-main">
+              <view class="pending-summary-row">
+                <text class="pending-summary">{{ taskSummary(t) }}</text>
+                <text v-if="t.amount" class="pending-cost">¥{{ t.amount }}</text>
+              </view>
+              <text class="pending-reason" v-if="taskReason(t)">原因：{{ taskReason(t) }}</text>
+              <text class="pending-time" v-if="t.created_at">申请时间：{{ fmtTime(t.created_at) }}</text>
+            </view>
+          </view>
+          <view class="pending-action-bar">
+            <view v-if="t.status === 'executed' || t.status === 'approved'" class="inline-status success">
+              <text>✅ 已同意并办理</text>
+            </view>
+            <view v-else-if="t.status === 'rejected'" class="inline-status rejected">
+              <text>🚫 已拒绝</text>
+            </view>
+            <view v-else-if="t.status === 'failed'" class="inline-status failed">
+              <text>⚠️ 执行失败</text>
+            </view>
+            <view v-else class="pending-btns">
+              <button
+                class="approve-btn"
+                :loading="actionLoading[t.id] === 'approve'"
+                :disabled="!!actionLoading[t.id]"
+                size="mini"
+                @tap.stop="approveTask(t)"
+              >
+                同意
+              </button>
+              <button
+                class="reject-btn"
+                :loading="actionLoading[t.id] === 'reject'"
+                :disabled="!!actionLoading[t.id]"
+                size="mini"
+                @tap.stop="rejectTask(t)"
+              >
+                拒绝
+              </button>
+            </view>
+          </view>
+        </view>
+      </view>
+
       <!-- 健康概览：这一屏的主结论。子女进来看的就是"我妈现在怎么样"。 -->
       <view class="section overview-section">
         <view class="section-head">
@@ -222,11 +295,37 @@ export default {
       readings: [],
       appointmentNotices: [],
       cachedNotifications: [],
+      alerts: [],
+      actionLoading: {},
       timer: null,
       lastRefresh: '',
     }
   },
   computed: {
+    pendingCount() {
+      return (this.pendingConfirmations || []).filter((t) => !t.status || t.status === 'pending').length
+    },
+    locationTitle() {
+      if (!this.privacy.bound) return '尚未绑定长辈'
+      if (this.privacy.location_level === 'off') return '长辈未开放实时位置'
+      if (this.alerts && this.alerts.length) {
+        return `⚠️ 偏航提醒：${this.alerts[0].location || '路线偏移'}`
+      }
+      if (this.elderCity) {
+        const activeTrip = (this.trips || []).find((t) => t.status === 'ongoing')
+        if (activeTrip && (activeTrip.destination || activeTrip.purpose)) {
+          return `${this.elderCity} · 前往 ${activeTrip.destination || activeTrip.purpose}`
+        }
+        return `${this.elderCity} · 正常活动中`
+      }
+      return '位置实时守护中'
+    },
+    locationDetail() {
+      if (!this.privacy.bound) return '请先在家庭成员中绑定父母'
+      if (this.privacy.location_level === 'off') return '老人已在隐私设置中关闭位置共享，可联系老人开启'
+      if (this.privacy.location_level === 'city') return '已开启城市级模糊守护，详细门牌坐标已隐藏'
+      return '高德开放平台 10 秒定时周期上报与偏航判定已就绪'
+    },
     elderLine() {
       if (!this.privacy.bound) return '尚未绑定老人'
       const who = [this.elderName, this.elderCity].filter(Boolean).join(' · ')
@@ -459,9 +558,8 @@ export default {
         this.plans = d.plans || []
         this.medications = d.medications || []
         this.cachedNotifications = d.notifications || []
+        this.alerts = d.alerts || []
 
-        // 首页不再摆审批的板子，但待确认计数仍要报给通知页的角标
-        // （金融类审批按设计保留，那是另一条线的事，不在这一屏展开）。
         this.pendingConfirmations = d.pending_confirmations || []
         publishPendingCount(
           this.pendingConfirmations.filter((t) => !t.status || t.status === 'pending').length
@@ -625,7 +723,129 @@ export default {
     },
 
     goGuardian(t) {
-      uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.trip_id || t.id}` })
+      if (t && (t.trip_id || t.id)) {
+        uni.navigateTo({ url: `/pages/child/guardian?trip_id=${t.trip_id || t.id}` })
+      } else {
+        uni.navigateTo({ url: '/pages/child/guardian' })
+      }
+    },
+
+    taskIcon(t) {
+      const map = {
+        book_ticket: '🚄',
+        search_train: '🚄',
+        register_appointment: '🏥',
+        search_hospital: '🏥',
+        book_hotel: '🏨',
+        order_service: '🧹',
+        pay: '💸',
+      }
+      return map[t.tool_name] || '📋'
+    },
+    taskSummary(t) {
+      const card = t.summary_for_child || {}
+      return card.summary || t.tool_name || '需要您确认的事项'
+    },
+    taskReason(t) {
+      const card = t.summary_for_child || {}
+      return card.reason || ''
+    },
+    async approveTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'approve')
+      } else {
+        this.actionLoading[t.id] = 'approve'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/approve?child_id=${this.user.id}`)
+        const nextStatus = res.status || (res.ok ? 'executed' : 'failed')
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        t.resolvedAt = Date.now()
+        publishPendingCount(this.pendingCount)
+        uni.showToast({ title: '已同意并办理', icon: 'success' })
+      } catch (err) {
+        const msg = err.message || ''
+        if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('已处理') || msg.includes('不存在')) {
+          this.loadAll(true)
+        }
+        uni.showToast({ title: msg || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
+    },
+    async rejectTask(t) {
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      const confirmed = await new Promise((resolve) => {
+        uni.showModal({
+          title: '确认拒绝',
+          content: '确定要拒绝该事项吗？老人端将收到相应提示。',
+          success: (r) => resolve(!!r.confirm),
+          fail: () => resolve(false),
+        })
+      })
+      if (!confirmed) return
+      if (this.actionLoading[t.id]) return
+      if (t.status && t.status !== 'pending') return
+      if (typeof this.$set === 'function') {
+        this.$set(this.actionLoading, t.id, 'reject')
+      } else {
+        this.actionLoading[t.id] = 'reject'
+      }
+      try {
+        const res = await post(`/api/confirmations/${t.id}/reject?child_id=${this.user.id}`)
+        const nextStatus = res.status || 'rejected'
+        if (typeof this.$set === 'function') {
+          this.$set(t, 'status', nextStatus)
+        } else {
+          t.status = nextStatus
+        }
+        t.resolvedAt = Date.now()
+        publishPendingCount(this.pendingCount)
+        uni.showToast({ title: '已拒绝', icon: 'none' })
+      } catch (err) {
+        const msg = err.message || ''
+        if (msg.includes('executed') || msg.includes('已执行')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'executed')
+          else t.status = 'executed'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('rejected') || msg.includes('已拒绝')) {
+          if (typeof this.$set === 'function') this.$set(t, 'status', 'rejected')
+          else t.status = 'rejected'
+          t.resolvedAt = Date.now()
+          publishPendingCount(this.pendingCount)
+        } else if (msg.includes('已处理') || msg.includes('不存在')) {
+          this.loadAll(true)
+        }
+        uni.showToast({ title: msg || '操作失败', icon: 'none' })
+      } finally {
+        if (typeof this.$delete === 'function') {
+          this.$delete(this.actionLoading, t.id)
+        } else {
+          delete this.actionLoading[t.id]
+        }
+      }
     },
   },
 }
@@ -652,6 +872,7 @@ export default {
 }
 .head-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: $lyj-space-xs;
@@ -664,9 +885,14 @@ export default {
 .sub {
   font-size: $lyj-font-sm;
   color: $lyj-child-head-sub;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .refresh {
-  min-height: $lyj-hit-min;
+  min-height: 88rpx;
+  line-height: 88rpx;
   display: flex;
   align-items: center;
   background: rgba(255, 255, 255, 0.15);
@@ -674,6 +900,26 @@ export default {
   font-size: $lyj-font-sm;
   border-radius: $lyj-radius;
   margin: 0 0 0 $lyj-space-md;
+  padding: 0 28rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+}
+.logout-btn {
+  min-height: 88rpx;
+  line-height: 88rpx;
+  display: flex;
+  align-items: center;
+  background: rgba(239, 68, 68, 0.25);
+  color: #fff;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 28rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .privacy-note {
   margin: 0 $lyj-space-md $lyj-space-sm;
@@ -692,8 +938,207 @@ export default {
   border-radius: $lyj-radius;
   margin: $lyj-space-sm $lyj-space-md;
   padding: $lyj-space-md;
-  box-shadow: $lyj-shadow-card;
+  border: 2rpx solid $lyj-line;
+  box-shadow: 0 8rpx 28rpx rgba(42, 130, 228, 0.06);
 }
+
+/* 父母实时位置动态卡片 */
+.location-section {
+  cursor: pointer;
+  border-left: 8rpx solid $lyj-primary;
+}
+.location-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $lyj-space-sm;
+}
+.location-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.location-card-icon {
+  font-size: 36rpx;
+  line-height: 1;
+}
+.pulse-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 4rpx 14rpx;
+  border-radius: $lyj-radius-pill;
+}
+.pulse-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 4rpx rgba(16, 185, 129, 0.25);
+  animation: pulseLight 1.8s infinite ease-in-out;
+}
+@keyframes pulseLight {
+  0% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 2rpx rgba(16, 185, 129, 0.2); }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6rpx rgba(16, 185, 129, 0.4); }
+  100% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 2rpx rgba(16, 185, 129, 0.2); }
+}
+.pulse-status-text {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #059669;
+  white-space: nowrap;
+}
+.location-go-btn {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  color: $lyj-primary;
+  font-size: $lyj-font-xs;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.location-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.location-headline {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: $lyj-child-text;
+  line-height: 1.4;
+}
+.location-subtext {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-body;
+  line-height: 1.4;
+}
+
+/* 待我审批事项 */
+.pending-section {
+  border-left: 8rpx solid $lyj-warn;
+}
+.pending-card {
+  background: $lyj-warn-bg;
+  border: 2rpx solid #fde68a;
+  border-radius: $lyj-radius;
+  padding: $lyj-space-md;
+  margin-bottom: $lyj-space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: $lyj-space-sm;
+}
+.pending-card:last-child {
+  margin-bottom: 0;
+}
+.pending-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: $lyj-space-sm;
+}
+.pending-icon {
+  font-size: 40rpx;
+  line-height: 1.2;
+}
+.pending-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.pending-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pending-summary {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: $lyj-child-text;
+}
+.pending-cost {
+  font-size: $lyj-font-md;
+  font-weight: 700;
+  color: $lyj-danger;
+  font-variant-numeric: tabular-nums;
+}
+.pending-reason {
+  font-size: $lyj-font-sm;
+  color: $lyj-child-body;
+  margin-top: 2rpx;
+}
+.pending-time {
+  font-size: $lyj-font-xs;
+  color: $lyj-child-muted;
+  margin-top: 2rpx;
+  font-variant-numeric: tabular-nums;
+}
+.pending-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: $lyj-space-xs;
+  border-top: 1rpx dashed #fcd34d;
+}
+.pending-btns {
+  display: flex;
+  align-items: center;
+  gap: $lyj-space-sm;
+}
+.approve-btn {
+  background: #16a34a !important;
+  color: #fff !important;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+}
+.reject-btn {
+  background: #e5e7eb !important;
+  color: #4b5563 !important;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  border-radius: $lyj-radius;
+  padding: 0 32rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+}
+.inline-status {
+  display: flex;
+  align-items: center;
+  font-size: $lyj-font-sm;
+  font-weight: 600;
+  padding: 8rpx 20rpx;
+  border-radius: $lyj-radius-pill;
+  min-height: 88rpx;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+}
+.inline-status.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+.inline-status.rejected {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.inline-status.failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .section-head {
   margin-bottom: $lyj-space-sm;
   display: flex;
@@ -772,7 +1217,7 @@ export default {
 }
 .level-banner.lv-see-doctor {
   background: $lyj-primary-soft;
-  border-color: rgba(255, 107, 53, 0.35);
+  border-color: rgba(42, 130, 228, 0.35);
 }
 .level-banner.lv-see-doctor .level-word {
   color: $lyj-primary-dark;
@@ -822,6 +1267,7 @@ export default {
   font-size: $lyj-font-lg;
   font-weight: 700;
   color: $lyj-child-text;
+  font-variant-numeric: tabular-nums;
 }
 .vital-side {
   display: flex;
@@ -841,6 +1287,8 @@ export default {
 .vital-time {
   font-size: $lyj-font-xs;
   color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 /* 指标数值按档位染色，读数一眼能看出轻重 */
 .vital-value.lv-care,
@@ -923,6 +1371,8 @@ export default {
 .notice-time {
   font-size: $lyj-font-xs;
   color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .notice-unread {
   font-size: $lyj-font-xs;
@@ -1010,18 +1460,21 @@ export default {
 .plan-badge {
   font-size: $lyj-font-xs;
   font-weight: 600;
-  padding: 2rpx 10rpx;
+  padding: 4rpx 14rpx;
   border-radius: $lyj-radius-pill;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .plan-badge.medical_plan {
   background: #fef3c7;
   color: #b45309;
 }
 .plan-badge.trip_plan {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: $lyj-primary-soft;
+  color: $lyj-primary-dark;
 }
 .plan-item-title {
   font-size: $lyj-font-md;
@@ -1031,11 +1484,14 @@ export default {
 .plan-status-badge {
   font-size: $lyj-font-xs;
   font-weight: 600;
-  padding: 2rpx 12rpx;
+  padding: 4rpx 14rpx;
   border-radius: $lyj-radius-pill;
   background: $lyj-info-bg;
   color: $lyj-info;
   margin-left: auto;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .plan-status-badge.ongoing {
   background: $lyj-primary-soft;
@@ -1058,6 +1514,8 @@ export default {
 }
 .plan-meta-time {
   color: $lyj-child-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .plan-actions {
   display: flex;
@@ -1066,12 +1524,16 @@ export default {
   flex-shrink: 0;
 }
 .plan-btn {
-  min-height: 56rpx;
-  line-height: 56rpx;
+  min-height: 64rpx;
+  line-height: 64rpx;
   font-size: $lyj-font-xs;
-  padding: 0 16rpx;
+  font-weight: 600;
+  padding: 0 20rpx;
   border-radius: $lyj-radius;
   margin: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
 }
 .plan-btn.plan {
   background: #0284c7;
@@ -1181,14 +1643,5 @@ export default {
 .sections-grid {
   display: flex;
   flex-direction: column;
-}
-
-/* 电脑端宽屏自适应：单列限宽居中，避免每张卡被压成半宽长条。 */
-@media screen and (min-width: 768px) {
-  .dash {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 30rpx 32rpx 100rpx;
-  }
 }
 </style>

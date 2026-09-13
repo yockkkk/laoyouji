@@ -171,6 +171,8 @@ export function requestPermission(name) {
 export function openSettings(name) {
   return parseJson(call('openSettings', String(name || ''))) || noBridge()
 }
+export const openNativeSettings = openSettings
+
 
 /**
  * 打开 page/elder/profile.vue 里的保活引导弹层。

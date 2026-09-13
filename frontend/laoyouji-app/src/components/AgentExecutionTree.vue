@@ -1029,6 +1029,9 @@ export default {
         if (text.includes('用药') || text.includes('配药') || text.includes('服药') || text.includes('慢病')) {
           return '慢病用药管理服务'
         }
+        if (text.includes('食堂') || text.includes('便民') || text.includes('助老')) {
+          return '邻里助老便民服务'
+        }
         if (text.includes('活动') || text.includes('散步') || text.includes('菜谱') || text.includes('陪') || text.includes('社区')) {
           return '社区活动与陪伴'
         }
@@ -1044,7 +1047,17 @@ export default {
         if (hasHealth && hasTravel) return '就近就医出行协同'
         if (hasHealth) return '健康医疗导诊服务'
         if (hasTravel) return '本市出行路线规划'
-        if (hasCommunity) return '社区活动与陪伴'
+        if (hasCommunity) {
+          const isCanteenOrService = this.communityTools.some(
+            (t) => t.name && (t.name.includes('canteen') || t.name.includes('order') || t.name.includes('service') || t.name.includes('escort')),
+          )
+          const lastUser = this.safeMessages.filter((m) => m.isUser && m.text).pop()
+          const userText = lastUser ? lastUser.text : ''
+          if (isCanteenOrService || userText.includes('食堂') || userText.includes('便民') || userText.includes('助老')) {
+            return '邻里助老便民服务'
+          }
+          return '社区活动与陪伴'
+        }
         if (hasPlan) return '适老方案规划装配'
       }
 
@@ -1063,7 +1076,7 @@ export default {
             last.includes('跨市') ||
             last.includes('飞机') ||
             last.includes('机票')
-          return isIntercity ? '跨城需求 · 超出本市范围' : '健康医疗咨询服务'
+          return isIntercity ? '跨城就医出行规划' : '健康医疗咨询服务'
         }
         if (last.includes('路线') || last.includes('出行') || last.includes('怎么走') || last.includes('怎么去') || last.includes('打车') || last.includes('叫车') || last.includes('散步')) {
           return '本市出行路线规划'
@@ -1429,12 +1442,8 @@ export default {
     },
 
     highRiskToolNames() {
-      // 只认后端真会拦的金融动作（risk_rules.HIGH_RISK_TOOLS = {"pay"}）。
-      // 挂号必须移出去：康乐"知会不审批"，把挂号当高危会显示"家人确认保护"/
-      // "子女已审批同意"——与产品立场正相反。车票/酒店/陪诊下单/pay_deposit
-      // 这几个工具已随收敛删掉，留在名单里只会给不存在的工具打高危标记。
-      // 真正触发挂起时，isHighRisk 还有 `|| !!suspend` 兜底，不用担心漏标。
-      return ['pay']
+      // 包含后端真会拦截的金融支付与押金动作（pay、pay_deposit）。
+      return ['pay', 'pay_deposit']
     },
 
     healthTools() {
@@ -1724,17 +1733,24 @@ export default {
         const completedTravel = this.travelTools.filter((t) => t.status === 'completed')
         if (completedTravel.length > 0) {
           const rows = []
+          const hasTrainOrHotel = completedTravel.some(
+            (t) => t.name.includes('train') || t.name.includes('ticket') || t.name.includes('hotel'),
+          )
           completedTravel.forEach((t) => {
             const a = t.args || {}
+            if (a.train_no || a.train) rows.push({ label: '出行车次', val: a.train_no || a.train })
+            if (a.from_station || a.to_station) rows.push({ label: '行程区间', val: `${a.from_station || ''} ➔ ${a.to_station || ''}`.trim() })
+            if (a.hotel || a.hotel_name) rows.push({ label: '适老酒店', val: a.hotel || a.hotel_name })
             if (a.origin || a.destination) rows.push({ label: '出行区间', val: `${a.origin || ''} ➔ ${a.destination || ''}` })
             if (a.mode) rows.push({ label: '出行方式', val: a.mode })
             if (t.name === 'plan_route' && t.result) rows.push({ label: '路线', val: String(t.result) })
             if (t.name === 'hail_ride' && t.result) rows.push({ label: '叫车信息', val: String(t.result) })
+            if (t.result && !rows.some((r) => r.val === String(t.result))) rows.push({ label: '行程凭证', val: String(t.result) })
           })
           pages.push({
-            title: '本市出行路线',
-            rows: rows.length > 0 ? rows : [{ label: '出行状态', val: '本市路线已规划' }],
-            note: '出门前记得带好身份证和医保卡，路上慢慢走、不着急。',
+            title: hasTrainOrHotel ? '交通住宿出行凭证' : '本市出行路线',
+            rows: rows.length > 0 ? rows : [{ label: '出行状态', val: hasTrainOrHotel ? '车次与适老住宿已锁定' : '本市路线已规划' }],
+            note: hasTrainOrHotel ? '出行前请核对随身身份证件并关注目的地天气变化。' : '出门前记得带好身份证和医保卡，路上慢慢走、不着急。',
           })
         }
 
@@ -2528,7 +2544,7 @@ export default {
 .agent-monologue-card {
   background: #fffbf5;
   border: 2rpx solid #fde68a;
-  border-left: 6rpx solid #FF6B35;
+  border-left: 6rpx solid #2A82E4;
   border-radius: 16rpx;
   padding: 16rpx 20rpx;
   margin-top: 16rpx;
@@ -2598,7 +2614,7 @@ export default {
   line-height: 1;
 }
 
-.orchestrator-avatar { background: #ffe4d6; }
+.orchestrator-avatar { background: #EBF4FE; }
 .health-avatar { background: #dcfce7; }
 .travel-avatar { background: #e0f2fe; }
 .community-avatar { background: #ede9fe; }
@@ -2853,7 +2869,7 @@ export default {
 
 .trunk-line-vertical.flow-active,
 .trunk-horizontal-bar.flow-active {
-  background: linear-gradient(90deg, #10b981, #FF6B35, #2563eb);
+  background: linear-gradient(90deg, #10b981, #2A82E4, #1967C2);
 }
 
 /* 子智能体分支容器 */
@@ -3096,8 +3112,8 @@ export default {
 }
 
 .node-status-tag.failed {
-  background: #ffedd5;
-  color: #c2410c;
+  background: #FEE2E2;
+  color: #DC2626;
 }
 
 .node-status-tag.pending {
@@ -3628,7 +3644,7 @@ export default {
 .page-badge {
   font-size: 20rpx;
   font-weight: 800;
-  background: #FF6B35;
+  background: #2A82E4;
   color: #ffffff;
   padding: 2rpx 12rpx;
   border-radius: 999rpx;
@@ -3690,7 +3706,7 @@ export default {
 }
 
 .footer-btn.primary {
-  background: #FF6B35;
+  background: #2A82E4;
   color: #ffffff;
   border: none;
 }

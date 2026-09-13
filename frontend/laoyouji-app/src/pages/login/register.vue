@@ -220,12 +220,4 @@ export default {
 .submit-btn {
   margin-top: $lyj-space-sm;
 }
-
-@media screen and (min-width: 768px) {
-  .register-page {
-    max-width: 580px;
-    margin: 0 auto;
-    padding: 60rpx 40rpx;
-  }
-}
 </style>
