@@ -222,7 +222,7 @@ export default {
 }
 .card-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   cursor: pointer;
   min-height: 72rpx;
@@ -235,24 +235,27 @@ export default {
 .card-head-left {
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
+  gap: 8rpx;
   min-width: 0;
   flex: 1;
+  padding-right: 16rpx;
 }
 .card-title {
   display: block;
   font-size: $lyj-font-lg;
   font-weight: 700;
   color: $lyj-text;
-  line-height: $lyj-line-height;
-  white-space: nowrap !important;
-  word-break: keep-all !important;
+  line-height: 1.35;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
 }
 .card-badges {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  margin-top: 6rpx;
 }
 .page-badge {
   font-size: $lyj-font-xs;
@@ -284,6 +287,8 @@ export default {
 .card-head-right {
   flex-shrink: 0;
   margin-left: 16rpx;
+  align-self: flex-start;
+  margin-top: 4rpx;
 }
 .plan-toggle-btn {
   display: flex;

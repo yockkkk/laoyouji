@@ -80,8 +80,10 @@ cat << 'JAVA' > "$BUILD_DIR/src/com/laoyouji/app/MainActivity.java"
 package com.laoyouji.app;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -97,7 +99,7 @@ import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
     private WebView webView;
-    private static final String APP_URL = "http://159.75.94.149:8000/";
+    private static final String APP_URL = "https://sdad.hynu.site/";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,8 +130,34 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                view.loadUrl(url);
-                return true;
+                if (url == null) return false;
+                if (url.startsWith("tel:")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse(url));
+                        view.getContext().startActivity(intent);
+                    } catch (Throwable t) {}
+                    return true;
+                }
+                if (url.startsWith("sms:") || url.startsWith("mailto:") || url.startsWith("geo:")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        view.getContext().startActivity(intent);
+                    } catch (Throwable t) {}
+                    return true;
+                }
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    view.loadUrl(url);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request != null && request.getUrl() != null) {
+                    return shouldOverrideUrlLoading(view, request.getUrl().toString());
+                }
+                return false;
             }
 
             @Override

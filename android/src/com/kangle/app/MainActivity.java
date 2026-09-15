@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -484,9 +485,32 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** 站内跳转留在 WebView 里：一律 return false（返回 true 会交给系统浏览器）。 */
+        /** 站内跳转留在 WebView 里：拦截 tel/sms/mailto 打开系统拨号/短信应用，其余 return false */
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            if (url == null) return false;
+            if (url.startsWith("tel:")) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse(url));
+                    view.getContext().startActivity(intent);
+                } catch (Throwable t) {}
+                return true;
+            }
+            if (url.startsWith("sms:") || url.startsWith("mailto:") || url.startsWith("geo:")) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    view.getContext().startActivity(intent);
+                } catch (Throwable t) {}
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (request != null && request.getUrl() != null) {
+                return shouldOverrideUrlLoading(view, request.getUrl().toString());
+            }
             return false;
         }
     }

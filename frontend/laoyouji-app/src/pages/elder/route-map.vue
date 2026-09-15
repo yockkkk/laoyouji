@@ -52,13 +52,23 @@
         <button class="map-retry-btn" @tap="initMap">点我重新加载地图</button>
       </view>
 
-      <!-- 全屏大图模式下悬浮的适老退出条 (触控靶区 >= 48px，大字清晰) -->
+      <!-- 全屏大图模式下顶部悬浮条 (返回药丸按钮 + 缩放提示) -->
       <view v-if="isMapFullscreen" class="fullscreen-topbar">
-        <button class="fullscreen-exit-btn" @tap="toggleMapFullscreen">
-          <text class="exit-icon">✕</text>
-          <text class="exit-text">退出大图 · 查看详细步骤</text>
+        <view class="fullscreen-topbar-inner">
+          <button class="fullscreen-exit-pill" @tap="toggleMapFullscreen">
+            <text class="exit-icon">‹</text>
+            <text class="exit-text">退出大图</text>
+          </button>
+          <text class="fullscreen-hint">双指缩放 · 拖动浏览</text>
+        </view>
+      </view>
+
+      <!-- 全屏大图模式下底部悬浮退出大按钮 (老年友好，超大触控靶区) -->
+      <view v-if="isMapFullscreen" class="fullscreen-bottombar">
+        <button class="fullscreen-bottom-btn" @tap="toggleMapFullscreen">
+          <text class="bottom-btn-icon">📋</text>
+          <text class="bottom-btn-text">退出大图 · 查看详细换乘步骤</text>
         </button>
-        <text class="fullscreen-hint">双指缩放 · 拖动浏览站点与航迹</text>
       </view>
 
       <!-- 地图工具浮层 -->
@@ -192,6 +202,13 @@ export default {
       if (opts.city) this.city = decodeURIComponent(opts.city)
     }
   },
+  onBackPress(options) {
+    if (this.isMapFullscreen) {
+      this.toggleMapFullscreen()
+      return true
+    }
+    return false
+  },
   mounted() {
     this.user = getCurrentUser()
     if (!this.city && this.user && this.user.city) {
@@ -199,9 +216,15 @@ export default {
     }
     this.fetchFamilyContact()
     this.initPage()
+    if (typeof window !== 'undefined') {
+      window.addEventListener('popstate', this.handlePopState)
+    }
   },
   onUnload() {
     this.stopReporting()
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('popstate', this.handlePopState)
+    }
     if (this.leafletMap) {
       try {
         this.leafletMap.remove()
@@ -501,7 +524,27 @@ export default {
       }
     },
     toggleMapFullscreen() {
-      this.isMapFullscreen = !this.isMapFullscreen
+      if (this.isMapFullscreen) {
+        if (typeof window !== 'undefined' && window.history && window.history.state && window.history.state.isFullscreen) {
+          window.history.back()
+          return
+        }
+        this.isMapFullscreen = false
+      } else {
+        this.isMapFullscreen = true
+        if (typeof window !== 'undefined' && window.history) {
+          window.history.pushState({ isFullscreen: true }, '')
+        }
+      }
+      this.refreshMapBounds()
+    },
+    handlePopState() {
+      if (this.isMapFullscreen) {
+        this.isMapFullscreen = false
+        this.refreshMapBounds()
+      }
+    },
+    refreshMapBounds() {
       this.$nextTick(() => {
         setTimeout(() => {
           if (this.leafletMap) {
@@ -588,11 +631,11 @@ export default {
         uni.showModal({
           title: '🕊️ 已向家人报平安',
           content: `已成功同步您的平安状态至【${childName}】的守护看板！当前位置：${where}。`,
-          confirmText: '拨打家人电话',
+          confirmText: '呼叫家人',
           cancelText: '我知道了',
           success: (mRes) => {
             if (mRes.confirm) {
-              uni.makePhoneCall({ phoneNumber: phone })
+              this.makeSafePhoneCall(phone)
             }
           },
         })
@@ -603,10 +646,35 @@ export default {
       }
     },
     callFamilyDirect() {
+      const phone = this.familyContactPhone || '13812345678'
+      const name = this.familyContactName || '家人'
+      uni.showModal({
+        title: '📞 拨打家人电话',
+        content: `即将呼叫家人【${name}】（${phone}）`,
+        confirmText: '立即呼叫',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm) {
+            this.makeSafePhoneCall(phone)
+          }
+        },
+      })
+    },
+    makeSafePhoneCall(phoneNumber) {
+      if (!phoneNumber) return
       uni.makePhoneCall({
-        phoneNumber: this.familyContactPhone || '13812345678',
+        phoneNumber,
         fail: () => {
-          uni.showToast({ title: '请在手机端拨号确认', icon: 'none' })
+          uni.setClipboardData({
+            data: phoneNumber,
+            success: () => {
+              uni.showToast({
+                title: `已复制号码：${phoneNumber}，可在拨号盘粘贴呼叫`,
+                icon: 'none',
+                duration: 3500,
+              })
+            },
+          })
         },
       })
     },
@@ -829,51 +897,92 @@ export default {
   min-height: 100% !important;
 }
 
-/* 全屏大图模式顶部悬浮栏 (触控靶区 >= 48px) */
+/* 全屏大图模式顶部悬浮栏 (带 safe-area-inset-top 保护) */
 .fullscreen-topbar {
   position: absolute;
-  top: 24rpx;
+  top: calc(env(safe-area-inset-top, 0px) + 24rpx);
   left: 24rpx;
   right: 24rpx;
   z-index: 1300;
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
   pointer-events: none;
 }
-.fullscreen-exit-btn {
-  pointer-events: auto;
-  min-height: 96rpx;
+.fullscreen-topbar-inner {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12rpx;
+  justify-content: space-between;
+  width: 100%;
+}
+.fullscreen-exit-pill {
+  pointer-events: auto;
+  min-height: 80rpx;
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
   background: #ffffff;
   color: #1e293b;
   border: 2rpx solid #cbd5e1;
-  border-radius: 48rpx;
-  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.2);
-  padding: 0 32rpx;
+  border-radius: 40rpx;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.18);
+  padding: 0 28rpx;
   cursor: pointer;
 }
 .exit-icon {
-  font-size: 34rpx;
+  font-size: 40rpx;
   font-weight: 800;
-  color: #ef4444;
+  color: #2563eb;
+  line-height: 1;
 }
 .exit-text {
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 800;
+  color: #1e293b;
 }
 .fullscreen-hint {
-  align-self: center;
   font-size: 24rpx;
   font-weight: 600;
   color: #ffffff;
   background: rgba(15, 23, 42, 0.75);
-  padding: 6rpx 22rpx;
+  padding: 8rpx 22rpx;
   border-radius: 20rpx;
   backdrop-filter: blur(4px);
+}
+
+/* 全屏大图模式底部悬浮退出大按钮 */
+.fullscreen-bottombar {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 28rpx);
+  left: 28rpx;
+  right: 28rpx;
+  z-index: 1300;
+}
+.fullscreen-bottom-btn {
+  width: 100%;
+  min-height: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 50rpx;
+  box-shadow: 0 10rpx 28rpx rgba(37, 99, 235, 0.4);
+  padding: 0 32rpx;
+  cursor: pointer;
+}
+.bottom-btn-icon {
+  font-size: 36rpx;
+}
+.bottom-btn-text {
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 1rpx;
+  color: #ffffff;
+}
+
+/* 全屏模式下右侧悬浮控件提升，避免遮挡底部退出条 */
+.map-section.fullscreen-mode .map-controls {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 150rpx) !important;
 }
 
 .map-loading-mask {
