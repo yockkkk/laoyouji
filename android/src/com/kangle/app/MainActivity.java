@@ -561,7 +561,9 @@ public class MainActivity extends Activity {
         public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
             if (callback == null) return;
             try {
-                callback.invoke(origin, false, false);   // (origin, allow, retain)
+                boolean allow = hasPermission("android.permission.ACCESS_FINE_LOCATION")
+                        || hasPermission("android.permission.ACCESS_COARSE_LOCATION");
+                callback.invoke(origin, allow, false);   // (origin, allow, retain)
             } catch (Throwable t) {
                 // 忽略
             }

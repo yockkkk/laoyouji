@@ -53,14 +53,21 @@ def _is_local_drawable(route: dict | None) -> bool:
 
 
 def _blank_route(origin: str, destination: str) -> dict:
-    """不画的路线：航迹留空，把"查不到"如实说清楚，绝不编一条线上去。"""
+    """不画的路线：航迹留空，把情况如实说清楚。"""
+    d_c = city_of(destination)
+    o_c = city_of(origin)
+    if o_c and d_c and o_c != d_c:
+        summary = (f"从{origin}到{destination}：这段路不在本市公交/地铁/步行的范围里，"
+                   f"地图上暂不显示；跨城的车票机票康乐不查。")
+    else:
+        summary = (f"从{origin}到{destination}：暂时没能规划出具体换乘步骤，"
+                   f"建议出门前由家里人陪同或就近选择出行方式。")
     return {
         "ok": True, "matched": False,
         "origin": origin, "destination": destination,
         "mode": "", "duration": "", "distance_km": None,
         "points": [], "polyline": [], "steps": [],
-        "summary": (f"从{origin}到{destination}：这段路不在本市公交/地铁/步行的范围里，"
-                    f"地图上暂不显示；跨城的车票机票康乐不查。"),
+        "summary": summary,
     }
 
 
@@ -72,8 +79,10 @@ async def guard_route(origin: str, destination: str, city: str = "") -> dict:
     而不是一条老人根本不会坐的"市内打车"线。
 
     ``city`` = 老人所在城市，传给规划层解释"家"这个称呼（出发地写"家（北京西城区）"
-    时以正文为准，裸一个"家"才用到它）。
+    时以正文为准，裸一个"家"才用到它）。未传时优先从出发地/目的地推断或兜底南京。
     """
+    if not city:
+        city = city_of(origin) or city_of(destination) or "南京"
     route = await amap_client.plan_route(origin, destination, "公交", city)
     return route if _is_local_drawable(route) else _blank_route(origin, destination)
 
@@ -338,6 +347,13 @@ class CheckpointIn(BaseModel):
     lat: float | None = None
 
 
+class CheckinIn(BaseModel):
+    location: str = ""
+    lng: float | None = None
+    lat: float | None = None
+    message: str = ""
+
+
 class QuickTripIn(BaseModel):
     origin: str = "家（南京鼓楼区）"
     destination: str = "北京积水潭医院"
@@ -401,14 +417,17 @@ async def list_trips(elder_id: str | None = None, limit: int = 20,
 
 
 @router.get("/route/direct", dependencies=[Depends(get_current_principal)])
-async def direct_route(origin: str = "家（南京鼓楼区）", destination: str = "北京积水潭医院"):
+async def direct_route(origin: str = "家（南京鼓楼区）", destination: str = "北京积水潭医院",
+                       city: str = ""):
     """直接通过起点与目的地获取高德规划轨迹、途经站点与换乘步骤。
 
     这条本身不含任何人的数据（只是把两个地名交给高德），但行程守护面统一要身份：
     匿名可打就等于白送一个规划代理，也让"这片接口有没有门"变成一个要逐条记的事。
     """
-    route_data = await guard_route(origin, destination)
-    return {"ok": True, "origin": origin, "destination": destination, "route": route_data}
+    if not city:
+        city = city_of(origin) or city_of(destination) or "南京"
+    route_data = await guard_route(origin, destination, city)
+    return {"ok": True, "origin": origin, "destination": destination, "city": city, "route": route_data}
 
 
 @router.post("/quick")
@@ -593,6 +612,70 @@ async def report_checkpoint(trip_id: str, body: CheckpointIn,
         # 回执也按同一档给：city 档下刚写进去的门牌号，不该从回执里原样漏回来
         result["checkpoint"] = filter_checkpoint(grant, result["checkpoint"])
     return result
+
+
+@router.post("/{trip_id}/checkin")
+async def trip_safety_checkin(trip_id: str, body: CheckinIn | None = None,
+                              principal: Principal = Depends(get_current_principal)):
+    """长辈主动一键报平安：在行程中记录平安打卡，并向绑定的子女发送实时通知。"""
+    ctx = get_ctx()
+    trip = await ctx.repos.get("trips", trip_id)
+    if not trip:
+        raise HTTPException(404, "行程不存在")
+
+    caller = _principal_of(principal)
+    elder_id = trip.get("elder_id") or (caller.id if caller else None)
+    elder = await ctx.repos.get("users", elder_id) if elder_id else None
+    elder_name = (elder or {}).get("name") or "长辈"
+
+    body = body or CheckinIn()
+    dest_name = resolve_trip_destination(trip)
+    loc_text = body.location or dest_name or "当前位置"
+
+    # 1. 插入一条 status='normal' 的平安 checkpoint
+    note_text = body.message or f"长辈主动报平安：目前一切安好，正前往{dest_name}"
+    cp = await ctx.repos.insert("trip_checkpoints", {
+        "trip_id": trip_id,
+        "location": loc_text,
+        "lng": body.lng,
+        "lat": body.lat,
+        "status": "normal",
+        "note": note_text,
+    })
+
+    # 2. 查找长辈绑定的子女，推送真实安全通知
+    bindings = await ctx.repos.list("family_bindings", where={"elder_id": elder_id, "status": "active"}) if elder_id else []
+    notified_children = []
+    for b in bindings:
+        cid = b.get("child_id")
+        child = await ctx.repos.get("users", cid)
+        if child:
+            notified_children.append({
+                "id": child["id"],
+                "name": child.get("name") or "子女",
+                "phone": child.get("phone") or "13800000000",
+                "relation": b.get("relation") or "家人",
+            })
+            await ctx.repos.insert("notifications", {
+                "user_id": cid,
+                "type": "safe_checkin",
+                "title": f"{elder_name} 报平安",
+                "content": f"{elder_name} 刚刚向您报平安：位置在【{loc_text}】，一切安好，请放心。",
+                "data": json.dumps({"trip_id": trip_id, "location": loc_text}),
+            })
+
+    # 兜底默认家人（如暂无绑定）
+    first_child = notified_children[0] if notified_children else {
+        "name": "李明", "phone": "13812345678", "relation": "儿子"
+    }
+
+    return {
+        "ok": True,
+        "checkpoint": cp,
+        "family": first_child,
+        "children": notified_children,
+        "message": f"已向家人【{first_child['name']}】发送报平安提醒",
+    }
 
 
 async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):

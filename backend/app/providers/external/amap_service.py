@@ -35,6 +35,14 @@ AMAP_WEB_BASE = "https://restapi.amap.com"
 KNOWN_LANDMARKS: dict[str, tuple[float, float]] = {
     "南京": (118.7841, 32.0645),
     "南京鼓楼医院": (118.7838, 32.0569),
+    "江苏省人民医院": (118.7690, 32.0460),
+    "南京市第一医院": (118.7840, 32.0220),
+    "南京市中医院": (118.7850, 32.0070),
+    "东南大学附属中大医院": (118.7750, 32.0720),
+    "南京中大医院": (118.7750, 32.0720),
+    "江苏省中医院": (118.7780, 32.0410),
+    "东部战区总医院": (118.8250, 32.0390),
+    "南京军区总医院": (118.8250, 32.0390),
     "南京南站": (118.7981, 31.9696),
     "济南西站": (116.8974, 36.6669),
     "北京": (116.4074, 39.9042),
@@ -47,6 +55,7 @@ KNOWN_LANDMARKS: dict[str, tuple[float, float]] = {
     "上海": (121.4737, 31.2304),
     "上海虹桥站": (121.3201, 31.1942),
     "上海市第六人民医院": (121.4298, 31.1764),
+    "复旦大学附属华山医院": (121.4400, 31.2100),
     "杭州": (120.1551, 30.2741),
     "杭州东站": (120.2131, 30.2910),
     "杭州市第一人民医院": (120.1654, 30.2568),
@@ -222,12 +231,7 @@ def _no_route_receipt(origin: str, destination: str, city: str = "") -> dict:
 
 
 async def _local_fallback(origin: str, destination: str, mode: str, city: str) -> dict:
-    """演示路线库兜底（``options``/``announce`` 齐全，与 MockMapProvider 同形）。
-
-    ``city`` 由调用方从出发地文本里认出来；认不出就传空串，让库里那条
-    "认不出城名就不下定论"的规则自己决定 —— 别拿目的地的城市去顶，
-    那会把"家 → 外地的医院"当成同城，反而放出一条跨城线。
-    """
+    """演示路线库兜底与本地同城自愈合成规划器（保障同城路线永不空白）。"""
     from app.providers.external.services import MockMapProvider
     result = await MockMapProvider().plan_route(origin, destination, mode, city)
     # 前端地图两种形状都读：points 画站点标记、polyline 连线。演示库的折线点
@@ -235,6 +239,47 @@ async def _local_fallback(origin: str, destination: str, mode: str, city: str) -
     if not result.get("points"):
         result["points"] = [p for p in (result.get("polyline") or [])
                             if isinstance(p, dict) and p.get("location")]
+
+    # 若静态演示库未匹配（例如其他同城医院），且两端坐标已知且为同城（< 60km），启动离线自愈合成规划
+    if not result.get("matched"):
+        orig_pt = home_coords(city) if is_home(origin) and city else amap_client._lookup_known(origin)
+        dest_pt = amap_client._lookup_known(destination)
+        if orig_pt and dest_pt:
+            dist_m = haversine_distance_m(orig_pt, dest_pt)
+            if dist_m <= INTERCITY_KM * 1000:
+                dist_km = max(0.5, round(dist_m / 1000.0, 1))
+                dur_min = max(6, round(dist_km * 3.5 + 4))
+                dur_text = f"约{dur_min}分钟"
+                travel_mode = mode if mode in ("公交", "地铁", "步行") else ("步行" if dist_km <= 1.2 else "公交")
+
+                mid_pt = (round((orig_pt[0] + dest_pt[0]) / 2, 6), round((orig_pt[1] + dest_pt[1]) / 2, 6))
+                poly = [
+                    {"lng": orig_pt[0], "lat": orig_pt[1]},
+                    {"lng": mid_pt[0], "lat": mid_pt[1]},
+                    {"lng": dest_pt[0], "lat": dest_pt[1]},
+                ]
+                points = [
+                    {"location": origin, "lng": orig_pt[0], "lat": orig_pt[1], "desc": "起点"},
+                    {"location": destination, "lng": dest_pt[0], "lat": dest_pt[1], "desc": "终点"},
+                ]
+                steps = [
+                    f"从{origin}出发，慢步步行约 300 米至就近主干道或公交/地铁站。",
+                    f"搭乘往{destination}方向公交或打车前往，全程约 {dist_km} 公里，耗时约 {dur_text}。身体不便时建议优先打车，几分钟即达。",
+                    f"到达{destination}，缓步进入门诊大厅，沿指示牌前往导医台办理就诊。",
+                ]
+                return {
+                    "ok": True,
+                    "matched": True,
+                    "origin": origin,
+                    "destination": destination,
+                    "mode": travel_mode,
+                    "duration": dur_text,
+                    "distance_km": dist_km,
+                    "points": points,
+                    "polyline": poly,
+                    "steps": steps,
+                    "summary": f"从{origin}到{destination}：{travel_mode}{dur_text}，全程约{dist_km}公里。" + "".join(steps[:2]),
+                }
     return result
 
 

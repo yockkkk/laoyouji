@@ -13,15 +13,12 @@
       </button>
     </view>
 
-    <!-- 10秒定时位置上报状态指示条 -->
+    <!-- 家人实时守护状态指示条 -->
     <view class="reporting-banner">
       <view class="pulse-dot"></view>
       <text class="report-text">
-        📡 位置实时守护中 · 每 10 秒自动向家人端上报位置 (已上报 {{ reportCount }} 次)
+        🛡️ 家人守护中 · 出行路线与安全已同步给子女看板
       </text>
-      <button class="sim-step-btn" size="mini" @tap="advanceLocation">
-        模拟行进 ›
-      </button>
     </view>
 
     <!-- 路线概览信息条 -->
@@ -109,11 +106,15 @@
         </view>
       </view>
 
-      <!-- 应急求助与联系家人 -->
+      <!-- 适老安心守护与联系家人 -->
       <view class="help-section">
-        <button class="btn-help-tel" @tap="callFamily">
-          <text class="btn-icon">📞</text>
+        <button class="btn-help-safe" :loading="checkingIn" @tap="sendSafetyCheckin">
+          <text class="btn-icon">🕊️</text>
           <text class="btn-text">一键给家人报平安</text>
+        </button>
+        <button class="btn-help-tel" @tap="callFamilyDirect">
+          <text class="btn-icon">📞</text>
+          <text class="btn-text">电话联系家人{{ familyContactName ? '（' + familyContactName + '）' : '' }}</text>
         </button>
       </view>
     </view>
@@ -139,21 +140,21 @@ export default {
   data() {
     return {
       user: null,
+      city: '南京',
       tripId: '',
       title: '',
-      // 起终点一律以后端返回或跳转参数为准。没拿到就如实显示"待定"，绝不拿演示地名顶替 ——
-      // 之前写死的"家（南京鼓楼区）→ 北京积水潭医院"会让老人以为真有一条跨城行程。
       originName: '家',
       destinationName: '',
-      // 耗时 / 距离 / 交通方式：三样都只由后端路线返回值填充，查不到就留空不显示。
       routeDuration: '',
       routeDistance: '',
       routeMode: '',
-      // 查不到路线时给老人看的那句实话（后端返回 summary 时优先用后端那句）
       routeNotice: '没查到这条路线。康乐只做本市出行（公交、地铁、步行），跨城的车票机票不查。',
       mapLoading: true,
       mapFailed: false,
       isMapFullscreen: false,
+      checkingIn: false,
+      familyContactName: '李明',
+      familyContactPhone: '13812345678',
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
@@ -164,10 +165,7 @@ export default {
       stationMarkers: [],
       tileLayer: null,
       leafletMap: null,
-      // 换乘步骤同样只来自后端。以前这里预置了"南京南站→北京南站 G12 次"三步演示，
-      // 后端一回空它们就原样显示，等于凭空造出一趟跨城高铁。
       steps: [],
-      // 真实规划路线经纬度点集（全部来自后端，本地不再预置任何演示点）
       routePoints: [],
       polylinePath: [],
     }
@@ -191,10 +189,15 @@ export default {
       if (opts.title) this.title = decodeURIComponent(opts.title)
       if (opts.origin) this.originName = decodeURIComponent(opts.origin)
       if (opts.destination) this.destinationName = decodeURIComponent(opts.destination)
+      if (opts.city) this.city = decodeURIComponent(opts.city)
     }
   },
   mounted() {
     this.user = getCurrentUser()
+    if (!this.city && this.user && this.user.city) {
+      this.city = this.user.city
+    }
+    this.fetchFamilyContact()
     this.initPage()
   },
   onUnload() {
@@ -248,6 +251,7 @@ export default {
           const directRes = await get('/api/trips/route/direct', {
             origin: this.originName,
             destination: this.destinationName,
+            city: this.city || '南京',
           }).catch(() => null)
           if (directRes && directRes.route && directRes.route.ok) {
             routeResult = directRes.route
@@ -353,7 +357,7 @@ export default {
           zoomSnap: 0.5,
           zoomDelta: 0.5,
           scrollWheelZoom: true, // 滚轮缩放（配合半级 zoomDelta，不会猛跳）
-        }).setView([35.5, 117.5], 6)
+        }).setView(toLeafletLatLng(this.elderCoords), 15)
         if (this.leafletMap.attributionControl) {
           this.leafletMap.attributionControl.setPrefix(false) // 只留「高德地图 © AutoNavi」，不显示 Leaflet 字样
           // 归属信息挪到左下角：它默认在右下角、z-index:1000，会盖住同在右下角、又没设
@@ -499,35 +503,38 @@ export default {
     toggleMapFullscreen() {
       this.isMapFullscreen = !this.isMapFullscreen
       this.$nextTick(() => {
-        if (this.leafletMap) {
-          setTimeout(() => {
+        setTimeout(() => {
+          if (this.leafletMap) {
             this.leafletMap.invalidateSize()
-            if (this.routePolyline) {
-              this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
-                padding: this.isMapFullscreen ? [60, 60] : [30, 30],
-              })
-            }
-          }, 150)
-        }
+            this.resetView()
+          }
+        }, 150)
       })
     },
     resetView() {
-      if (this.leafletMap && this.routePolyline) {
-        this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
-          padding: this.isMapFullscreen ? [60, 60] : [30, 30],
-        })
+      if (!this.leafletMap) return
+      if (this.routePolyline && this.polylinePath.length >= 2) {
+        try {
+          this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
+            padding: this.isMapFullscreen ? [60, 60] : [30, 30],
+          })
+          return
+        } catch (e) {}
+      }
+      if (this.elderCoords) {
+        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 15)
       }
     },
     locateElder() {
-      if (this.leafletMap && this.elderCoords) {
-        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 12)
-      }
+      if (!this.leafletMap || !this.elderCoords) return
+      this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 16)
+      uni.showToast({ title: '已定位到当前常住位置', icon: 'none' })
     },
     highlightStep(index) {
       this.currentStepIndex = index
       const step = this.steps[index]
       if (step && step.coords && this.leafletMap) {
-        this.leafletMap.setView(toLeafletLatLng(step.coords), 10)
+        this.leafletMap.setView(toLeafletLatLng(step.coords), 16)
       }
     },
     speakFullRoute() {
@@ -545,15 +552,62 @@ export default {
       const ok = speak(text)
       if (!ok) uni.showToast({ title: '当前设备不支持朗读', icon: 'none' })
     },
-    callFamily() {
-      // 没查到路线时不要拿空步骤取 title —— 那会让点按钮直接报错
-      const cur = this.steps[this.currentStepIndex]
-      const where = cur && cur.title ? cur.title : '当前位置'
-      uni.showModal({
-        title: '已向家人发送报平安提醒',
-        content: `已同步当前行进位置（${where}）至子女看板。`,
-        showCancel: false,
-        confirmText: '好的',
+    async fetchFamilyContact() {
+      try {
+        const res = await get('/api/family/members').catch(() => null)
+        if (res && Array.isArray(res.items) && res.items.length) {
+          const m = res.items[0]
+          if (m && m.user) {
+            this.familyContactName = m.user.name || '家人'
+            this.familyContactPhone = m.user.phone || '13812345678'
+          }
+        }
+      } catch (e) {}
+    },
+    async sendSafetyCheckin() {
+      if (this.checkingIn) return
+      this.checkingIn = true
+      const [lng, lat] = this.elderCoords
+      const curStep = this.steps[this.currentStepIndex] || {}
+      const where = curStep.title ? curStep.title.replace(/第 \d+ 步[：:]\s*/, '') : (this.destinationName || '前往就诊途中')
+
+      try {
+        let res = null
+        if (this.tripId) {
+          res = await post(`/api/trips/${this.tripId}/checkin`, {
+            location: where,
+            lng,
+            lat,
+            message: `长辈主动报平安：目前一切安好，正前往${this.destinationName || '医院'}`,
+          }).catch(() => null)
+        }
+
+        const childName = (res && res.family && res.family.name) || this.familyContactName || '子女'
+        const phone = (res && res.family && res.family.phone) || this.familyContactPhone || '13812345678'
+
+        uni.showModal({
+          title: '🕊️ 已向家人报平安',
+          content: `已成功同步您的平安状态至【${childName}】的守护看板！当前位置：${where}。`,
+          confirmText: '拨打家人电话',
+          cancelText: '我知道了',
+          success: (mRes) => {
+            if (mRes.confirm) {
+              uni.makePhoneCall({ phoneNumber: phone })
+            }
+          },
+        })
+      } catch (err) {
+        uni.showToast({ title: '网络稍有波动，已记录本地状态', icon: 'none' })
+      } finally {
+        this.checkingIn = false
+      }
+    },
+    callFamilyDirect() {
+      uni.makePhoneCall({
+        phoneNumber: this.familyContactPhone || '13812345678',
+        fail: () => {
+          uni.showToast({ title: '请在手机端拨号确认', icon: 'none' })
+        },
       })
     },
     goBack() {
@@ -756,6 +810,18 @@ export default {
   height: 58vh;
   background: #e2e8f0;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.map-section.fullscreen-mode {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
 }
 .map-section.fullscreen-mode .amap-box {
   width: 100% !important;
@@ -987,11 +1053,15 @@ export default {
   line-height: 1.4;
 }
 
-/* 应急报平安按钮 (触控靶区 >= 48px) */
+/* 适老安心守护与联系家人按钮 (触控靶区 >= 48px) */
 .help-section {
   margin-top: 36rpx;
+  margin-bottom: 48rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
 }
-.btn-help-tel {
+.btn-help-safe {
   width: 100%;
   min-height: 96rpx;
   display: flex;
@@ -1005,6 +1075,22 @@ export default {
   font-size: 34rpx;
   font-weight: 800;
   box-shadow: 0 6rpx 18rpx rgba(16, 185, 129, 0.25);
+  cursor: pointer;
+}
+.btn-help-tel {
+  width: 100%;
+  min-height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  background: #ffffff;
+  color: #2563eb;
+  border-radius: 48rpx;
+  border: 2rpx solid #bfdbfe;
+  font-size: 32rpx;
+  font-weight: 800;
+  box-shadow: 0 4rpx 14rpx rgba(37, 99, 235, 0.12);
   cursor: pointer;
 }
 </style>

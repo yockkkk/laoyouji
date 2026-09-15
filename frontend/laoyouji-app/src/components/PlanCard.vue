@@ -80,6 +80,7 @@
 
 <script>
 import { speak } from '../api/asr'
+import { getCurrentUser } from '../store/user'
 
 export default {
   name: 'PlanCard',
@@ -184,8 +185,20 @@ export default {
         return
       }
 
+      const currentUser = getCurrentUser()
+      let city = (currentUser && currentUser.city) || ''
+      if (!city) {
+        for (const c of ['南京', '北京', '上海', '杭州', '苏州']) {
+          if ((this.title + destination + origin).includes(c)) {
+            city = c
+            break
+          }
+        }
+      }
+      city = city || '南京'
+
       uni.navigateTo({
-        url: `/pages/elder/route-map?title=${encodeURIComponent(this.title || '就医出行路线规划')}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&trip_id=${encodeURIComponent(this.tripId || '')}`,
+        url: `/pages/elder/route-map?title=${encodeURIComponent(this.title || '就医出行路线规划')}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(city)}&trip_id=${encodeURIComponent(this.tripId || '')}`,
       })
     },
   },
