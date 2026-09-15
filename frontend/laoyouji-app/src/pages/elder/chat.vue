@@ -118,6 +118,7 @@
                 :disabled="thinking"
                 :dialect="user ? user.dialect : ''"
                 @text="onSpoken"
+                @error="inputMode = 'text'"
               />
               <view v-else class="text-input-wrap">
                 <input
@@ -743,12 +744,12 @@ export default {
       try {
         uni.showTabBar({ animation: false })
       } catch (e) {}
-      const pages = getCurrentPages()
-      if (pages && pages.length > 1) {
-        uni.navigateBack()
-      } else {
-        uni.switchTab({ url: '/pages/elder/home' })
-      }
+      uni.switchTab({
+        url: '/pages/elder/home',
+        fail: () => {
+          uni.reLaunch({ url: '/pages/elder/home' })
+        },
+      })
     },
 
     // ------------------------------------------------------------ 发送
@@ -1345,15 +1346,9 @@ export default {
 @import '../../uni.scss';
 
 .chat-page {
-  /* #ifdef H5 */
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-width: 430px;
-  margin: 0 auto;
-  /* #endif */
+  position: relative;
+  width: 100%;
+  height: 100%;
   /* #ifndef H5 */
   height: 100vh;
   /* #endif */
@@ -1539,8 +1534,6 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  max-width: 430px;
-  margin: 0 auto;
   background: rgba($lyj-text, 0.45);
   display: flex;
   align-items: center;
@@ -1719,8 +1712,6 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  max-width: 430px;
-  margin: 0 auto;
   background: rgba(15, 23, 42, 0.55);
   z-index: 150;
   display: flex;

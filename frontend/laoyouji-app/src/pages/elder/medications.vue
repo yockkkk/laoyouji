@@ -99,12 +99,12 @@ export default {
   },
   methods: {
     goBack() {
-      const pages = getCurrentPages()
-      if (pages && pages.length > 1) {
-        uni.navigateBack()
-      } else {
-        uni.switchTab({ url: '/pages/elder/home' })
-      }
+      uni.switchTab({
+        url: '/pages/elder/home',
+        fail: () => {
+          uni.reLaunch({ url: '/pages/elder/home' })
+        },
+      })
     },
     async load() {
       try {
@@ -220,6 +220,8 @@ export default {
   display: flex;
   align-items: center;
   gap: $lyj-space-md;
+  position: relative;
+  z-index: 20;
 }
 .back-btn {
   display: inline-flex;

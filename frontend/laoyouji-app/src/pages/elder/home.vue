@@ -18,6 +18,7 @@
             :dialect="user ? user.dialect : ''"
             hint="想办什么事，按住上面的大按钮说给我听"
             @text="onSpoken"
+            @error="onMicError"
           />
         </view>
 
@@ -186,6 +187,13 @@ export default {
     onSpoken(text) {
       putUtterance(text, true)
       uni.switchTab({ url: '/pages/elder/chat' })
+    },
+
+    /** 麦克风在 HTTP 或不可用环境报错时，友好引导到聊天页打字 */
+    onMicError() {
+      setTimeout(() => {
+        uni.switchTab({ url: '/pages/elder/chat' })
+      }, 1500)
     },
 
     /**

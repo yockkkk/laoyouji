@@ -35,7 +35,7 @@ PKG_NAME="com.kangle.app"
 APP_LABEL="康乐"
 VERSION_CODE="${KANGLE_VERSION_CODE:-2}"     # 必须 > 服务器上已装 APK 的 versionCode
 VERSION_NAME="${KANGLE_VERSION_NAME:-1.1.0}"
-H5_URL="http://159.75.94.149:8000/"          # 换 H5 地址就改这里（注入到清单 meta-data）
+H5_URL="https://sdad.hynu.site/"          # 换 H5 地址就改这里（注入到清单 meta-data）
 
 # ===== 签名（绝不写口令明文，只读环境变量）==================================
 KEYSTORE_PATH="${KANGLE_KEYSTORE:-/opt/laoyouji/keys/kangle.keystore}"

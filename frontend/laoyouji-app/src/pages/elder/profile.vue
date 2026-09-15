@@ -521,12 +521,12 @@ export default {
       }
     },
     goBack() {
-      const pages = getCurrentPages()
-      if (pages && pages.length > 1) {
-        uni.navigateBack()
-      } else {
-        uni.switchTab({ url: '/pages/elder/home' })
-      }
+      uni.switchTab({
+        url: '/pages/elder/home',
+        fail: () => {
+          uni.reLaunch({ url: '/pages/elder/home' })
+        },
+      })
     },
     /**
      * 退出登录。契约 §10.3 的时机表最后一行：`clearCurrentUser()` 之后调 `cancelAll()`。
@@ -563,6 +563,8 @@ export default {
   display: flex;
   align-items: center;
   gap: $lyj-space-md;
+  position: relative;
+  z-index: 20;
 }
 .back-btn {
   display: inline-flex;

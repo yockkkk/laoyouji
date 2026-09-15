@@ -40,7 +40,7 @@ export default {
     hint: { type: String, default: '' }, // 静止时的一行提示，如"按住说话，说完松开"
     mode: { type: String, default: 'circle' }, // circle (首页大圆) | bar (聊天页横向胶囊)
   },
-  emits: ['text'],
+  emits: ['text', 'error'],
   data() {
     return {
       recording: false, processing: false, interimText: '',
@@ -78,11 +78,13 @@ export default {
         }
       } catch (e) {
         this.recording = false
+        this._removeWindowMouseUp()
         uni.showToast({
           title: e.message || '麦克风不可用，请用打字',
           icon: 'none',
           duration: 2500,
         })
+        this.$emit('error', e)
       }
     },
 

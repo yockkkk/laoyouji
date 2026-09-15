@@ -130,7 +130,7 @@ input, textarea {
 }
 
 page, uni-page-body {
-  height: 100%;
+  min-height: 100%;
 }
 
 .card {
@@ -157,23 +157,64 @@ page, uni-page-body {
     background-size: 20px 20px;
     margin: 0;
     padding: 0;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
   }
   uni-app {
+    width: 430px;
     max-width: 430px;
-    width: 100%;
-    height: 100vh;
+    min-width: 320px;
+    flex: 0 0 430px;
+    height: calc(100vh - 32px);
     max-height: 920px;
-    margin: 16px auto;
+    margin: auto;
     position: relative;
+    display: flex;
+    flex-direction: column;
     transform: translate(0, 0); /* 确立包含块 (Containing Block)，锁定 position: fixed 子元素于手机沙盒内 */
     background-color: $lyj-bg;
     box-shadow: 0 20px 60px rgba(19, 36, 56, 0.16), 0 0 0 8px #D0DFEE;
     border-radius: 36px;
     overflow: hidden;
+  }
+  uni-page {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  uni-page-wrapper {
+    flex: 1 !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(42, 130, 228, 0.25) transparent;
+  }
+  uni-page-wrapper::-webkit-scrollbar {
+    width: 4px;
+  }
+  uni-page-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(42, 130, 228, 0.25);
+    border-radius: 4px;
+  }
+  uni-page-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  uni-page-body {
+    min-height: 100% !important;
+    height: auto !important;
+    box-sizing: border-box;
+    padding-bottom: 76px;
+  }
+  uni-page-body:has(.chat-page),
+  uni-page[data-page="pages/elder/chat"] uni-page-body {
+    height: 100% !important;
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
   }
   uni-page-head {
     max-width: 430px !important;
@@ -182,6 +223,20 @@ page, uni-page-body {
     margin: 0 auto !important;
   }
   uni-tabbar,
+  .uni-tabbar-bottom {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    max-width: 430px !important;
+    margin: 0 auto !important;
+    height: 60px !important;
+    z-index: 998 !important;
+  }
+  uni-tabbar .uni-placeholder {
+    display: none !important;
+  }
   .uni-tabbar {
     max-width: 430px !important;
     left: 0 !important;

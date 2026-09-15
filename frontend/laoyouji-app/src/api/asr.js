@@ -78,6 +78,13 @@ function encodeWav(samples, sampleRate) {
 
 function startH5Recording() {
   return new Promise((resolve, reject) => {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      const isHttp = typeof window !== 'undefined' && window.isSecureContext === false
+      const msg = isHttp
+        ? '麦克风需要 HTTPS 加密环境，当前为 HTTP 连接已被系统安全策略限制，请切换键盘打字交流'
+        : '当前环境未检测到可用麦克风，请切换键盘打字交流'
+      return reject(new Error(msg))
+    }
     let stream
     navigator.mediaDevices
       .getUserMedia({ audio: true })

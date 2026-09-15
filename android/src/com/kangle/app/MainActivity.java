@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
 
     /* ===== 契约冻结的公开常量（§4.5，逐字照抄，不许改名） ===== */
 
-    public  static final String DEFAULT_H5_URL    = "http://159.75.94.149:8000/";
+    public  static final String DEFAULT_H5_URL    = "https://sdad.hynu.site/";
     public  static final String META_H5_URL       = "kangle.h5_url";
     public  static final String EXTRA_ROUTE       = "kangle.route";
     public  static final String EXTRA_REMINDER_ID = "kangle.reminder_id";

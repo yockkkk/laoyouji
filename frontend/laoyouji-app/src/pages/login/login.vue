@@ -166,7 +166,7 @@
         <view class="apk-download-left">
           <text class="apk-icon">📱</text>
           <view class="apk-info">
-            <text class="apk-title">安装老友记安卓手机客户端</text>
+            <text class="apk-title">安装康乐安卓手机客户端</text>
             <text class="apk-sub">超轻量原生封装 · 支持长辈语音与实时守护</text>
           </view>
         </view>
