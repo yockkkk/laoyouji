@@ -814,6 +814,16 @@ export default {
       return (this.messages || []).filter((m) => m && typeof m === 'object')
     },
 
+    currentTurnMessages() {
+      const msgs = this.safeMessages
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i] && msgs[i].isUser) {
+          return msgs.slice(i)
+        }
+      }
+      return msgs
+    },
+
     dispatchedAgents() {
       const set = new Set()
       if (this.thinking && this.currentAgent) {
@@ -822,7 +832,7 @@ export default {
           set.add(norm)
         }
       }
-      for (const m of this.safeMessages) {
+      for (const m of this.currentTurnMessages) {
         if (!m || typeof m !== 'object') continue
         const kind = m.kind || ''
         if (
@@ -867,7 +877,7 @@ export default {
     },
 
     hasTaskStarted() {
-      return this.safeMessages.some(
+      return this.currentTurnMessages.some(
         (m) =>
           m.isUser ||
           m.kind === 'tool' ||
@@ -879,7 +889,7 @@ export default {
 
     hasAnyRejected() {
       if (this.allTools.some((t) => t.status === 'rejected')) return true
-      return this.safeMessages.some(
+      return this.currentTurnMessages.some(
         (m) => m.kind === 'suspend' && m.status === 'rejected',
       )
     },
@@ -943,7 +953,7 @@ export default {
     // 待批拦截数严格等于真实挂起待确权项目
     pendingTasksCount() {
       const suspendedTools = this.allTools.filter((t) => t.status === 'suspended').length
-      const suspendedMsgs = this.safeMessages.filter((m) => m.kind === 'suspend' && m.status === 'pending').length
+      const suspendedMsgs = this.currentTurnMessages.filter((m) => m.kind === 'suspend' && m.status === 'pending').length
       return Math.max(suspendedTools, suspendedMsgs)
     },
 
@@ -1012,7 +1022,7 @@ export default {
       if (!this.hasTaskStarted) return '待命中'
 
       // 1. 优先从 todo 任务清单推导
-      const todoMsgs = this.safeMessages.filter((m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0)
+      const todoMsgs = this.currentTurnMessages.filter((m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0)
       const todoMsg = todoMsgs.length > 0 ? todoMsgs[todoMsgs.length - 1] : null
       if (todoMsg && todoMsg.todos.length > 0) {
         const validTodos = todoMsg.todos.filter((t) => t && typeof t === 'object')
@@ -1051,7 +1061,7 @@ export default {
           const isCanteenOrService = this.communityTools.some(
             (t) => t.name && (t.name.includes('canteen') || t.name.includes('order') || t.name.includes('service') || t.name.includes('escort')),
           )
-          const lastUser = this.safeMessages.filter((m) => m.isUser && m.text).pop()
+          const lastUser = this.currentTurnMessages.filter((m) => m.isUser && m.text).pop()
           const userText = lastUser ? lastUser.text : ''
           if (isCanteenOrService || userText.includes('食堂') || userText.includes('便民') || userText.includes('助老')) {
             return '邻里助老便民服务'
@@ -1062,7 +1072,7 @@ export default {
       }
 
       // 3. 从长辈最近一条提问文本推导
-      const userMsgs = this.safeMessages.filter((m) => m.isUser && m.text)
+      const userMsgs = this.currentTurnMessages.filter((m) => m.isUser && m.text)
       if (userMsgs.length > 0) {
         const last = userMsgs[userMsgs.length - 1].text
         if (last.includes('看病') || last.includes('医院') || last.includes('挂号') || last.includes('门诊') || last.includes('疼') || last.includes('病')) {
@@ -1103,7 +1113,7 @@ export default {
 
     // 动态根据真实诉求与任务推导意图文本
     currentIntentText() {
-      const userMsgs = this.safeMessages.filter((m) => m.isUser && m.text)
+      const userMsgs = this.currentTurnMessages.filter((m) => m.isUser && m.text)
       if (userMsgs.length > 0) {
         const last = userMsgs[userMsgs.length - 1].text
         if (this.displaySteps.length > 0) {
@@ -1125,7 +1135,7 @@ export default {
     // 智能体推理独白：真实模式下完全由会话真实上下文生成
     agentThoughts() {
 
-      const msgs = this.safeMessages
+      const msgs = this.currentTurnMessages
       const userMsgs = msgs.filter((m) => m.isUser && m.text)
       const lastUser = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1].text : ''
 
@@ -1368,7 +1378,7 @@ export default {
     // 动态推导流水线任务分解步骤（杜绝写死“选医院挂专家号”）
     displaySteps() {
       // 从 messages 中提取最新真实 todo 快照
-      const todoMsgs = this.safeMessages.filter(
+      const todoMsgs = this.currentTurnMessages.filter(
         (m) => m.kind === 'todo' && Array.isArray(m.todos) && m.todos.length > 0,
       )
       const todoMsg = todoMsgs.length > 0 ? todoMsgs[todoMsgs.length - 1] : null
@@ -1502,7 +1512,7 @@ export default {
       }
 
       // 1. 先放挂起卡：它带的是担保总额与家人可读摘要，是一笔挂起高危操作最准确的表示
-      this.safeMessages
+      this.currentTurnMessages
         .filter((m) => m.kind === 'suspend')
         .forEach((s, idx) => {
           const cid = s.confirmationId || ''
@@ -1617,9 +1627,9 @@ export default {
     },
 
     isArtifactReady() {
-      const hasCard = this.safeMessages.some((m) => m.kind === 'card')
+      const hasCard = this.currentTurnMessages.some((m) => m.kind === 'card')
       if (hasCard) return true
-      const suspends = this.safeMessages.filter((m) => m.kind === 'suspend')
+      const suspends = this.currentTurnMessages.filter((m) => m.kind === 'suspend')
       if (
         suspends.length > 0 &&
         suspends.every((m) => m.status === 'executed' || m.status === 'completed') &&
@@ -1632,7 +1642,7 @@ export default {
     },
 
     artifactDisplayTitle() {
-      const msgs = this.safeMessages
+      const msgs = this.currentTurnMessages
       const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
       if (realCard && realCard.title) {
         return realCard.title.startsWith('《') ? realCard.title : `《${realCard.title}》`
@@ -1643,7 +1653,7 @@ export default {
     },
 
     artifactDisplaySubtitle() {
-      const msgs = this.safeMessages
+      const msgs = this.currentTurnMessages
       const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
       if (realCard) {
         if (Array.isArray(realCard.notes) && realCard.notes.length > 0) {
@@ -1659,7 +1669,7 @@ export default {
 
 
     modalTitleText() {
-      const msgs = this.safeMessages
+      const msgs = this.currentTurnMessages
       const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
       if (realCard && realCard.title) {
         return `${realCard.title.replace(/^《|》$/g, '')} (适老大字版)`
@@ -1675,7 +1685,7 @@ export default {
 
     artifactPages() {
 
-      const msgs = this.safeMessages
+      const msgs = this.currentTurnMessages
       const realCard = msgs.slice().reverse().find(
         (m) => m.kind === 'card' && (Array.isArray(m.sections || m.pages) || (m.body && typeof m.body === 'object')),
       )
@@ -1915,7 +1925,7 @@ export default {
     },
 
     parseTools(agentPrefixes) {
-      const msgs = this.safeMessages
+      const msgs = this.currentTurnMessages
       const suspends = msgs.filter((m) => m.kind === 'suspend')
       const rawTools = msgs
         .filter(

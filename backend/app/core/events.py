@@ -504,48 +504,64 @@ def _ensure_valid_tool_turns(messages: list[dict]) -> list[dict]:
     3. 剔除没有任何工具结果的 tool_calls；若 assistant 无内容且无有效 tool_calls，则略去该消息。
     4. 剔除孤儿 tool 消息。
     """
-    out: list[dict] = []
-    i = 0
-    n = len(messages)
-    while i < n:
-        msg = messages[i]
-        if msg.get("role") == "assistant" and msg.get("tool_calls"):
-            calls = msg["tool_calls"]
-            call_map = {c["id"]: c for c in calls if isinstance(c, dict) and "id" in c}
-            matched_tools: dict[str, dict] = {}
-            deferred_others: list[dict] = []
-            j = i + 1
-            while j < n and len(matched_tools) < len(call_map):
-                nxt = messages[j]
-                if nxt.get("role") == "tool" and nxt.get("tool_call_id") in call_map:
-                    matched_tools[nxt["tool_call_id"]] = nxt
-                else:
-                    deferred_others.append(nxt)
-                j += 1
+    all_tools: dict[str, dict] = {}
+    for m in messages:
+        if m.get("role") == "tool" and m.get("tool_call_id"):
+            all_tools[m["tool_call_id"]] = m
 
-            valid_calls = [c for c in calls if c.get("id") in matched_tools]
+    consumed_tools: set[str] = set()
+    out: list[dict] = []
+
+    for msg in messages:
+        role = msg.get("role")
+        if role == "tool":
+            # tool 消息由 assistant 触发内联追加，跳过独立游离消息
+            continue
+
+        if role == "assistant" and msg.get("tool_calls"):
+            calls = msg["tool_calls"]
+            # 只保留未被消费且存在结果的 call
+            valid_calls = [
+                c for c in calls
+                if isinstance(c, dict) and c.get("id") in all_tools and c.get("id") not in consumed_tools
+            ]
+
+            content = msg.get("content")
             if valid_calls:
                 new_asst = dict(msg)
                 new_asst["tool_calls"] = valid_calls
                 out.append(new_asst)
                 for c in valid_calls:
-                    out.append(matched_tools[c["id"]])
-            elif msg.get("content"):
+                    cid = c["id"]
+                    out.append(all_tools[cid])
+                    consumed_tools.add(cid)
+            elif content:
+                # 没有任何有效 tool_calls，但有文本内容，退化为普通 assistant 消息
                 new_asst = dict(msg)
                 new_asst.pop("tool_calls", None)
                 out.append(new_asst)
-
-            for deferred in deferred_others:
-                if deferred.get("role") == "tool" and deferred.get("tool_call_id") not in call_map:
-                    continue
-                out.append(deferred)
-            i = j
-        elif msg.get("role") == "tool":
-            # 孤儿 tool 消息，跳过
-            i += 1
+            else:
+                # 既无有效 tool_calls 也无 content，直接丢弃，避免 DeepSeek 400
+                continue
+        elif role == "assistant":
+            content = msg.get("content")
+            if content:
+                out.append(msg)
         else:
             out.append(msg)
-            i += 1
+
+    # 验证不变式：确保没有任何 assistant(tool_calls) 后面缺少 tool
+    for idx, m in enumerate(out):
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            tcs = [c["id"] for c in m["tool_calls"]]
+            subsequent_tools = []
+            k = idx + 1
+            while k < len(out) and out[k].get("role") == "tool":
+                subsequent_tools.append(out[k].get("tool_call_id"))
+                k += 1
+            if tcs != subsequent_tools:
+                logger.warning("工具调用与工具结果不严格配对: tool_calls=%s vs tools=%s", tcs, subsequent_tools)
+
     return out
 
 
