@@ -104,16 +104,21 @@ import android.view.KeyEvent;
 import android.view.Window;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 public class MainActivity extends Activity {
     private WebView webView;
     private static final String APP_URL = "https://sdad.hynu.site/";
+    private PermissionRequest pendingAudioRequest = null;
+    private static final int RC_AUDIO_PERM = 201;
+    private long lastBackPressTime = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -195,6 +200,20 @@ public class MainActivity extends Activity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    boolean wantsAudio = false;
+                    for (String res : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res)) {
+                            wantsAudio = true;
+                            break;
+                        }
+                    }
+                    if (wantsAudio && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (checkSelfPermission("android.permission.RECORD_AUDIO") != PackageManager.PERMISSION_GRANTED) {
+                            pendingAudioRequest = request;
+                            requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, RC_AUDIO_PERM);
+                            return;
+                        }
+                    }
                     request.grant(request.getResources());
                 }
             }
@@ -222,12 +241,71 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == RC_AUDIO_PERM) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (pendingAudioRequest != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                if (granted) {
+                    pendingAudioRequest.grant(pendingAudioRequest.getResources());
+                } else {
+                    pendingAudioRequest.deny();
+                    Toast.makeText(this, "需要麦克风权限才能进行语音对讲，请在系统设置中开启", Toast.LENGTH_LONG).show();
+                    try {
+                        Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Throwable ignored) {}
+                }
+            }
+            pendingAudioRequest = null;
+        }
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if ((keyCode == KeyEvent.KEYCODE_BACK) && webView.canGoBack()) {
-            webView.goBack();
-            return true;
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && webView != null) {
+                webView.evaluateJavascript(
+                    "(function() {" +
+                    "  try {" +
+                    "    if (window.__lyjHandleBack && typeof window.__lyjHandleBack === 'function') {" +
+                    "      return window.__lyjHandleBack() ? '1' : '0';" +
+                    "    }" +
+                    "  } catch (e) {}" +
+                    "  return '0';" +
+                    "})()",
+                    new ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String value) {
+                            if ("\"1\"".equals(value) || "1".equals(value) || "\"true\"".equals(value) || "true".equals(value)) {
+                                return;
+                            }
+                            handleNativeBack();
+                        }
+                    }
+                );
+                return true;
+            } else {
+                handleNativeBack();
+                return true;
+            }
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    private void handleNativeBack() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastBackPressTime < 2000) {
+            finish();
+        } else {
+            lastBackPressTime = now;
+            Toast.makeText(this, "再按一次退出老友记", Toast.LENGTH_SHORT).show();
+        }
     }
 }
 JAVA

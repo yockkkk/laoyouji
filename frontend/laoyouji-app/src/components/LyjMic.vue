@@ -59,6 +59,12 @@ export default {
       this.recording = true
       this.interimText = ''
       this._downAt = Date.now()
+      // 停止可能正在播报的语音朗读，防止声音啸叫及抢占系统音频录音驱动
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel()
+        } catch (ignored) {}
+      }
       // PC 兜底：鼠标按下后滑出按钮再松开，按钮自己的 mouseup 收不到，
       // 没有这一层 window 监听录音就会一直卡死（H5 上轨道一直亮着红点）。
       // #ifdef H5

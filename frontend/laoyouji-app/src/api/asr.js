@@ -6,9 +6,15 @@
  */
 import { uploadAudio } from './client'
 
-/** 是否支持 Web Speech API（仅 H5 / Chrome 系） */
+/** 是否支持 Web Speech API（仅桌面浏览器 Chrome/Edge 可用，移动端 WebView 禁用以避免争夺麦克风硬件） */
 export function webSpeechAvailable() {
   // #ifdef H5
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  // 移动端 WebView (包含 Android / iOS 应用内) 禁用，避免与 getUserMedia 争抢底层音频驱动导致 Could not start audio source
+  const ua = navigator.userAgent || ''
+  if (/Android|iPhone|iPad|iPod|Mobile|wv/i.test(ua)) {
+    return false
+  }
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
   // #endif
   // #ifndef H5
@@ -85,6 +91,12 @@ function startH5Recording() {
         : '当前环境未检测到可用麦克风，请切换键盘打字交流'
       return reject(new Error(msg))
     }
+    // 停止正在播放的 TTS，避免扬声器占用与音频焦点冲突
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch (ignored) {}
+    }
     let stream
     navigator.mediaDevices
       .getUserMedia({ audio: true })
@@ -93,7 +105,16 @@ function startH5Recording() {
         return beginCapture(stream)
       })
       .then((ctrl) => resolve(ctrl))
-      .catch((e) => reject(new Error('麦克风不可用：' + (e.message || e.name))))
+      .catch((e) => {
+        const errMsg = String(e.message || e.name || '')
+        let friendlyMsg = '麦克风不可用：' + errMsg
+        if (errMsg.includes('Could not start audio source') || e.name === 'NotReadableError') {
+          friendlyMsg = '麦克风被占用或权限受限，请在手机系统设置中允许老友记使用麦克风'
+        } else if (e.name === 'NotAllowedError' || errMsg.includes('Permission denied')) {
+          friendlyMsg = '未获得麦克风权限，请在手机系统设置中开启老友记的录音权限'
+        }
+        reject(new Error(friendlyMsg))
+      })
   })
 }
 

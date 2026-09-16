@@ -7,6 +7,43 @@ export default {
     // 提醒层的唯一入口：注册通知点击回流 + 冷启动补课 + 已登录则同步一次闹钟。
     // 浏览器里没有 window.KangleNative，initNative 内部整体静默降级，不影响启动。
     initNative()
+
+    // 挂载全局物理返回键拦截（Android APK 与 WebView 协同）
+    if (typeof window !== 'undefined') {
+      window.__lyjHandleBack = function () {
+        // 1. 如果当前页面有局部拦截（如关闭抽屉、弹窗）
+        if (window.__lyjCurrentPageBack && typeof window.__lyjCurrentPageBack === 'function') {
+          try {
+            const res = window.__lyjCurrentPageBack()
+            if (res) return true
+          } catch (e) {
+            console.warn('Page back handler failed:', e)
+          }
+        }
+        // 2. 检查当前页面路由
+        try {
+          const pages = getCurrentPages()
+          if (pages && pages.length > 0) {
+            const current = pages[pages.length - 1]
+            const route = current ? (current.route || current.__route__ || '') : ''
+            // 若不是首页（在聊天页、路线页、吃药页、我的页面），返回键退回长辈首页
+            if (route && !route.endsWith('/home') && route !== 'pages/elder/home') {
+              uni.switchTab({
+                url: '/pages/elder/home',
+                fail: () => {
+                  uni.reLaunch({ url: '/pages/elder/home' })
+                },
+              })
+              return true
+            }
+          }
+        } catch (e) {
+          console.warn('Global back route check error:', e)
+        }
+        // 已经在首页，返回 false 触发原生层双击退出防误触
+        return false
+      }
+    }
   },
 }
 </script>
@@ -211,7 +248,8 @@ page, uni-page-body {
     padding-bottom: 76px;
   }
   uni-page-body:has(.chat-page),
-  uni-page[data-page="pages/elder/chat"] uni-page-body {
+  uni-page[data-page="pages/elder/chat"] uni-page-body,
+  uni-page[data-page="pages-elder-chat"] uni-page-body {
     height: 100% !important;
     padding-bottom: 0 !important;
     overflow: hidden !important;

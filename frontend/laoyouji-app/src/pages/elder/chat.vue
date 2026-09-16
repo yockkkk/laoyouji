@@ -424,6 +424,21 @@ export default {
     try {
       uni.hideTabBar({ animation: false })
     } catch (e) {}
+    // 注册全局返回拦截器供 Android WebView 及硬件返回键使用
+    if (typeof window !== 'undefined') {
+      window.__lyjCurrentPageBack = () => {
+        if (this.treeDrawerVisible) {
+          this.closeDrawer()
+          return true
+        }
+        if (this.historyVisible) {
+          this.closeHistory()
+          return true
+        }
+        this.goBack()
+        return true
+      }
+    }
     this._updateViewport()
     this.user = getCurrentUser()
     if (!this.user) {
@@ -459,12 +474,30 @@ export default {
       uni.showTabBar({ animation: false })
     } catch (e) {}
     this._stopWatch()
+    if (typeof window !== 'undefined' && window.__lyjCurrentPageBack) {
+      window.__lyjCurrentPageBack = null
+    }
   },
   onUnload() {
     try {
       uni.showTabBar({ animation: false })
     } catch (e) {}
     this._stopWatch()
+    if (typeof window !== 'undefined' && window.__lyjCurrentPageBack) {
+      window.__lyjCurrentPageBack = null
+    }
+  },
+  onBackPress(options) {
+    if (this.treeDrawerVisible) {
+      this.closeDrawer()
+      return true
+    }
+    if (this.historyVisible) {
+      this.closeHistory()
+      return true
+    }
+    this.goBack()
+    return true
   },
   methods: {
     _updateViewport() {
@@ -1346,12 +1379,16 @@ export default {
 @import '../../uni.scss';
 
 .chat-page {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
-  height: 100%;
-  /* #ifndef H5 */
+  max-width: 430px;
+  margin: 0 auto;
   height: 100vh;
-  /* #endif */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: $lyj-bg;
@@ -1360,7 +1397,13 @@ export default {
   z-index: 10;
 }
 .topbar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 120;
   padding: 16rpx 20rpx;
+  padding-top: calc(16rpx + env(safe-area-inset-top, 0px));
   background: $lyj-card;
   border-bottom: 2rpx solid $lyj-line;
   display: flex;
@@ -1368,30 +1411,34 @@ export default {
   justify-content: space-between;
   gap: 12rpx;
   flex-shrink: 0;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
 }
 .back-btn {
   display: inline-flex;
   align-items: center;
   gap: 4rpx;
-  padding: 6rpx 14rpx;
-  background: $lyj-field;
-  border: 2rpx solid $lyj-line;
+  padding: 8rpx 18rpx;
+  background: $lyj-primary-soft;
+  border: 2rpx solid rgba(42, 130, 228, 0.35);
   border-radius: $lyj-radius-pill;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s;
+  transition: all 0.15s;
+  min-height: 56rpx;
+  box-shadow: 0 2rpx 6rpx rgba(42, 130, 228, 0.12);
 }
 .back-btn:active {
   opacity: 0.7;
+  transform: scale(0.96);
 }
 .back-icon {
-  font-size: 34rpx;
+  font-size: 38rpx;
   line-height: 1;
   color: $lyj-primary;
   font-weight: 800;
 }
 .back-text {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: $lyj-primary;
   font-weight: 700;
 }
@@ -1775,11 +1822,13 @@ export default {
 @media screen and (max-width: 600px) {
   .topbar {
     padding: 12rpx 16rpx;
+    padding-top: calc(12rpx + env(safe-area-inset-top, 0px));
     gap: 8rpx;
     min-height: 88rpx;
   }
   .back-btn {
-    padding: 6rpx 14rpx;
+    padding: 8rpx 16rpx;
+    min-height: 52rpx;
   }
   .topbar-main {
     flex: 1;
