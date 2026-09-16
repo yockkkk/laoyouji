@@ -78,11 +78,41 @@ def create_app() -> FastAPI:
 
     # 挂载静态分发目录 static_dist，提供 APK 下载与前端 H5 单页应用
     import os
+    import json
     from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, JSONResponse
     from fastapi import HTTPException
 
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static_dist")
+
+    @app.middleware("http")
+    async def add_cache_control_headers(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        elif "/assets/" in path:
+            response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+        return response
+
+    @app.get("/api/app/version")
+    async def get_app_version():
+        version_json_path = os.path.join(static_dir, "version.json")
+        if os.path.isfile(version_json_path):
+            try:
+                with open(version_json_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {
+            "versionCode": 101,
+            "versionName": "1.0.1",
+            "apkUrl": "https://sdad.hynu.site/laoyouji.apk",
+            "updateTime": "2026-09-16",
+            "changelog": "优化卡片布局，修复拨号与全屏退出",
+        }
 
     @app.get("/laoyouji.apk")
     @app.head("/laoyouji.apk")

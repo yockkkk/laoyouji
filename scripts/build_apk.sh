@@ -6,6 +6,20 @@ BUILD_DIR=/opt/laoyouji/apk_project
 TOOLS_DIR=/opt/laoyouji/build_tools
 DIST_DIR=/opt/laoyouji/backend/static_dist
 OUT_APK=/opt/laoyouji/backend/static_dist/laoyouji.apk
+KEYSTORE_FILE=/opt/laoyouji/release.keystore
+KEY_PASS="laoyouji123"
+
+# 自动递增版本号：确保每次构建 versionCode 严格递增，Android 系统可直接覆盖安装，绝无需先卸载
+VERSION_FILE=/opt/laoyouji/version_code.txt
+if [ -f "$VERSION_FILE" ]; then
+    VERSION_CODE=$(cat "$VERSION_FILE" | tr -d ' \r\n')
+    VERSION_CODE=$((VERSION_CODE + 1))
+else
+    VERSION_CODE=101
+fi
+echo "$VERSION_CODE" > "$VERSION_FILE"
+VERSION_NAME="1.0.$((VERSION_CODE - 100))"
+echo "==== Building LaoYouJi APK: versionCode=$VERSION_CODE, versionName=$VERSION_NAME ===="
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/src/com/laoyouji/app"
@@ -40,12 +54,12 @@ cat << 'XML' > "$BUILD_DIR/res/values/strings.xml"
 </resources>
 XML
 
-cat << 'XML' > "$BUILD_DIR/AndroidManifest.xml"
+cat << XML > "$BUILD_DIR/AndroidManifest.xml"
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.laoyouji.app"
-    android:versionCode="100"
-    android:versionName="1.0.0">
+    android:versionCode="$VERSION_CODE"
+    android:versionName="$VERSION_NAME">
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30" />
 
@@ -254,16 +268,17 @@ cd "$BUILD_DIR"
 zipalign -p -f -v 4 bin/app.unsigned.apk bin/app.aligned.apk
 zipalign -c -v 4 bin/app.aligned.apk
 
-echo "==== 10. Generating keystore and signing APK ===="
-cd "$BUILD_DIR"
-if [ ! -f release.keystore ]; then
-    keytool -genkey -v -keystore release.keystore -alias laoyouji \
+echo "==== 10. Ensuring permanent keystore and signing APK ===="
+if [ ! -f "$KEYSTORE_FILE" ]; then
+    echo "Creating persistent release keystore at $KEYSTORE_FILE..."
+    keytool -genkey -v -keystore "$KEYSTORE_FILE" -alias laoyouji \
         -keyalg RSA -keysize 2048 -validity 10000 \
-        -storepass laoyouji123 -keypass laoyouji123 \
+        -storepass "$KEY_PASS" -keypass "$KEY_PASS" \
         -dname "CN=LaoYouJi, OU=Dev, O=App, L=Nanjing, ST=Jiangsu, C=CN"
 fi
 
-apksigner sign --ks release.keystore --ks-pass pass:laoyouji123 \
+cd "$BUILD_DIR"
+apksigner sign --ks "$KEYSTORE_FILE" --ks-pass "pass:$KEY_PASS" \
     --v1-signing-enabled true \
     --v2-signing-enabled true \
     --v3-signing-enabled true \
@@ -274,4 +289,18 @@ echo "==== 11. Verifying APK alignment and signature ===="
 zipalign -c -v 4 "$OUT_APK"
 apksigner verify --verbose "$OUT_APK"
 ls -lh "$OUT_APK"
+
+echo "==== 12. Writing version.json metadata ===="
+UPDATE_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+cat << JSON > "$DIST_DIR/version.json"
+{
+  "versionCode": $VERSION_CODE,
+  "versionName": "$VERSION_NAME",
+  "apkUrl": "https://sdad.hynu.site/laoyouji.apk",
+  "updateTime": "$UPDATE_TIME",
+  "changelog": "优化卡片布局排版，修复拨打电话拉起原生拨号盘，优化高德全屏大图返回手势，支持免卸载无缝覆盖安装"
+}
+JSON
+cat "$DIST_DIR/version.json"
+
 echo "==== SUCCESS: APK BUILT, ZIPALIGNED AND SIGNED AT $OUT_APK ===="

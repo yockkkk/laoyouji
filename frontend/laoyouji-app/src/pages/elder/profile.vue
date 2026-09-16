@@ -148,6 +148,24 @@
       <button class="btn-ghost" @tap="logout">退出当前登录</button>
     </view>
 
+    <!-- 应用版本与更新 -->
+    <view class="section">
+      <text class="section-title">📱 应用版本与更新</text>
+      <view class="version-card">
+        <view class="version-header">
+          <text class="version-label">当前运行版本</text>
+          <text class="version-badge">{{ latestVersionName || 'v1.0.1' }}</text>
+        </view>
+        <text class="version-tip">
+          💡 网页界面自动热更新，每次打开即为最新版，无需重新安装；原生 App 升级支持直接覆盖安装，不丢失历史数据与设置。
+        </text>
+        <button class="btn-check-update" :loading="checkingUpdate" @tap="manualCheckUpdate">
+          <text class="update-icon">🔄</text>
+          <text class="update-text">检查最新版本</text>
+        </button>
+      </view>
+    </view>
+
     <!-- 保活引导弹层：自启动 / 省电白名单 / 通知 / 精确闹钟 四步（契约 §11） -->
     <view v-if="guideVisible" class="guide-mask" @tap="closeGuide">
       <view class="guide-panel" @tap.stop>
@@ -241,6 +259,10 @@ export default {
       // —— 晨间问候偏好：写进 uni 存储的两个本机键，native.js 合成 Reminder 时读同一对键 ——
       greetingEnabled: true,
       greetingTime: GREETING_DEFAULT_TIME,
+      // —— 版本与更新 ——
+      checkingUpdate: false,
+      latestVersionName: 'v1.0.1',
+      apkUrl: 'https://sdad.hynu.site/laoyouji.apk',
     }
   },
   computed: {
@@ -324,6 +346,7 @@ export default {
     // 回到「我的」再同步一次：用药计划可能刚被改过，顺带刷新引导页的权限状态。
     this.loadGreetingPrefs()
     this.refreshReminders()
+    this.checkVersionInfo()
   },
   methods: {
     statusText(s) {
@@ -544,6 +567,51 @@ export default {
       }
       clearCurrentUser()
       uni.reLaunch({ url: '/pages/login/login' })
+    },
+    async checkVersionInfo() {
+      try {
+        const res = await get('/api/app/version').catch(() => null)
+        if (res && res.versionName) {
+          this.latestVersionName = `v${res.versionName}`
+          if (res.apkUrl) this.apkUrl = res.apkUrl
+        }
+      } catch (e) {}
+    },
+    async manualCheckUpdate() {
+      this.checkingUpdate = true
+      try {
+        const res = await get('/api/app/version').catch(() => null)
+        const info = res || {
+          versionName: '1.0.1',
+          changelog: '优化适老卡片布局排版，修复拨打电话拉起原生拨号盘与全屏手势，支持免卸载无缝覆盖安装',
+          apkUrl: 'https://sdad.hynu.site/laoyouji.apk',
+        }
+        this.latestVersionName = `v${info.versionName}`
+        if (info.apkUrl) this.apkUrl = info.apkUrl
+
+        uni.showModal({
+          title: `📱 康乐当前版本 v${info.versionName}`,
+          content: `${info.changelog || '功能已更新'}\n\n💡 提示：网页界面每次打开已自动更新；如需更新原生 App，点击下方按钮即可直接下载并覆盖安装，无需卸载旧应用。`,
+          confirmText: '下载最新包',
+          cancelText: '已是最新',
+          success: (mRes) => {
+            if (mRes.confirm) {
+              if (typeof window !== 'undefined') {
+                window.location.href = info.apkUrl || 'https://sdad.hynu.site/laoyouji.apk'
+              } else {
+                uni.setClipboardData({
+                  data: info.apkUrl,
+                  success: () => {
+                    uni.showToast({ title: '下载链接已复制', icon: 'none' })
+                  },
+                })
+              }
+            }
+          },
+        })
+      } finally {
+        this.checkingUpdate = false
+      }
     },
   },
 }
@@ -864,5 +932,62 @@ export default {
 }
 .guide-close {
   margin-top: $lyj-space-lg;
+}
+
+/* 版本与更新卡片 */
+.version-card {
+  background: #ffffff;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.version-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.version-label {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1e293b;
+}
+.version-badge {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 4rpx 18rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid #bfdbfe;
+}
+.version-tip {
+  font-size: 24rpx;
+  color: #64748b;
+  line-height: 1.5;
+}
+.btn-check-update {
+  margin-top: 8rpx;
+  min-height: 84rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  background: #f8fafc;
+  color: #1e293b;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 42rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  cursor: pointer;
+}
+.update-icon {
+  font-size: 32rpx;
+}
+.update-text {
+  font-size: 28rpx;
+  font-weight: 700;
 }
 </style>
