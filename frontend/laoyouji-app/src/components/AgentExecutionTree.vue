@@ -1626,9 +1626,32 @@ export default {
       return '方案装配待命'
     },
 
+    currentTurnCard() {
+      // 1. 优先从当前轮次消息中寻找交付物卡片
+      const cardInTurn = this.currentTurnMessages.slice().reverse().find((m) => m && m.kind === 'card')
+      if (cardInTurn) return cardInTurn
+
+      // 2. 若当前轮次已执行完成方案建造师工具 (compose_deliverable)，但卡片在特定时序下未直接出现在当前切片内
+      const composeTool = this.planBuilderTools.find(
+        (t) => (t.name === 'compose_deliverable' || t.name.includes('deliverable')) &&
+               (t.status === 'completed' || t.status === 'executed')
+      )
+      if (composeTool) {
+        // 从全局 safeMessages 中寻找最新生成的合法 card
+        const cardAnywhere = this.safeMessages.slice().reverse().find((m) => m && m.kind === 'card')
+        if (cardAnywhere) return cardAnywhere
+      }
+
+      return null
+    },
+
     isArtifactReady() {
-      const hasCard = this.currentTurnMessages.some((m) => m.kind === 'card')
-      if (hasCard) return true
+      if (this.currentTurnCard) return true
+      const hasComposeDeliverable = this.planBuilderTools.some(
+        (t) => (t.name === 'compose_deliverable' || t.name.includes('deliverable')) &&
+               (t.status === 'completed' || t.status === 'executed')
+      )
+      if (hasComposeDeliverable) return true
       const suspends = this.currentTurnMessages.filter((m) => m.kind === 'suspend')
       if (
         suspends.length > 0 &&
@@ -1642,10 +1665,16 @@ export default {
     },
 
     artifactDisplayTitle() {
-      const msgs = this.currentTurnMessages
-      const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
+      const realCard = this.currentTurnCard
       if (realCard && realCard.title) {
         return realCard.title.startsWith('《') ? realCard.title : `《${realCard.title}》`
+      }
+      const composeTool = this.planBuilderTools.find(
+        (t) => (t.name === 'compose_deliverable' || t.name.includes('deliverable'))
+      )
+      if (composeTool && composeTool.summary) {
+        const m = composeTool.summary.match(/《([^》]+)》/)
+        if (m) return `《${m[1]}》`
       }
       return this.currentScenarioTag && this.currentScenarioTag !== '待命中'
         ? `《${this.currentScenarioTag}交付方案》`
@@ -1653,8 +1682,7 @@ export default {
     },
 
     artifactDisplaySubtitle() {
-      const msgs = this.currentTurnMessages
-      const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
+      const realCard = this.currentTurnCard
       if (realCard) {
         if (Array.isArray(realCard.notes) && realCard.notes.length > 0) {
           return realCard.notes.join(' · ')
@@ -1664,15 +1692,24 @@ export default {
         }
         return '适老大字版 · 事实对齐与闭环交付'
       }
+      if (this.isArtifactReady) {
+        return '适老大字版 · 事实对齐与闭环交付'
+      }
       return '适老大字版 · 待各协同智能体完成事实聚合后交付'
     },
 
 
     modalTitleText() {
-      const msgs = this.currentTurnMessages
-      const realCard = msgs.slice().reverse().find((m) => m.kind === 'card')
+      const realCard = this.currentTurnCard
       if (realCard && realCard.title) {
         return `${realCard.title.replace(/^《|》$/g, '')} (适老大字版)`
+      }
+      const composeTool = this.planBuilderTools.find(
+        (t) => (t.name === 'compose_deliverable' || t.name.includes('deliverable'))
+      )
+      if (composeTool && composeTool.summary) {
+        const m = composeTool.summary.match(/《([^》]+)》/)
+        if (m) return `${m[1]} (适老大字版)`
       }
       return this.currentScenarioTag && this.currentScenarioTag !== '待命中'
         ? `${this.currentScenarioTag}交付方案 (适老大字版)`
@@ -1684,17 +1721,13 @@ export default {
     },
 
     artifactPages() {
-
-      const msgs = this.currentTurnMessages
-      const realCard = msgs.slice().reverse().find(
-        (m) => m.kind === 'card' && (Array.isArray(m.sections || m.pages) || (m.body && typeof m.body === 'object')),
-      )
+      const realCard = this.currentTurnCard
       if (realCard) {
         const pages = realCard.pages || realCard.sections || []
         if (pages.length > 0) {
           return pages.map((p, idx) => ({
             title: (p && (p.title || p.heading)) || `第 ${idx + 1} 页`,
-            rows: ((p && p.rows) || []).map((r) => ({
+            rows: ((p && (p.rows || p.fields)) || []).map((r) => ({
               label: (r && (r.label || r.k)) || '',
               val: (r && (r.val || r.v || r.value)) || '',
             })),

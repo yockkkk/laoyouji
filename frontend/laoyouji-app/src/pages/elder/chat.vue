@@ -1270,16 +1270,32 @@ export default {
     },
 
     /**
-     * 卡片幂等更新：若已存在相同计划书/交付物，就地更新，不重复叠加
+     * 卡片幂等更新：若当前轮次内已存在相同计划书/交付物，就地更新；绝不可跨轮次去替换历史对话中的老卡片！
      */
     _upsertCard(d) {
       const card = this._toCard(d)
-      const existingIdx = this.messages.findIndex(
-        (m) => m && m.kind === 'card' && (
-          (m.title && card.title && m.title === card.title) ||
-          (m.title && card.title && m.title.includes('计划书') && card.title.includes('计划书'))
-        ),
-      )
+      let lastUserIdx = -1
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        if (this.messages[i] && this.messages[i].isUser) {
+          lastUserIdx = i
+          break
+        }
+      }
+      const searchStart = lastUserIdx >= 0 ? lastUserIdx : 0
+      let existingIdx = -1
+      for (let i = this.messages.length - 1; i >= searchStart; i--) {
+        const m = this.messages[i]
+        if (m && m.kind === 'card') {
+          if (
+            (m.title && card.title && m.title === card.title) ||
+            (m.type && card.type && m.type === card.type) ||
+            (m.title && card.title && m.title.includes('计划书') && card.title.includes('计划书'))
+          ) {
+            existingIdx = i
+            break
+          }
+        }
+      }
       if (existingIdx !== -1) {
         this.messages.splice(existingIdx, 1, card)
       } else {
