@@ -48,5 +48,9 @@ backend/.uvicorn.log*
 # ===== 本地规范 / 智能体运行时 =====
 GEMINI.md
 .agents/
+local_data/
+output/
+tmp/
+
 temp_chrome_profile*/
 

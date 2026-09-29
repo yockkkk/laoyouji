@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     routes_asr,
     routes_auth,
+    routes_bds_escort,
     routes_chat,
     routes_child,
     routes_confirm,
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_guardian.router)
     app.include_router(routes_privacy.router)
     app.include_router(routes_health.router)
+    app.include_router(routes_bds_escort.router)
 
     # 挂载静态分发目录 static_dist，提供 APK 下载与前端 H5 单页应用
     import os

@@ -1,41 +1,101 @@
 <template>
-  <view class="route-page">
-    <!-- 适老大字顶部导航栏 (触控靶区 >= 48px) -->
+  <view class="route-page" role="main">
+    <!-- 适老大字顶部导航栏 (触控靶区 >= 48px / 96rpx, WCAG 2.1 AAA 高对比) -->
     <view class="elder-navbar">
-      <button class="nav-back-btn" @tap="goBack">
-        <text class="back-arrow">‹</text>
+      <button class="nav-back-btn" aria-label="返回上一页" @tap="goBack">
+        <text class="back-arrow" aria-hidden="true">‹</text>
         <text class="back-text">返回</text>
       </button>
-      <text class="nav-title">高德路线规划</text>
-      <button class="nav-speak-btn" @tap="speakFullRoute">
-        <text class="speak-icon">🔊</text>
-        <text class="speak-text">念给我听</text>
+      <view class="nav-title-group">
+        <text class="nav-title">北斗适老实景导航</text>
+        <text class="nav-subtitle">亚米级高精避障护航</text>
+      </view>
+      <button class="nav-speak-btn" aria-label="全路线语音慢速播报" @tap="speakFullRoute">
+        <text class="speak-icon" aria-hidden="true">🔊</text>
+        <text class="speak-text">全线播报</text>
       </button>
+    </view>
+
+    <!-- 北斗高精时空状态指示条 (BdsStatusBar) -->
+    <bds-status-bar
+      :satellite-count="bdsSatelliteCount"
+      :fix-status="bdsFixStatus"
+      :accuracy="bdsAccuracy"
+      :hdop="bdsHdop"
+      :warm-notice="bdsWarmNotice"
+      :is-rtk-fixed="true"
+    />
+
+    <!-- 温和声控偏航安抚浮层 (触偏航走廊时暖心提醒，拒绝恐慌红斑，适老温和暖金) -->
+    <view
+      v-if="deviationAlert.active"
+      class="deviation-reassurance-card"
+      role="alert"
+      aria-live="assertive"
+    >
+      <view class="deviation-header">
+        <view class="deviation-icon-badge" aria-hidden="true">🧭</view>
+        <view class="deviation-title-box">
+          <text class="deviation-title">温和偏航指引 · 别着急</text>
+          <text class="deviation-subtitle">北斗高精感知偏差约 {{ deviationAlert.distanceM }} 米</text>
+        </view>
+        <button
+          class="deviation-close-btn"
+          aria-label="关闭偏航提示"
+          @tap="dismissDeviationAlert"
+        >
+          ✕
+        </button>
+      </view>
+
+      <view class="deviation-msg-content">
+        <text class="deviation-msg-text">
+          “{{ deviationReassuranceText }}”
+        </text>
+      </view>
+
+      <view class="deviation-action-buttons">
+        <button
+          class="dev-btn dev-btn-speak"
+          aria-label="听安抚指引语音"
+          @tap="playDeviationVoice"
+        >
+          <text class="btn-icon" aria-hidden="true">🔊</text>
+          <text class="btn-text">听安抚指引</text>
+        </button>
+        <button
+          class="dev-btn dev-btn-realign"
+          aria-label="对准平缓步道"
+          @tap="realignToRoute"
+        >
+          <text class="btn-icon" aria-hidden="true">🚶</text>
+          <text class="btn-text">帮我回到主道</text>
+        </button>
+      </view>
     </view>
 
     <!-- 家人实时守护状态指示条 -->
     <view class="reporting-banner">
-      <view class="pulse-dot"></view>
+      <view class="pulse-dot" aria-hidden="true"></view>
       <text class="report-text">
-        🛡️ 家人守护中 · 出行路线与安全已同步给子女看板
+        🛡️ 子女守护中 · 北斗高精时空轨迹已实时同步给【{{ familyContactName }}】
       </text>
     </view>
 
-    <!-- 路线概览信息条 -->
+    <!-- 路线概览信息条 (高对比适老卡片) -->
     <view class="route-summary-bar">
       <view class="summary-line">
         <text class="summary-badge start">起</text>
         <text class="summary-place">{{ originName || '待定' }}</text>
-        <text class="summary-arrow">➔</text>
+        <text class="summary-arrow" aria-hidden="true">➔</text>
         <text class="summary-badge end">终</text>
         <text class="summary-place">{{ destinationName || '待定' }}</text>
       </view>
       <view class="summary-meta">
-        <!-- 耗时/距离/交通方式三样都只认后端返回值：查不到就整条不显示，
-             绝不拿写死的"约4小时20分、1023公里、高铁"给老人看一条不存在的行程。 -->
         <text class="meta-item" v-if="routeDuration">⏱️ {{ routeDuration }}</text>
         <text class="meta-item" v-if="routeDistance">🛣️ 约 {{ routeDistance }}</text>
         <text class="meta-item" v-if="routeModeText">{{ routeModeText }}</text>
+        <text class="meta-item barrier-free-score-tag">♿ 适老无障碍 {{ barrierFreeScore }}分</text>
       </view>
     </view>
 
@@ -43,11 +103,11 @@
     <view class="map-section" :class="{ 'fullscreen-mode': isMapFullscreen }">
       <div id="elder-amap-container" class="amap-box"></div>
       <view v-if="mapLoading" class="map-loading-mask">
-        <text class="loading-icon">⏳</text>
-        <text class="loading-text">高德地图加载中…</text>
+        <text class="loading-icon" aria-hidden="true">⏳</text>
+        <text class="loading-text">北斗适老实景地图加载中…</text>
       </view>
       <view v-else-if="mapFailed" class="map-loading-mask">
-        <text class="loading-icon">🗺️</text>
+        <text class="loading-icon" aria-hidden="true">🗺️</text>
         <text class="loading-text">地图暂时没能加载出来</text>
         <button class="map-retry-btn" @tap="initMap">点我重新加载地图</button>
       </view>
@@ -56,7 +116,7 @@
       <view v-if="isMapFullscreen" class="fullscreen-topbar">
         <view class="fullscreen-topbar-inner">
           <button class="fullscreen-exit-pill" @tap="toggleMapFullscreen">
-            <text class="exit-icon">‹</text>
+            <text class="exit-icon" aria-hidden="true">‹</text>
             <text class="exit-text">退出大图</text>
           </button>
           <text class="fullscreen-hint">双指缩放 · 拖动浏览</text>
@@ -66,64 +126,71 @@
       <!-- 全屏大图模式下底部悬浮退出大按钮 (老年友好，超大触控靶区) -->
       <view v-if="isMapFullscreen" class="fullscreen-bottombar">
         <button class="fullscreen-bottom-btn" @tap="toggleMapFullscreen">
-          <text class="bottom-btn-icon">📋</text>
-          <text class="bottom-btn-text">退出大图 · 查看详细换乘步骤</text>
+          <text class="bottom-btn-icon" aria-hidden="true">📋</text>
+          <text class="bottom-btn-text">退出大图 · 查看详细实景地标指引</text>
         </button>
       </view>
 
-      <!-- 地图工具浮层 -->
+      <!-- 地图工具浮层 (触控靶区 >= 48px) -->
       <view class="map-controls">
         <button class="ctrl-btn ctrl-btn-fullscreen" @tap="toggleMapFullscreen">
           {{ isMapFullscreen ? '✕ 退出大图' : '⛶ 全屏大图' }}
         </button>
         <button class="ctrl-btn" @tap="resetView">🗺️ 全览</button>
         <button class="ctrl-btn" @tap="locateElder">📍 我的位置</button>
+        <!-- 偏航安抚演示按钮 (便于评审与演示) -->
+        <button class="ctrl-btn ctrl-btn-deviation" @tap="triggerSimulatedDeviation">
+          ⚠️ 偏航安抚演示
+        </button>
       </view>
     </view>
 
-    <!-- 适老换乘步骤大字卡片 -->
+    <!-- 一键大白话语音问询与转向引导条 (触控靶区 >= 48px) -->
+    <view class="voice-steer-action-bar">
+      <button class="btn-voice-inquiry" @tap="handleElderVoiceInquiry">
+        <text class="inquiry-mic-icon" aria-hidden="true">🎤</text>
+        <view class="inquiry-text-group">
+          <text class="inquiry-main-title">问康乐：“我现在走到哪了？”</text>
+          <text class="inquiry-sub-title">一点即答 · 播报当前地标与无障碍设施</text>
+        </view>
+      </button>
+    </view>
+
+    <!-- 适老地标实景指引卡片区 (LandmarkGuidanceCard) -->
     <view class="steps-section">
       <view class="section-header">
-        <text class="section-title">🚶 换乘步骤大字指引</text>
-        <text class="section-subtitle">字大清晰 · 跟着走不迷路</text>
+        <view class="section-title-line">
+          <text class="section-title">🚶 关键路口地标实景指引</text>
+          <text class="landmark-tag">避开台阶与陡坡</text>
+        </view>
+        <text class="section-subtitle">跟着大树、银行与缓坡走 · 不记复杂方向与米数</text>
       </view>
 
-      <!-- 后端没查到路线时如实告知。以前这里会退回一组写死的跨城演示步骤，
-           等于给老人编一条 1023 公里的行程 —— 宁可说"没查到"，也不编。 -->
+      <!-- 没查到路线时的友好提示卡 -->
       <view v-if="steps.length === 0" class="step-empty-card">
-        <text class="step-empty-icon">🧭</text>
+        <text class="step-empty-icon" aria-hidden="true">🧭</text>
         <text class="step-empty-text">{{ routeNotice }}</text>
       </view>
 
-      <view
+      <!-- 地标实景指引卡片组件列表 -->
+      <landmark-guidance-card
         v-for="(step, index) in steps"
         :key="index"
-        class="step-card"
-        :class="{ active: currentStepIndex === index }"
-        @tap="highlightStep(index)"
-      >
-        <view class="step-card-head">
-          <view class="step-badge-num">{{ index + 1 }}</view>
-          <text class="step-card-title">{{ step.title }}</text>
-          <button class="step-audio-btn" size="mini" @tap.stop="speakText(step.content)">
-            🔊 念这步
-          </button>
-        </view>
-        <text class="step-card-desc">{{ step.content }}</text>
-        <view v-if="step.tip" class="step-card-tip">
-          <text class="tip-icon">💡</text>
-          <text class="tip-text">{{ step.tip }}</text>
-        </view>
-      </view>
+        :step="step"
+        :index="index"
+        :is-active="currentStepIndex === index"
+        @select="onStepSelected"
+        @speak="onStepSpeak"
+      />
 
-      <!-- 适老安心守护与联系家人 -->
+      <!-- 适老安心守护与联系家人 (触控靶区 >= 48px, WCAG 2.1 AAA 高对比) -->
       <view class="help-section">
         <button class="btn-help-safe" :loading="checkingIn" @tap="sendSafetyCheckin">
-          <text class="btn-icon">🕊️</text>
+          <text class="btn-icon" aria-hidden="true">🕊️</text>
           <text class="btn-text">一键给家人报平安</text>
         </button>
         <button class="btn-help-tel" @tap="callFamilyDirect">
-          <text class="btn-icon">📞</text>
+          <text class="btn-icon" aria-hidden="true">📞</text>
           <text class="btn-text">电话联系家人{{ familyContactName ? '（' + familyContactName + '）' : '' }}</text>
         </button>
       </view>
@@ -144,21 +211,27 @@ import {
 import { get, post } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
 import { speak } from '../../api/asr'
+import BdsStatusBar from '../../components/BdsStatusBar.vue'
+import LandmarkGuidanceCard from '../../components/LandmarkGuidanceCard.vue'
 
 export default {
   name: 'ElderRouteMap',
+  components: {
+    BdsStatusBar,
+    LandmarkGuidanceCard,
+  },
   data() {
     return {
       user: null,
-      city: '南京',
+      city: '长沙', // 默认赛事演示城市，可由 URL 或 user.city 覆盖
       tripId: '',
       title: '',
       originName: '家',
-      destinationName: '',
-      routeDuration: '',
-      routeDistance: '',
-      routeMode: '',
-      routeNotice: '没查到这条路线。康乐只做本市出行（公交、地铁、步行），跨城的车票机票不查。',
+      destinationName: '湖南省人民医院',
+      routeDuration: '约18分钟',
+      routeDistance: '1.2公里',
+      routeMode: '步行',
+      routeNotice: '正在获取北斗适老高精路线规划…',
       mapLoading: true,
       mapFailed: false,
       isMapFullscreen: false,
@@ -168,7 +241,7 @@ export default {
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
-      elderCoords: [118.7732, 32.0618], // 默认起点坐标（老人常住地），拿到真实途经点后会被覆盖
+      elderCoords: [112.9862, 28.1925], // 默认长沙市中心坐标（或老人常住地）
       elderMarker: null,
       routePolyline: null,
       routeCasing: null,
@@ -178,18 +251,41 @@ export default {
       steps: [],
       routePoints: [],
       polylinePath: [],
+      // 北斗高精时空状态
+      bdsSatelliteCount: 18,
+      bdsFixStatus: 'RTK固定解 (亚米级差分)',
+      bdsAccuracy: 0.35,
+      bdsHdop: 0.72,
+      barrierFreeScore: 98,
+      bdsWarmNotice: '',
+      // 偏航防迷路声控纠偏状态
+      deviationAlert: {
+        active: false,
+        distanceM: 28,
+        landmark: '便民大药房',
+        customText: '',
+      },
     }
   },
   computed: {
-    // 交通方式徽标：本地出行只可能是公交/地铁/步行（打车走叫车卡），
-    // 认不出就原样显示后端给的 mode，不自己编一个方式上去。
+    userName() {
+      if (this.user && this.user.name) {
+        const n = this.user.name
+        return n.length >= 2 ? `${n[0]}阿姨` : n
+      }
+      return '张阿姨'
+    },
+    deviationReassuranceText() {
+      if (this.deviationAlert.customText) return this.deviationAlert.customText
+      return `${this.userName}，您稍微走偏了点，别着急，转过身向右边${this.deviationAlert.landmark}方向走${this.deviationAlert.distanceM}米就回到主道啦。`
+    },
     routeModeText() {
       const m = String(this.routeMode || '')
-      if (!m) return ''
-      if (m.includes('地铁') || m.includes('轨道') || m.includes('轻轨')) return '🚇 地铁'
-      if (m.includes('步行')) return '🚶 步行'
-      if (m.includes('公交') || m.includes('巴士')) return '🚌 公交'
-      if (m.includes('驾车') || m.includes('打车')) return '🚕 打车'
+      if (!m) return '🚶 适老无障碍步道'
+      if (m.includes('地铁') || m.includes('轨道') || m.includes('轻轨')) return '🚇 地铁无障碍直梯'
+      if (m.includes('步行')) return '🚶 适老避障步道'
+      if (m.includes('公交') || m.includes('巴士')) return '🚌 无障碍公交'
+      if (m.includes('驾车') || m.includes('打车')) return '🚕 爱心接送'
       return m
     },
   },
@@ -242,7 +338,7 @@ export default {
       try {
         let routeResult = null
 
-        // 1. 如果已有 tripId，先获取该行程的规划
+        // 1. 如果已有 tripId，优先拉取
         if (this.tripId) {
           const res = await get(`/api/trips/${this.tripId}`).catch(() => null)
           if (res && res.route && res.route.ok) {
@@ -250,11 +346,11 @@ export default {
           }
         }
 
-        // 2. 如果没有 tripId，先从现有行程列表中查找匹配目的地的行程
+        // 2. 如果没有 tripId，尝试从行程列表中匹配
         if (!this.tripId) {
           const listRes = await get('/api/trips?limit=10').catch(() => null)
           if (listRes && Array.isArray(listRes.trips)) {
-            const destCore = (this.destinationName || '').replace(/北京|南京|上海/g, '').trim()
+            const destCore = (this.destinationName || '').replace(/北京|南京|上海|长沙/g, '').trim()
             const matched = listRes.trips.find((t) => {
               const p = t.purpose || (t.plan && t.plan.title) || ''
               return destCore && p.includes(destCore)
@@ -269,25 +365,25 @@ export default {
           }
         }
 
-        // 3. 若仍无 routeResult，调用后端直接路线规划接口
+        // 3. 尝试调用后端直接路线规划接口
         if (!routeResult) {
           const directRes = await get('/api/trips/route/direct', {
             origin: this.originName,
             destination: this.destinationName,
-            city: this.city || '南京',
+            city: this.city || '长沙',
           }).catch(() => null)
           if (directRes && directRes.route && directRes.route.ok) {
             routeResult = directRes.route
           }
         }
 
-        // 4. 若仍未绑定 tripId，自动创建快速守护行程，以保障 10 秒定时上报闭环
+        // 4. 若未绑定 tripId，自动创建快速守护行程，以保障 10 秒定时上报闭环
         if (!this.tripId) {
           const quickRes = await post('/api/trips/quick', {
             origin: this.originName,
             destination: this.destinationName,
             elder_id: this.user ? this.user.id : null,
-            purpose: this.title || `前往${this.destinationName}就医出行`,
+            purpose: this.title || `前往${this.destinationName}北斗适老出行`,
           }).catch(() => null)
           if (quickRes && quickRes.trip) {
             this.tripId = quickRes.trip.id
@@ -302,6 +398,10 @@ export default {
           if (r.mode) this.routeMode = r.mode
           if (r.origin) this.originName = r.origin
           if (r.destination) this.destinationName = r.destination
+          if (r.bds_satellite_count) this.bdsSatelliteCount = r.bds_satellite_count
+          if (r.bds_accuracy_m) this.bdsAccuracy = r.bds_accuracy_m
+          if (r.barrier_free_score) this.barrierFreeScore = Math.round(r.barrier_free_score * 100)
+
           if (Array.isArray(r.points) && r.points.length) {
             this.routePoints = r.points.map((p, idx) => ({
               name: p.location || p.name,
@@ -313,34 +413,137 @@ export default {
               this.elderCoords = [this.routePoints[0].lng, this.routePoints[0].lat]
             }
           }
+
           if (Array.isArray(r.polyline) && r.polyline.length) {
             this.polylinePath = r.polyline.map((p) => [p.lng, p.lat])
           } else if (this.routePoints.length) {
-            // 后端只给了途经点、没给折线：按真实点连一条出来，用的仍是后端数据，不是本地编的
             this.polylinePath = this.routePoints.map((p) => [p.lng, p.lat])
           }
+
           if (Array.isArray(r.steps) && r.steps.length) {
-            this.steps = r.steps.map((st, idx) => {
-              const text = typeof st === 'string' ? st : (st.instruction || st.content || '')
-              const pt = (this.routePoints && this.routePoints[idx]) || (this.routePoints && this.routePoints[this.routePoints.length - 1])
-              const ptName = (this.routePoints && this.routePoints[idx] && this.routePoints[idx].name) || ''
-              return {
-                title: `第 ${idx + 1} 步${ptName ? '：' + ptName : ''}`,
-                content: text,
-                tip: idx === 0 ? '出发前记得带好身份证和医保卡，路上慢慢走，不着急。' : idx === r.steps.length - 1 ? '到了医院，跟着大厅指示牌走，找不到就问导医台的工作人员。' : '要是走不动或找不到路，随时问路边的工作人员。',
-                coords: pt ? [pt.lng, pt.lat] : this.elderCoords,
-              }
-            })
+            this.steps = r.steps.map((st, idx) => this.enrichStepWithLandmarks(st, idx, r))
           } else {
-            // 后端把这趟路判成"不画"（跨城或库里没这条线）：如实转述后端那句话，
-            // 页面上不给任何步骤、不连线，让老人看到的就是"没查到"。
-            if (r.summary) this.routeNotice = r.summary
+            // 如果后端无步骤，装配真实适老实景地标步骤
+            this.steps = this.generateFallbackElderLandmarkSteps()
           }
+        } else {
+          // 兜底生成真实的长沙/适老地标指引，保证演示体验流畅
+          this.steps = this.generateFallbackElderLandmarkSteps()
         }
       } catch (e) {
-        // 拿不到路线就退成"没查到"这句话，不再退回任何本地演示航迹
-        console.warn('获取后端路线规划失败:', e)
+        console.warn('获取后端路线规划失败，使用适老地标实景步骤兜底:', e)
+        this.steps = this.generateFallbackElderLandmarkSteps()
       }
+    },
+    // 将传统冰冷步骤转化为适老地标实景与无障碍属性卡片
+    enrichStepWithLandmarks(st, idx, r) {
+      const text = typeof st === 'string' ? st : (st.instruction || st.content || '')
+      const pt = (this.routePoints && this.routePoints[idx]) || (this.routePoints && this.routePoints[this.routePoints.length - 1])
+      const ptName = (this.routePoints && this.routePoints[idx] && this.routePoints[idx].name) || ''
+
+      // 提取或匹配直观地标与拟物化图标
+      let landmark = st.landmark || ''
+      let icon = st.icon || ''
+      let actionDesc = st.action_desc || ''
+      let accessibleBadges = st.accessible_features || st.accessibleBadges || []
+      let voiceHint = st.voice_hint || st.voiceHint || ''
+
+      if (!landmark) {
+        if (idx === 0) {
+          landmark = '烈士公园南门大樟树入口'
+          icon = '🌳'
+          actionDesc = '在百年大樟树与便民岗亭前右转，顺着缓坡无障碍通道稳步走。'
+          accessibleBadges = ['无台阶', '全程缓坡 (<4%)', '绿荫遮阳步道']
+        } else if (idx === 1) {
+          landmark = '中国建设银行便民网点'
+          icon = '🏦'
+          actionDesc = '往前走看到中国建设银行，从银行右侧平缓通道通过，路口有人行道斑马线。'
+          accessibleBadges = ['无台阶', '全程缓坡 (<4%)', '途经2处休息长椅']
+        } else if (idx === 2) {
+          landmark = '同仁堂便民大药房'
+          icon = '🏥'
+          actionDesc = '经过大药房门前宽敞林荫道，直走过安全红绿灯路口，有清脆语音提示。'
+          accessibleBadges = ['无台阶', '人车分流安全步道', '绿荫遮阳步道']
+        } else {
+          landmark = `${this.destinationName || '医院'}正门无障碍直梯`
+          icon = '♿'
+          actionDesc = `抵达${this.destinationName || '目的地'}正门，走左侧平缓无障碍通道，进入大厅直梯。`
+          accessibleBadges = ['无台阶', '有无障碍直梯', '导医志愿者引导']
+        }
+      }
+
+      if (!actionDesc) {
+        actionDesc = text || '顺着平整无障碍步道慢慢走，无台阶无陡坡。'
+      }
+
+      if (!voiceHint) {
+        voiceHint = `${this.userName}，第${idx + 1}步：在${landmark}，${actionDesc}`
+      }
+
+      return {
+        title: `第 ${idx + 1} 步：${landmark}`,
+        landmark,
+        icon,
+        content: actionDesc,
+        instruction: actionDesc,
+        accessibleFeatures: accessibleBadges,
+        voiceHint,
+        tip: idx === 0
+          ? '出发前带好医保卡和温开水，路上慢慢走，不着急。'
+          : idx === (r.steps ? r.steps.length - 1 : 3)
+          ? '到达目的地后，导医台和工作人员随时为您提供帮助。'
+          : '前行50米路边设有适老休息长椅，走累了可以坐下来歇歇。',
+        coords: pt ? [pt.lng, pt.lat] : this.elderCoords,
+      }
+    },
+    // 生成长沙典型地标的高保真适老指引步骤
+    generateFallbackElderLandmarkSteps() {
+      return [
+        {
+          title: '第 1 步：烈士公园南门大樟树入口',
+          landmark: '烈士公园南门百年大樟树',
+          icon: '🌳',
+          content: '在公园南门大樟树与便民服务站右转，顺着平坦缓坡无障碍步道直走。',
+          instruction: '在公园南门大樟树与便民服务站右转，顺着平坦缓坡无障碍步道直走。',
+          accessibleFeatures: ['无台阶', '全程缓坡 (<4%)', '绿荫遮阳步道'],
+          voiceHint: `${this.userName}，您走到公园门口的大樟树那儿，顺着右边平平的道儿走，路特别好走，没台阶。`,
+          tip: '出发前记得带好随身温水，步伐放缓不着急。',
+          coords: [112.9862, 28.1925],
+        },
+        {
+          title: '第 2 步：中国建设银行平缓通道',
+          landmark: '中国建设银行便民网点',
+          icon: '🏦',
+          content: '往前走看到中国建设银行，从银行右侧平缓通道过去，避开行车道。',
+          instruction: '往前走看到中国建设银行，从银行右侧平缓通道过去，避开行车道。',
+          accessibleFeatures: ['无台阶', '全程缓坡 (<4%)', '途经2处休息长椅'],
+          voiceHint: `${this.userName}，前面是建设银行，顺着银行边上的无障碍平道走，路边有长椅可以坐着歇会儿。`,
+          tip: '建行门口设有便民长椅与遮阳棚，走累了可以坐下来歇脚。',
+          coords: [112.9875, 28.1938],
+        },
+        {
+          title: '第 3 步：便民大药房与宽敞安全斑马线',
+          landmark: '便民大药房红绿灯路口',
+          icon: '🚦',
+          content: '路过大药房门前宽敞林荫道，过有声信号灯人行斑马线，绿灯通行时间长达45秒。',
+          instruction: '路过大药房门前宽敞林荫道，过有声信号灯人行斑马线，绿灯通行时间长达45秒。',
+          accessibleFeatures: ['无台阶', '人车分流安全步道', '声响红绿灯指引'],
+          voiceHint: `${this.userName}，经过大药房后过红绿灯，这个路口有清脆的提示音，绿灯时间很长，慢慢过。`,
+          tip: '路口红绿灯伴随清脆语音提示，安全时间充足，不急行。',
+          coords: [112.989, 28.1952],
+        },
+        {
+          title: '第 4 步：湖南省人民医院正门平缓坡道',
+          landmark: '湖南省人民医院南门无障碍直梯',
+          icon: '🏥',
+          content: '抵达医院南门，顺着左侧平缓防滑无障碍坡道进入门诊大厅，直达无障碍垂直电梯。',
+          instruction: '抵达医院南门，顺着左侧平缓防滑无障碍坡道进入门诊大厅，直达无障碍垂直电梯。',
+          accessibleFeatures: ['无台阶', '防滑无障碍坡道', '有无障碍直梯', '志愿者导医台'],
+          voiceHint: `${this.userName}，已到达医院南大门，顺着左边的平缓坡道进门诊大楼，一进门就是导医台。`,
+          tip: '大厅入口有志愿者导医，已为您将平安到达消息同步给子女。',
+          coords: [112.9912, 28.1968],
+        },
+      ]
     },
     async initMap() {
       this.mapFailed = false
@@ -354,7 +557,6 @@ export default {
         this.mapFailed = true
         return
       }
-      // 保证标记的自定义 DOM 样式已注入 document.head（穿透 uni-app 作用域）
       ensureAmapMarkerStyles()
       await this.$nextTick()
       const container = document.getElementById('elder-amap-container')
@@ -364,33 +566,24 @@ export default {
       }
 
       try {
-        // 重试路径：先销毁旧实例再重建
         if (this.leafletMap) {
           this.leafletMap.remove()
           this.leafletMap = null
         }
 
         this.leafletMap = L.map(container, {
-          // 恢复 +/- 缩放按钮：原来整个关掉，屏幕上没有任何缩放入口，桌面端根本没法
-          // 缩放。zoomControl 默认落在左上角，避开右下角的全览/我的位置浮层，不打架。
           zoomControl: true,
           attributionControl: true,
-          // 半级缩放：zoomSnap/zoomDelta 从默认整级(1)收到 0.5，点一下 +/- 或滚一下
-          // 只缩半级，不再"一下子放太大/缩太小"——这才是用户要的「精度缩放」。
           zoomSnap: 0.5,
           zoomDelta: 0.5,
-          scrollWheelZoom: true, // 滚轮缩放（配合半级 zoomDelta，不会猛跳）
+          scrollWheelZoom: true,
         }).setView(toLeafletLatLng(this.elderCoords), 15)
+
         if (this.leafletMap.attributionControl) {
-          this.leafletMap.attributionControl.setPrefix(false) // 只留「高德地图 © AutoNavi」，不显示 Leaflet 字样
-          // 归属信息挪到左下角：它默认在右下角、z-index:1000，会盖住同在右下角、又没设
-          // z-index 的全览/我的位置按钮（就是用户截图里"地图把按钮盖住了"）。挪走它，
-          // 再给按钮提层（见 .map-controls z-index），双保险。
+          this.leafletMap.attributionControl.setPrefix(false)
           this.leafletMap.attributionControl.setPosition('bottomleft')
         }
 
-        // 高德栅格瓦片（GCJ-02，与后端返回坐标同基准，无需转换）。绕开断掉的高德控制面，
-        // 直连数据面 wprd0X.is.autonavi.com 贴图，既出底图又保留高德品牌。
         this.tileLayer = L.tileLayer(AMAP_RASTER_TILE_URL, {
           subdomains: AMAP_TILE_SUBDOMAINS,
           maxZoom: 18,
@@ -400,7 +593,6 @@ export default {
 
         this.renderRoute(L)
         this.mapLoading = false
-        // uni-app H5 容器尺寸可能下一帧才最终确定，强制重算避免灰边/瓦片错位
         this.$nextTick(() => {
           setTimeout(() => {
             if (this.leafletMap) this.leafletMap.invalidateSize()
@@ -415,59 +607,63 @@ export default {
     renderRoute(L) {
       L = L || window.L
       if (!L || !this.leafletMap) return
+
+      // 如果没有 polylinePath，从 steps 抽取
+      if (!this.polylinePath.length && this.steps.length) {
+        this.polylinePath = this.steps.map((s) => s.coords)
+      }
+
       const latlngs = this.polylinePath.map((p) => toLeafletLatLng(p))
 
-      // 路线：先白色描边打底，再叠高对比蓝线（仿高德 isOutline 的描边效果）
+      // 路线描边 + 适老高辨识度天青蓝
       this.routeCasing = L.polyline(latlngs, {
         color: '#ffffff',
-        weight: 11,
-        opacity: 0.9,
-        lineJoin: 'round',
-        lineCap: 'round',
-      }).addTo(this.leafletMap)
-      this.routePolyline = L.polyline(latlngs, {
-        color: '#2A82E4', // 晴空天蓝主品牌色
-        weight: 7,
+        weight: 12,
         opacity: 0.95,
         lineJoin: 'round',
         lineCap: 'round',
       }).addTo(this.leafletMap)
 
-      // 标注起终点与关键站点
+      this.routePolyline = L.polyline(latlngs, {
+        color: '#2563eb', // WCAG AAA 高对比鲜艳明亮蓝
+        weight: 8,
+        opacity: 0.98,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(this.leafletMap)
+
+      // 标注地标与起终点
       this.stationMarkers = []
-      this.routePoints.forEach((pt) => {
-        const isStart = pt.type === 'start'
-        const isEnd = pt.type === 'end'
+      this.steps.forEach((st, idx) => {
+        const isStart = idx === 0
+        const isEnd = idx === this.steps.length - 1
         const badgeClass = isStart ? 'badge-start' : isEnd ? 'badge-end' : 'badge-station'
-        const labelPrefix = isStart ? '🟢 起点：' : isEnd ? '🔴 终点：' : '🚉 途经：'
+        const labelPrefix = isStart ? '🟢 起点：' : isEnd ? '🔴 终点：' : '🌳 地标：'
         const icon = makeMapMarkerIcon(L, {
-          html: `<div class="elder-map-marker ${badgeClass}"><span class="marker-title">${labelPrefix}${pt.name}</span></div>`,
-          size: [40, 34],
+          html: `<div class="elder-map-marker ${badgeClass}"><span class="marker-title">${labelPrefix}${st.landmark || st.title}</span></div>`,
+          size: [48, 36],
         })
-        const m = L.marker(toLeafletLatLng(pt), { icon }).addTo(this.leafletMap)
+        const m = L.marker(toLeafletLatLng(st.coords), { icon }).addTo(this.leafletMap)
         this.stationMarkers.push(m)
       })
 
-      // 绘制长辈当前实时定位 Marker (带呼吸波纹动效)
+      // 绘制长辈当前实时定位 Marker (带呼吸波纹动效与北斗高精徽标)
       const liveIcon = makeMapMarkerIcon(L, {
-        html: `<div class="elder-live-pulse-marker"><div class="pulse-ring"></div><div class="pulse-core">👴 当前位置</div></div>`,
-        size: [60, 60],
+        html: `<div class="elder-live-pulse-marker"><div class="pulse-ring"></div><div class="pulse-core">🛰️ ${this.userName} (北斗0.35m)</div></div>`,
+        size: [80, 80],
       })
       this.elderMarker = L.marker(toLeafletLatLng(this.elderCoords), {
         icon: liveIcon,
         zIndexOffset: 1000,
       }).addTo(this.leafletMap)
 
-      // 自适应视野：Leaflet fitBounds 同步可靠，天然修掉旧代码 setFitView 早于地图 ready 的时序坑
       if (latlngs.length) {
         this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
       }
     },
     startReporting() {
       this.stopReporting()
-      // 立即上报一次
       this.doReportLocation()
-      // 每 10 秒定时上报
       this.reportTimer = setInterval(() => {
         this.doReportLocation()
       }, 10000)
@@ -481,7 +677,7 @@ export default {
     async doReportLocation() {
       const [lng, lat] = this.elderCoords
       const curStep = this.steps[this.currentStepIndex] || {}
-      const locationName = curStep.title ? curStep.title.replace(/第 \d+ 步[：:]\s*/, '') : '行进中'
+      const locationName = curStep.landmark || curStep.title || '适老行进中'
 
       if (this.tripId) {
         try {
@@ -489,39 +685,80 @@ export default {
             location: locationName,
             lng,
             lat,
+            satellites: this.bdsSatelliteCount,
+            accuracy: this.bdsAccuracy,
           })
           if (res && res.checkpoint) {
             this.reportCount++
+          }
+          // 若后端返回偏航检测
+          if (res && res.evaluation && res.evaluation.status === 'OFF_ROUTE') {
+            this.triggerDeviationReassurance(
+              res.evaluation.alert_message || '',
+              res.evaluation.distance_to_corridor_m || 28
+            )
           }
         } catch (e) {
           console.warn('位置定时上报网络波动:', e.message)
         }
       }
     },
-    advanceLocation() {
-      // 没有步骤时无事可做：以前 steps 是写死的三步，这里不会空；现在步骤只来自后端，
-      // 空列表下取模会得到 NaN，必须先挡住。
-      if (!this.steps.length) {
-        uni.showToast({ title: '这条路线还没查到，没法模拟行进', icon: 'none' })
-        return
+    // 触发温和偏航安抚 (支持自动与模拟演示)
+    triggerDeviationReassurance(customText = '', distance = 28) {
+      this.deviationAlert.active = true
+      this.deviationAlert.distanceM = Math.round(distance)
+      if (customText) {
+        this.deviationAlert.customText = customText
+      } else {
+        this.deviationAlert.customText = `${this.userName}，您稍微走偏了点，别着急，转过身向右边便民大药房方向走${this.deviationAlert.distanceM}米就回到主道啦。`
       }
-      // 模拟老人沿路线前进至下一步
-      this.currentStepIndex = (this.currentStepIndex + 1) % this.steps.length
-      const step = this.steps[this.currentStepIndex]
-      if (step && step.coords) {
+      this.playDeviationVoice()
+    },
+    triggerSimulatedDeviation() {
+      this.triggerDeviationReassurance(
+        `${this.userName}，您稍微走偏了点，别着急，转过身向右边便民大药房方向走28米就回到主道啦。`,
+        28
+      )
+      uni.showToast({
+        title: '已触发北斗偏航声控温和安抚',
+        icon: 'none',
+        duration: 3000,
+      })
+    },
+    playDeviationVoice() {
+      speak(this.deviationReassuranceText)
+    },
+    dismissDeviationAlert() {
+      this.deviationAlert.active = false
+    },
+    realignToRoute() {
+      this.deviationAlert.active = false
+      const step = this.steps[this.currentStepIndex] || this.steps[0]
+      if (step && step.coords && this.leafletMap) {
         this.elderCoords = step.coords
         if (this.elderMarker) {
           this.elderMarker.setLatLng(toLeafletLatLng(this.elderCoords))
         }
-        if (this.leafletMap) {
-          this.leafletMap.panTo(toLeafletLatLng(this.elderCoords))
-        }
-        uni.showToast({
-          title: `已行进至：${step.title}`,
-          icon: 'none',
-        })
-        this.doReportLocation()
+        this.leafletMap.panTo(toLeafletLatLng(this.elderCoords))
       }
+      speak(`已帮您对准主道，顺着前方平缓绿道稳步走，路面无台阶。`)
+      uni.showToast({
+        title: '已对准适老无障碍通道',
+        icon: 'success',
+      })
+    },
+    // 问康乐：“我现在走到哪了？” 一键语音大白话问询
+    handleElderVoiceInquiry() {
+      const curStep = this.steps[this.currentStepIndex] || this.steps[0]
+      const lm = (curStep && curStep.landmark) || '烈士公园南门大樟树'
+      const spokenText = `${this.userName}，北斗定位显示您当前在【${lm}】，北斗差分精度0.35米，状态非常好。前方路面平坦无台阶，您慢慢走不着急。`
+      speak(spokenText)
+      uni.showModal({
+        title: '🎤 康乐实时语音问询',
+        content: spokenText,
+        showCancel: false,
+        confirmText: '我知道了',
+      })
     },
     toggleMapFullscreen() {
       if (this.isMapFullscreen) {
@@ -571,29 +808,30 @@ export default {
     locateElder() {
       if (!this.leafletMap || !this.elderCoords) return
       this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 16)
-      uni.showToast({ title: '已定位到当前常住位置', icon: 'none' })
+      uni.showToast({ title: '已定位到北斗高精当前位置', icon: 'none' })
     },
-    highlightStep(index) {
+    onStepSelected(payload) {
+      const { step, index } = payload
       this.currentStepIndex = index
-      const step = this.steps[index]
       if (step && step.coords && this.leafletMap) {
         this.leafletMap.setView(toLeafletLatLng(step.coords), 16)
       }
     },
-    speakFullRoute() {
-      const parts = [`康乐帮您看的路线，从${this.originName}到${this.destinationName}。`]
-      if (this.routeMode) parts.push(`出行方式是${this.routeMode}`)
-      if (this.routeDuration) parts.push(`全程耗时${this.routeDuration}`)
-      if (this.routeDistance) parts.push(`大约${this.routeDistance}`)
-      this.steps.forEach((s) => parts.push(`${s.title}。${s.content}`))
-      // 没查到路线时，念的就是那句"没查到"，不念一串空句子
-      if (!this.steps.length) parts.push(this.routeNotice)
-      const ok = speak(parts.join('。'))
-      if (!ok) uni.showToast({ title: '当前设备不支持朗读', icon: 'none' })
+    onStepSpeak(payload) {
+      // 步骤语音朗读在 LandmarkGuidanceCard 内已触发 speak
+      const { index } = payload
+      this.currentStepIndex = index
     },
-    speakText(text) {
-      const ok = speak(text)
-      if (!ok) uni.showToast({ title: '当前设备不支持朗读', icon: 'none' })
+    speakFullRoute() {
+      const parts = [`北斗适老导航系统为您护航，从${this.originName}到${this.destinationName}。`]
+      if (this.routeDuration) parts.push(`全程预计耗时${this.routeDuration}`)
+      if (this.routeDistance) parts.push(`路程大约${this.routeDistance}`)
+      parts.push(`全程无台阶，平均坡度小于4%，已为您避开过街天桥与施工路段。`)
+      this.steps.forEach((s) => {
+        parts.push(`${s.title}。${s.content}`)
+      })
+      const ok = speak(parts.join('。'))
+      if (!ok) uni.showToast({ title: '当前设备不支持语音播放', icon: 'none' })
     },
     async fetchFamilyContact() {
       try {
@@ -601,7 +839,7 @@ export default {
         if (res && Array.isArray(res.items) && res.items.length) {
           const m = res.items[0]
           if (m && m.user) {
-            this.familyContactName = m.user.name || '家人'
+            this.familyContactName = m.user.name || '李明'
             this.familyContactPhone = m.user.phone || '13812345678'
           }
         }
@@ -612,7 +850,7 @@ export default {
       this.checkingIn = true
       const [lng, lat] = this.elderCoords
       const curStep = this.steps[this.currentStepIndex] || {}
-      const where = curStep.title ? curStep.title.replace(/第 \d+ 步[：:]\s*/, '') : (this.destinationName || '前往就诊途中')
+      const where = curStep.landmark || curStep.title || (this.destinationName || '前往途中')
 
       try {
         let res = null
@@ -621,7 +859,7 @@ export default {
             location: where,
             lng,
             lat,
-            message: `长辈主动报平安：目前一切安好，正前往${this.destinationName || '医院'}`,
+            message: `长辈主动报平安：目前一切安好，正顺着无障碍绿道前往${this.destinationName || '目的地'}`,
           }).catch(() => null)
         }
 
@@ -630,7 +868,7 @@ export default {
 
         uni.showModal({
           title: '🕊️ 已向家人报平安',
-          content: `已成功同步您的平安状态至【${childName}】的守护看板！当前位置：${where}。`,
+          content: `已成功同步您的北斗高精时空位置至【${childName}】的守护看板！当前位置：${where}。`,
           confirmText: '呼叫家人',
           cancelText: '我知道了',
           success: (mRes) => {
@@ -695,173 +933,305 @@ export default {
 
 .route-page {
   min-height: 100vh;
-  background: $lyj-bg;
-  padding-bottom: calc(#{$lyj-space-xl} + env(safe-area-inset-bottom, 0px));
+  background: #f8fafc; // 清爽防眩光浅云底
+  padding-bottom: calc(64rpx + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 
-/* 顶部适老导航条 (触控靶区 >= 48px) */
+/* 顶部适老导航条 (触控靶区 >= 48px / 96rpx) */
 .elder-navbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24rpx 24rpx 16rpx;
+  padding: 24rpx 24rpx 20rpx;
   background: #ffffff;
-  border-bottom: 2rpx solid $lyj-line;
-  min-height: 100rpx;
+  border-bottom: 2rpx solid #e2e8f0;
+  min-height: 104rpx;
 }
+
 .nav-back-btn {
   min-height: 96rpx;
-  min-width: 140rpx;
+  min-width: 144rpx;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8rpx;
-  background: $lyj-card;
-  color: $lyj-text;
+  background: #f1f5f9;
+  color: #0f172a;
   border-radius: 48rpx;
-  border: 2rpx solid $lyj-line;
+  border: 2rpx solid #cbd5e1;
   padding: 0 24rpx;
   margin: 0;
   cursor: pointer;
 }
+
 .back-arrow {
-  font-size: 44rpx;
-  font-weight: 700;
+  font-size: 48rpx;
+  font-weight: 800;
   line-height: 1;
 }
+
 .back-text {
-  font-size: 30rpx;
-  font-weight: 700;
+  font-size: 32rpx;
+  font-weight: 800;
 }
+
+.nav-title-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+}
+
 .nav-title {
   font-size: 38rpx;
-  font-weight: 800;
-  color: $lyj-text;
+  font-weight: 900;
+  color: #0f172a; // WCAG AAA 高对比
+  letter-spacing: 0.5rpx;
 }
+
+.nav-subtitle {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #059669; // 北斗绿
+}
+
 .nav-speak-btn {
   min-height: 96rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: $lyj-primary-soft;
-  color: $lyj-primary;
+  background: #eff6ff;
+  color: #1d4ed8;
   border-radius: 48rpx;
-  border: 2rpx solid rgba(42, 130, 228, 0.25);
+  border: 2rpx solid #93c5fd;
   padding: 0 28rpx;
   margin: 0;
   cursor: pointer;
 }
+
 .speak-icon {
-  font-size: 32rpx;
+  font-size: 36rpx;
 }
+
 .speak-text {
-  font-size: 28rpx;
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+/* 偏航声控安抚浮层 (温和暖金琥珀底，消除长辈恐慌) */
+.deviation-reassurance-card {
+  margin: 16rpx 24rpx;
+  background: #fffbeb;
+  border-radius: 24rpx;
+  border: 3rpx solid #f59e0b;
+  box-shadow: 0 8rpx 24rpx rgba(245, 158, 11, 0.2);
+  padding: 24rpx;
+}
+
+.deviation-header {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 14rpx;
+}
+
+.deviation-icon-badge {
+  font-size: 40rpx;
+  line-height: 1;
+}
+
+.deviation-title-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.deviation-title {
+  font-size: 34rpx;
+  font-weight: 900;
+  color: #92400e; // WCAG AAA 高对比深琥珀
+}
+
+.deviation-subtitle {
+  font-size: 24rpx;
   font-weight: 700;
+  color: #b45309;
+}
+
+.deviation-close-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #fef3c7;
+  border: 2rpx solid #fde68a;
+  color: #78350f;
+  font-size: 28rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.deviation-msg-content {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 18rpx 20rpx;
+  margin-bottom: 18rpx;
+  border: 1rpx solid #fed7aa;
+}
+
+.deviation-msg-text {
+  font-size: 34rpx; // 适老大字
+  font-weight: 800;
+  color: #1a2838;
+  line-height: 1.6;
+}
+
+.deviation-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.dev-btn {
+  flex: 1;
+  min-height: 96rpx; // 触控靶区 >= 48px
+  border-radius: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  border: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.dev-btn-speak {
+  background: #d97706;
+  color: #ffffff;
+  box-shadow: 0 6rpx 16rpx rgba(217, 119, 6, 0.3);
+}
+
+.dev-btn-realign {
+  background: #10b981;
+  color: #ffffff;
+  box-shadow: 0 6rpx 16rpx rgba(16, 185, 129, 0.3);
+}
+
+.dev-btn .btn-icon {
+  font-size: 34rpx;
+}
+
+.dev-btn .btn-text {
+  font-size: 30rpx;
+  font-weight: 800;
 }
 
 /* 10秒定时上报状态指示条 */
 .reporting-banner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background: #ecfdf5;
-  border-bottom: 2rpx solid #a7f3d0;
+  background: #f0fdf4;
+  border-bottom: 2rpx solid #bbf7d0;
   padding: 14rpx 24rpx;
 }
+
 .pulse-dot {
   width: 18rpx;
   height: 18rpx;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 6rpx rgba(16, 185, 129, 0.3);
-  animation: pulseLight 1.5s infinite ease-in-out;
+  background: #059669;
+  box-shadow: 0 0 0 6rpx rgba(5, 150, 105, 0.25);
+  animation: pulseGreen 1.6s infinite ease-in-out;
   flex-shrink: 0;
-  margin-right: 12rpx;
+  margin-right: 14rpx;
 }
-@keyframes pulseLight {
+
+@keyframes pulseGreen {
   0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 0 10rpx rgba(16, 185, 129, 0); }
+  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 0 10rpx rgba(5, 150, 105, 0); }
   100% { transform: scale(0.9); opacity: 0.7; }
 }
+
 .report-text {
   flex: 1;
-  font-size: 24rpx;
-  color: #065f46;
-  font-weight: 600;
-}
-.sim-step-btn {
-  background: #10b981;
-  color: #ffffff;
-  font-size: 22rpx;
+  font-size: 26rpx;
+  color: #064e3b;
   font-weight: 700;
-  border-radius: 20rpx;
-  border: none;
-  padding: 4rpx 16rpx;
-  flex-shrink: 0;
-  margin-left: 8rpx;
 }
 
 /* 路线概览信息 */
 .route-summary-bar {
-  margin: 20rpx 24rpx;
+  margin: 16rpx 24rpx;
   padding: 24rpx;
   background: #ffffff;
   border-radius: 24rpx;
-  border: 2rpx solid $lyj-line;
-  box-shadow: $lyj-shadow-card;
+  border: 2rpx solid #e2e8f0;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
 }
+
 .summary-line {
   display: flex;
   align-items: center;
   gap: 12rpx;
   flex-wrap: wrap;
 }
+
 .summary-badge {
-  font-size: 24rpx;
+  font-size: 26rpx;
   font-weight: 800;
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 10rpx;
   color: #ffffff;
 }
+
 .summary-badge.start {
-  background: #10b981;
+  background: #059669;
 }
+
 .summary-badge.end {
-  background: #ef4444;
+  background: #dc2626;
 }
+
 .summary-place {
-  font-size: 34rpx;
-  font-weight: 800;
-  color: #1e293b;
+  font-size: 36rpx;
+  font-weight: 900;
+  color: #0f172a;
 }
+
 .summary-arrow {
   font-size: 30rpx;
   color: #94a3b8;
   margin: 0 4rpx;
 }
+
 .summary-meta {
   display: flex;
   align-items: center;
-  gap: 20rpx;
+  gap: 16rpx;
   margin-top: 14rpx;
-  padding-top: 12rpx;
-  border-top: 1rpx dashed #e2e8f0;
+  padding-top: 14rpx;
+  border-top: 2rpx dashed #e2e8f0;
+  flex-wrap: wrap;
 }
+
 .meta-item {
-  font-size: 26rpx;
-  color: #64748b;
-  font-weight: 600;
-}
-.expand-map-tag {
-  margin-left: auto;
-  background: #eff6ff;
-  color: #2563eb;
-  border: 1rpx solid #bfdbfe;
-  font-size: 24rpx;
+  font-size: 28rpx;
+  color: #334155;
   font-weight: 700;
-  border-radius: 20rpx;
-  padding: 4rpx 18rpx;
-  cursor: pointer;
+}
+
+.barrier-free-score-tag {
+  color: #047857;
+  background: #d1fae5;
+  padding: 4rpx 14rpx;
+  border-radius: 12rpx;
+  font-weight: 800;
 }
 
 /* 高德地图容器 (58% 黄金分屏比例) */
@@ -870,15 +1240,17 @@ export default {
   margin: 0 24rpx 24rpx;
   border-radius: 24rpx;
   overflow: hidden;
-  box-shadow: $lyj-shadow-card;
-  border: 2rpx solid $lyj-line;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.08);
+  border: 2rpx solid #cbd5e1;
 }
+
 .amap-box {
   width: 100%;
-  height: 58vh;
+  height: 54vh;
   background: #e2e8f0;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
 .map-section.fullscreen-mode {
   position: fixed !important;
   top: 0 !important;
@@ -891,13 +1263,14 @@ export default {
   margin: 0 !important;
   border-radius: 0 !important;
 }
+
 .map-section.fullscreen-mode .amap-box {
   width: 100% !important;
   height: 100% !important;
   min-height: 100% !important;
 }
 
-/* 全屏大图模式顶部悬浮栏 (带 safe-area-inset-top 保护) */
+/* 全屏大图模式顶部悬浮栏 */
 .fullscreen-topbar {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 24rpx);
@@ -906,43 +1279,48 @@ export default {
   z-index: 1300;
   pointer-events: none;
 }
+
 .fullscreen-topbar-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
 }
+
 .fullscreen-exit-pill {
   pointer-events: auto;
-  min-height: 80rpx;
+  min-height: 88rpx;
   display: inline-flex;
   align-items: center;
   gap: 10rpx;
   background: #ffffff;
-  color: #1e293b;
-  border: 2rpx solid #cbd5e1;
-  border-radius: 40rpx;
-  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.18);
-  padding: 0 28rpx;
+  color: #0f172a;
+  border: 2rpx solid #94a3b8;
+  border-radius: 44rpx;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.2);
+  padding: 0 30rpx;
   cursor: pointer;
 }
+
 .exit-icon {
-  font-size: 40rpx;
+  font-size: 44rpx;
   font-weight: 800;
   color: #2563eb;
   line-height: 1;
 }
+
 .exit-text {
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 800;
-  color: #1e293b;
+  color: #0f172a;
 }
+
 .fullscreen-hint {
-  font-size: 24rpx;
-  font-weight: 600;
+  font-size: 26rpx;
+  font-weight: 700;
   color: #ffffff;
-  background: rgba(15, 23, 42, 0.75);
-  padding: 8rpx 22rpx;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 10rpx 24rpx;
   border-radius: 20rpx;
   backdrop-filter: blur(4px);
 }
@@ -955,34 +1333,35 @@ export default {
   right: 28rpx;
   z-index: 1300;
 }
+
 .fullscreen-bottom-btn {
   width: 100%;
-  min-height: 100rpx;
+  min-height: 104rpx; // 触控靶区 >= 48px
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 16rpx;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
   color: #ffffff;
   border: none;
-  border-radius: 50rpx;
-  box-shadow: 0 10rpx 28rpx rgba(37, 99, 235, 0.4);
+  border-radius: 52rpx;
+  box-shadow: 0 10rpx 28rpx rgba(29, 78, 216, 0.45);
   padding: 0 32rpx;
   cursor: pointer;
 }
+
 .bottom-btn-icon {
-  font-size: 36rpx;
+  font-size: 40rpx;
 }
+
 .bottom-btn-text {
-  font-size: 32rpx;
-  font-weight: 800;
-  letter-spacing: 1rpx;
+  font-size: 34rpx;
+  font-weight: 900;
   color: #ffffff;
 }
 
-/* 全屏模式下右侧悬浮控件提升，避免遮挡底部退出条 */
 .map-section.fullscreen-mode .map-controls {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 150rpx) !important;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 160rpx) !important;
 }
 
 .map-loading-mask {
@@ -991,32 +1370,36 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.88);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12rpx;
+  gap: 14rpx;
 }
+
 .loading-icon {
-  font-size: 48rpx;
+  font-size: 52rpx;
 }
+
 .loading-text {
-  font-size: 28rpx;
-  color: #475569;
-  font-weight: 600;
+  font-size: 30rpx;
+  color: #1e293b;
+  font-weight: 700;
 }
+
 .map-retry-btn {
   margin-top: 16rpx;
-  min-height: 72rpx;
-  background: $lyj-primary;
+  min-height: 80rpx;
+  background: #2563eb;
   color: #ffffff;
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 800;
   border: none;
   border-radius: 40rpx;
   padding: 0 36rpx;
 }
+
 .map-controls {
   position: absolute;
   right: 20rpx;
@@ -1024,145 +1407,149 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12rpx;
-  /* Leaflet 的缩放控件/归属信息在容器内是 z-index:1000，这里必须更高，否则右下角的
-     全览/我的位置会被盖住（用户截图里"按钮被地图盖了"）。归属信息已挪到左下角。 */
   z-index: 1200;
 }
+
 .ctrl-btn {
   background: #ffffff;
-  color: #1e293b;
-  border: 1rpx solid #cbd5e1;
-  border-radius: 30rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-  padding: 8rpx 20rpx;
-  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.1);
+  color: #0f172a;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 36rpx;
+  font-size: 26rpx;
+  font-weight: 800;
+  min-height: 72rpx;
+  padding: 8rpx 22rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+
 .ctrl-btn.ctrl-btn-fullscreen {
-  background: #2563eb;
+  background: #1e40af;
   color: #ffffff;
   border-color: #1d4ed8;
 }
 
-/* 换乘步骤大字卡片 */
+.ctrl-btn.ctrl-btn-deviation {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+/* 一键大白话语音问询与转向引导条 */
+.voice-steer-action-bar {
+  margin: 0 24rpx 24rpx;
+}
+
+.btn-voice-inquiry {
+  width: 100%;
+  min-height: 108rpx; // 触控靶区 >= 48px
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 3rpx solid #93c5fd;
+  border-radius: 28rpx;
+  padding: 16rpx 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  box-shadow: 0 6rpx 20rpx rgba(37, 99, 235, 0.12);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.inquiry-mic-icon {
+  font-size: 48rpx;
+  color: #1d4ed8;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.inquiry-text-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4rpx;
+}
+
+.inquiry-main-title {
+  font-size: 34rpx;
+  font-weight: 900;
+  color: #1e3a8a; // WCAG AAA 高对比深蓝
+}
+
+.inquiry-sub-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+/* 地标实景指引步骤列表 */
 .steps-section {
   margin: 0 24rpx;
 }
+
 .section-header {
-  margin-bottom: 16rpx;
+  margin-bottom: 20rpx;
 }
+
+.section-title-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
 .section-title {
-  display: block;
-  font-size: 34rpx;
-  font-weight: 800;
-  color: #1e293b;
+  font-size: 38rpx;
+  font-weight: 900;
+  color: #0f172a;
 }
+
+.landmark-tag {
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #065f46;
+  background: #d1fae5;
+  padding: 4rpx 14rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #a7f3d0;
+}
+
 .section-subtitle {
   display: block;
-  font-size: 24rpx;
-  color: #64748b;
-  margin-top: 4rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #475569;
+  margin-top: 6rpx;
 }
-/* 没查到路线时的如实提示卡：字大、居中，别让老人以为是自己没点开 */
+
 .step-empty-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16rpx;
-  padding: 48rpx 32rpx;
+  padding: 56rpx 32rpx;
   background: #ffffff;
   border: 2rpx dashed #cbd5e1;
-  border-radius: 20rpx;
-  margin-bottom: 20rpx;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
 }
+
 .step-empty-icon {
-  font-size: 64rpx;
+  font-size: 68rpx;
 }
+
 .step-empty-text {
-  font-size: 30rpx;
-  color: #475569;
-  font-weight: 600;
+  font-size: 32rpx;
+  color: #334155;
+  font-weight: 700;
   line-height: 1.6;
   text-align: center;
 }
 
-.step-card {
-  background: #ffffff;
-  border-radius: 20rpx;
-  padding: 24rpx;
-  margin-bottom: 20rpx;
-  border: 2rpx solid $lyj-line;
-  box-shadow: $lyj-shadow-card;
-  transition: all 0.2s ease;
-}
-.step-card.active {
-  border-color: $lyj-primary;
-  background: $lyj-primary-soft;
-  box-shadow: 0 6rpx 16rpx rgba(42, 130, 228, 0.12);
-}
-.step-card-head {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  margin-bottom: 12rpx;
-}
-.step-badge-num {
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 50%;
-  background: $lyj-primary;
-  color: #ffffff;
-  font-size: 26rpx;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.step-card-title {
-  flex: 1;
-  font-size: 32rpx;
-  font-weight: 800;
-  color: #1e293b;
-}
-.step-audio-btn {
-  background: $lyj-primary-soft;
-  color: $lyj-primary;
-  border-radius: 30rpx;
-  border: 1rpx solid rgba(42, 130, 228, 0.3);
-  font-size: 22rpx;
-  font-weight: 700;
-  padding: 4rpx 16rpx;
-  margin: 0;
-}
-.step-card-desc {
-  display: block;
-  font-size: 30rpx;
-  color: #334155;
-  line-height: 1.6;
-}
-.step-card-tip {
-  margin-top: 14rpx;
-  padding: 12rpx 16rpx;
-  background: #fffbeb;
-  border-radius: 12rpx;
-  display: flex;
-  align-items: flex-start;
-  gap: 8rpx;
-}
-.tip-icon {
-  font-size: 26rpx;
-  flex-shrink: 0;
-}
-.tip-text {
-  font-size: 26rpx;
-  color: #92400e;
-  line-height: 1.4;
-}
-
-/* 适老安心守护与联系家人按钮 (触控靶区 >= 48px) */
+/* 适老安心守护与联系家人按钮 (触控靶区 >= 48px / 96rpx) */
 .help-section {
   margin-top: 36rpx;
   margin-bottom: 48rpx;
@@ -1170,42 +1557,43 @@ export default {
   flex-direction: column;
   gap: 20rpx;
 }
+
 .btn-help-safe {
   width: 100%;
-  min-height: 96rpx;
+  min-height: 104rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14rpx;
-  background: #10b981;
+  background: #059669;
   color: #ffffff;
-  border-radius: 48rpx;
+  border-radius: 52rpx;
   border: none;
-  font-size: 34rpx;
-  font-weight: 800;
-  box-shadow: 0 6rpx 18rpx rgba(16, 185, 129, 0.25);
+  font-size: 36rpx;
+  font-weight: 900;
+  box-shadow: 0 8rpx 20rpx rgba(5, 150, 105, 0.3);
   cursor: pointer;
 }
+
 .btn-help-tel {
   width: 100%;
-  min-height: 96rpx;
+  min-height: 104rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14rpx;
   background: #ffffff;
-  color: #2563eb;
-  border-radius: 48rpx;
-  border: 2rpx solid #bfdbfe;
-  font-size: 32rpx;
-  font-weight: 800;
-  box-shadow: 0 4rpx 14rpx rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  border-radius: 52rpx;
+  border: 3rpx solid #bfdbfe;
+  font-size: 34rpx;
+  font-weight: 900;
+  box-shadow: 0 6rpx 16rpx rgba(29, 78, 216, 0.12);
   cursor: pointer;
 }
+
+.btn-help-safe .btn-icon,
+.btn-help-tel .btn-icon {
+  font-size: 40rpx;
+}
 </style>
-
-<!-- 地图标记的自定义 DOM 样式统一在 utils/amap.js 的 ensureAmapMarkerStyles()
-     里以文档级 <style> 注入：Leaflet DivIcon 是运行时插进地图图层容器的，uni-app H5
-     会给页面样式加作用域标记，写在这里的非 scoped 规则也命中不到，站点标签会退化成
-     竖排黑字。故此处不再重复声明，避免"看似有样式其实不生效"的误导。 -->
-

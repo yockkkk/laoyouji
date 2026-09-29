@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -110,7 +110,30 @@ LOCATION_COORDS: dict[str, tuple[float, float]] = {
     "积水潭医院": (116.3748, 39.9485),
     "北京积水潭医院": (116.3748, 39.9485),
     "漫心酒店": (116.3725, 39.9472),
+    # 湖南省大学生智能导航科技创新大赛（长沙实景示范地标）
+    "华夏路社区": (112.9862, 28.2154),
+    "年嘉湖西路": (112.9895, 28.2141),
+    "东风路口": (112.9880, 28.2090),
+    "营盘路口": (112.9830, 28.2050),
+    "烈士公园西门": (112.9932, 28.2125),
+    "烈士公园南门": (112.9975, 28.2078),
+    "烈士公园": (112.9932, 28.2125),
+    "湖南烈士公园": (112.9932, 28.2125),
+    "湘雅路入口": (112.9858, 28.2163),
+    "省人民医院急诊门前": (112.9772, 28.1915),
+    "湖南省人民医院": (112.9772, 28.1915),
+    "中南大学湘雅医院": (112.9870, 28.2140),
+    "湘雅医院": (112.9870, 28.2140),
+    "长沙市第一医院": (112.9820, 28.2060),
 }
+
+# 北斗适老示范路线预设适老长椅与休憩凉亭坐标（享滞留豁免与超长关怀）
+KNOWN_REST_BENCHES: list[tuple[float, float]] = [
+    (112.9875, 28.2148),  # 华夏路社区街心花园长椅
+    (112.9895, 28.2141),  # 年嘉湖西路林荫道长椅 1
+    (112.9910, 28.2135),  # 年嘉湖西路林荫道长椅 2
+    (112.9930, 28.2128),  # 烈士公园西门便民休息亭
+]
 
 
 def lookup_coords(location: str, city: str = "") -> tuple[float | None, float | None]:
@@ -345,6 +368,168 @@ class CheckpointIn(BaseModel):
     location: str = ""
     lng: float | None = None
     lat: float | None = None
+    altitude_m: float = 50.0
+    satellites: int = 18
+    speed_kmh: float = 2.5
+    timestamp: str | None = None
+
+
+class BdsCheckpointPayload(BaseModel):
+    """北斗高精轨迹周期上报 Payload (严格遵循 PROJECT.md 契约)."""
+    trip_id: str
+    lng: float
+    lat: float
+    altitude_m: float = 50.0
+    satellites: int = 18
+    speed_kmh: float = 2.5
+    timestamp: str
+
+
+class BdsCheckpointEvaluation(BaseModel):
+    """北斗轨迹点安全评估与异常判定回执 (严格遵循 PROJECT.md 契约)."""
+    is_safe: bool
+    status: str  # "NORMAL" | "OFF_ROUTE" | "ABNORMAL_DWELL" | "ARRIVED"
+    distance_to_corridor_m: float
+    dwell_duration_seconds: int
+    alert_message: Optional[str] = None
+    audio_reassurance: Optional[str] = None
+
+
+def evaluate_bds_checkpoint(
+    payload: BdsCheckpointPayload,
+    corridor_polyline: list[tuple[float, float]],
+    destination_coords: Optional[tuple[float, float]] = None,
+    registered_rest_benches: Optional[list[tuple[float, float]]] = None,
+    consecutive_dwell_seconds: int = 0,
+    corridor_tolerance_m: float = 80.0,
+) -> BdsCheckpointEvaluation:
+    """评测北斗轨迹点状态：正常/偏航/异常滞留/安全到达。"""
+    point = (payload.lng, payload.lat)
+
+    # 1. 信号搜星与零岛过滤 (0,0 或经纬度越界)
+    if (payload.lng == 0.0 and payload.lat == 0.0) or abs(payload.lng) > 180.0 or abs(payload.lat) > 90.0:
+        return BdsCheckpointEvaluation(
+            is_safe=True,
+            status="NORMAL",
+            distance_to_corridor_m=0.0,
+            dwell_duration_seconds=0,
+            alert_message=None,
+            audio_reassurance="正在校准北斗卫星授时信号，请稍候...",
+        )
+
+    # 2. 检查是否安全到达目的地 (距离终点 <= 50米)
+    if destination_coords:
+        dist_to_dest = haversine_distance_m(point, destination_coords)
+        if dist_to_dest <= 50.0:
+            return BdsCheckpointEvaluation(
+                is_safe=True,
+                status="ARRIVED",
+                distance_to_corridor_m=0.0,
+                dwell_duration_seconds=0,
+                alert_message=None,
+                audio_reassurance="长辈已安全到达目的地，本次出行北斗守护结束。",
+            )
+
+    # 3. 计算与规划走廊的最短距离
+    corridor_dist = min_distance_to_corridor_m(point, corridor_polyline)
+
+    # 4. 检查异常滞留 (停留速度极慢 < 0.5km/h)
+    if payload.speed_kmh < 0.5:
+        # 检查是否在预设长椅或休息亭处休整 (25米以内)
+        is_at_bench = False
+        benches = registered_rest_benches or KNOWN_REST_BENCHES
+        if benches:
+            for bench in benches:
+                if haversine_distance_m(point, bench) <= 25.0:
+                    is_at_bench = True
+                    break
+
+        if is_at_bench:
+            # 长椅休整区：宽限到 25 分钟 (1500秒)
+            if consecutive_dwell_seconds >= 1500:
+                mins = consecutive_dwell_seconds // 60
+                return BdsCheckpointEvaluation(
+                    is_safe=False,
+                    status="ABNORMAL_DWELL",
+                    distance_to_corridor_m=round(corridor_dist, 1),
+                    dwell_duration_seconds=consecutive_dwell_seconds,
+                    alert_message=f"检测到老人在长椅处滞留已超过 {mins} 分钟，请确认是否需要关怀",
+                    audio_reassurance="张阿姨，您在长椅处休息较长时间，感觉还好吗？需要帮您联系家人吗？",
+                )
+        else:
+            # 非休整区：超过 15 分钟 (900秒) 触发异常滞留高危警报
+            if consecutive_dwell_seconds >= 900:
+                mins = consecutive_dwell_seconds // 60
+                return BdsCheckpointEvaluation(
+                    is_safe=False,
+                    status="ABNORMAL_DWELL",
+                    distance_to_corridor_m=round(corridor_dist, 1),
+                    dwell_duration_seconds=consecutive_dwell_seconds,
+                    alert_message=f"长辈在当前位置连续停留超过 {mins} 分钟，疑似身体不适或走失受困！",
+                    audio_reassurance="张阿姨，您在此处停留较长时间，是否需要呼叫家人或急救服务？",
+                )
+
+    # 5. 检查走廊偏航 (微步道走廊容差 50-80m)
+    if corridor_dist > corridor_tolerance_m:
+        return BdsCheckpointEvaluation(
+            is_safe=False,
+            status="OFF_ROUTE",
+            distance_to_corridor_m=round(corridor_dist, 1),
+            dwell_duration_seconds=consecutive_dwell_seconds,
+            alert_message=f"长辈偏离规划安全走廊 {corridor_dist:.1f} 米，请注意核实位置。",
+            audio_reassurance="张阿姨，您稍微走偏了点，咱们往右侧平缓小道走回安全路线哦。",
+        )
+
+    # 6. 正常通行
+    return BdsCheckpointEvaluation(
+        is_safe=True,
+        status="NORMAL",
+        distance_to_corridor_m=round(corridor_dist, 1),
+        dwell_duration_seconds=consecutive_dwell_seconds,
+        alert_message=None,
+        audio_reassurance="北斗高精时空护航中，路线平坦无障碍，请安心前行。",
+    )
+
+
+async def calculate_checkpoint_dwell_seconds(
+    ctx: AppContext,
+    trip_id: str,
+    current_lng: float,
+    current_lat: float,
+    current_time: Optional[datetime] = None,
+) -> int:
+    """计算长辈在当前位置 25 米范围内的连续滞留时长（秒）。"""
+    if current_time is None:
+        current_time = datetime.now(timezone.utc)
+
+    cps = await ctx.repos.list(
+        "trip_checkpoints", where={"trip_id": trip_id}, order="-created_at", limit=30
+    )
+    if not cps:
+        return 0
+
+    earliest_time = current_time
+    for cp in cps:
+        cp_lng = cp.get("lng")
+        cp_lat = cp.get("lat")
+        if cp_lng is None or cp_lat is None:
+            break
+        dist = haversine_distance_m((current_lng, current_lat), (cp_lng, cp_lat))
+        if dist > 25.0:
+            break
+
+        cp_time_str = cp.get("timestamp") or cp.get("created_at")
+        if cp_time_str:
+            try:
+                cp_dt = datetime.fromisoformat(str(cp_time_str).replace("Z", "+00:00"))
+                if cp_dt.tzinfo is None:
+                    cp_dt = cp_dt.replace(tzinfo=timezone.utc)
+                if cp_dt < earliest_time:
+                    earliest_time = cp_dt
+            except Exception:
+                pass
+
+    return max(0, int((current_time - earliest_time).total_seconds()))
 
 
 class CheckinIn(BaseModel):
@@ -734,11 +919,13 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
     # 偏航与到达判定
     status, note = "normal", ""
 
-    # 1. 到达目的地判定
+    # 1. 到达目的地判定 (北斗高精度亚米级到达判定：距离终点 <= 50m)
+    arrival_tolerance_m = 50.0
+
     is_arrived = False
     if dest_coords[0] is not None and body.lng is not None and body.lat is not None:
         dist_to_dest = haversine_distance_m((body.lng, body.lat), (dest_coords[0], dest_coords[1]))
-        if dist_to_dest <= 1000:
+        if dist_to_dest <= arrival_tolerance_m:
             is_arrived = True
 
     if not is_arrived and dest_name:
@@ -746,6 +933,7 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
         if (core_kw and len(core_kw) >= 2 and core_kw in body.location) or (dest_name in body.location):
             is_arrived = True
 
+    corridor_dist = 0.0
     if is_arrived:
         status = "arrived"
         note = "已安全到达目的地"
@@ -763,17 +951,17 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
             note = "设备正在校准卫星授时信号，请稍候"
         else:
             corridor = route_data.get("polyline") or route_data.get("points") or []
-            if not corridor and dest_coords[0] is not None:
-                # 路线不在本市范围（跨城 / 查不到，没画出来）时没有走廊可用，
-                # 退回"目的地"这一个锚点：既不放过离得很远的报警，
-                # 也不编一条不存在的路去判老人偏航。
-                corridor = [(dest_coords[0], dest_coords[1])]
-            corridor_dist = min_distance_to_corridor_m((body.lng, body.lat), corridor)
+            if not corridor:
+                origin_coords = lookup_coords(origin_name, city)
+                if origin_coords[0] is not None and dest_coords[0] is not None:
+                    corridor = [(origin_coords[0], origin_coords[1]), (dest_coords[0], dest_coords[1])]
+                elif dest_coords[0] is not None:
+                    corridor = [(dest_coords[0], dest_coords[1])]
+            corridor_dist = min_distance_to_corridor_m((body.lng, body.lat), corridor) if corridor else 0.0
 
-            # 走廊贴合阈值：本市出行就一条 3.5km 走廊，不再区分城际干线。
-            # 原先"mode 含高铁就给 15km 容差"那段已经删掉 —— amap_service 现在对
-            # 跨城直接退 matched=False，那条分支永远不会命中，留着只会变成死代码。
-            tolerance = 3500
+            # 走廊贴合阈值：步行/微步道模式采用 50-80m 亚米级精细走廊，公交/地铁模式保留 3500m 容差
+            is_walking = any(w in str(trip.get("purpose", "")) for w in ("步行", "步道", "适老", "微地形")) or any(w in str(route_data.get("mode", "")) for w in ("步行", "步道", "适老", "微地形"))
+            tolerance = 80.0 if is_walking else 3500.0
 
             if corridor_dist <= tolerance:
                 note = f"途经 {body.location}，一切正常"
@@ -789,6 +977,37 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
             status = "off_route"
             note = f"位置偏离规划路线：{body.location}，请关注"
 
+    # 4. 异常滞留检测：速度极慢 < 0.5km/h 且未到达目的地
+    dwell_sec = 0
+    if body.lng is not None and body.lat is not None and not is_arrived:
+        cur_dt = None
+        if body.timestamp:
+            try:
+                cur_dt = datetime.fromisoformat(body.timestamp.replace("Z", "+00:00"))
+                if cur_dt.tzinfo is None:
+                    cur_dt = cur_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                cur_dt = None
+        dwell_sec = await calculate_checkpoint_dwell_seconds(ctx, trip_id, body.lng, body.lat, cur_dt)
+
+        if body.speed_kmh < 0.5:
+            is_at_bench = any(
+                haversine_distance_m((body.lng, body.lat), b) <= 25.0
+                for b in KNOWN_REST_BENCHES
+            )
+            if is_at_bench:
+                # 长椅休整区：宽限到 25 分钟 (1500秒)
+                if dwell_sec >= 1500:
+                    status = "abnormal_dwell"
+                    mins = dwell_sec // 60
+                    note = f"检测到老人在长椅处滞留已超过 {mins} 分钟，请确认是否需要关怀"
+            else:
+                # 非长椅区：超过 15 分钟 (900秒)
+                if dwell_sec >= 900:
+                    status = "abnormal_dwell"
+                    mins = dwell_sec // 60
+                    note = f"长辈在当前位置连续停留超过 {mins} 分钟，疑似身体不适或走失受困！"
+
     # 查询前一条历史记录进行频控防抖
     prev_cps = await ctx.repos.list(
         "trip_checkpoints", where={"trip_id": trip_id}, order="-created_at", limit=1
@@ -802,13 +1021,18 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
         "lat": body.lat,
         "status": status,
         "note": note,
+        "altitude_m": body.altitude_m,
+        "satellites": body.satellites,
+        "speed_kmh": body.speed_kmh,
+        "timestamp": body.timestamp or _now(),
+        "dwell_duration_seconds": dwell_sec,
     })
 
     alert_sent = False
-    if status == "off_route":
-        # 仅在初次偏航时推送警报（防轰炸）
+    if status in ("off_route", "abnormal_dwell"):
+        # 仅在初次进入异常状态时推送警报（防轰炸）
         should_alert = True
-        if prev_cp and prev_cp.get("status") == "off_route":
+        if prev_cp and prev_cp.get("status") == status:
             should_alert = False
 
         if should_alert:
@@ -826,6 +1050,8 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
                     "elder": elder_id,
                     "lng": body.lng,
                     "lat": body.lat,
+                    "alert_type": status,
+                    "dwell_seconds": dwell_sec,
                 }
                 await ctx.event_log.hydrate(session_id)
                 ctx.event_log.append(session_id, elder_id,
@@ -836,11 +1062,117 @@ async def process_checkpoint(ctx, trip_id: str, body: CheckpointIn):
                 "actor_id": None,
                 "action": "guardian_alert",
                 "target": trip_id,
-                "detail": {"location": body.location, "lng": body.lng, "lat": body.lat},
+                "detail": {
+                    "location": body.location,
+                    "lng": body.lng,
+                    "lat": body.lat,
+                    "status": status,
+                    "note": note,
+                    "dwell_seconds": dwell_sec,
+                },
             })
             alert_sent = True
 
-    return {"checkpoint": cp, "status": status, "alert_sent": alert_sent}
+    # 构造标准 BdsCheckpointEvaluation 契约回执
+    evaluation = BdsCheckpointEvaluation(
+        is_safe=(status in ("normal", "arrived")),
+        status=status.upper(),
+        distance_to_corridor_m=round(corridor_dist, 1),
+        dwell_duration_seconds=dwell_sec,
+        alert_message=note if status in ("off_route", "abnormal_dwell") else None,
+        audio_reassurance=(
+            "长辈已安全到达目的地，本次出行北斗守护结束。" if status == "arrived" else (
+                "张阿姨，您稍微走偏了点，咱们往右侧平缓小道走回安全路线哦。" if status == "off_route" else (
+                    "张阿姨，您在此处停留较长时间，是否需要呼叫家人或急救服务？" if status == "abnormal_dwell" else "北斗高精时空护航中，路线平坦无障碍，请安心前行。"
+                )
+            )
+        ),
+    )
+
+    return {
+        "checkpoint": cp,
+        "status": status,
+        "alert_sent": alert_sent,
+        "evaluation": evaluation.model_dump(),
+    }
+
+
+@router.post("/{trip_id}/bds_evaluate", response_model=BdsCheckpointEvaluation)
+async def evaluate_bds_point(
+    trip_id: str,
+    body: BdsCheckpointPayload,
+    corridor_tolerance_m: float = 80.0,
+    principal: Principal = Depends(get_current_principal),
+):
+    """评估单点北斗轨迹状态（无需入库打卡），返回 BdsCheckpointEvaluation 契约回执。"""
+    ctx = get_ctx()
+    trip = await ctx.repos.get("trips", trip_id)
+    if not trip:
+        raise HTTPException(404, "行程不存在")
+
+    dest_name = resolve_trip_destination(trip)
+    origin_name = resolve_trip_origin(trip)
+    city = city_of(origin_name) or await elder_city_of(ctx, trip)
+    route_data = await guard_route(origin_name, dest_name, city)
+    corridor = route_data.get("polyline") or route_data.get("points") or []
+
+    dest_coords = lookup_coords(dest_name, city)
+    if dest_coords[0] is None:
+        dest_coords = await amap_client.geocode(dest_name, city) or (None, None)
+
+    if not corridor:
+        origin_coords = lookup_coords(origin_name, city)
+        if origin_coords[0] is not None and dest_coords[0] is not None:
+            corridor = [(origin_coords[0], origin_coords[1]), (dest_coords[0], dest_coords[1])]
+        elif dest_coords[0] is not None:
+            corridor = [(dest_coords[0], dest_coords[1])]
+
+    cur_dt = None
+    if body.timestamp:
+        try:
+            cur_dt = datetime.fromisoformat(body.timestamp.replace("Z", "+00:00"))
+            if cur_dt.tzinfo is None:
+                cur_dt = cur_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            cur_dt = None
+
+    dwell_sec = await calculate_checkpoint_dwell_seconds(ctx, trip_id, body.lng, body.lat, cur_dt)
+
+    eval_res = evaluate_bds_checkpoint(
+        payload=body,
+        corridor_polyline=corridor,
+        destination_coords=dest_coords if dest_coords[0] is not None else None,
+        registered_rest_benches=KNOWN_REST_BENCHES,
+        consecutive_dwell_seconds=dwell_sec,
+        corridor_tolerance_m=corridor_tolerance_m,
+    )
+    return eval_res
+
+
+@router.post("/{trip_id}/bds_checkpoint")
+async def report_bds_checkpoint(
+    trip_id: str,
+    body: BdsCheckpointPayload,
+    corridor_tolerance_m: float = 80.0,
+    principal: Principal = Depends(get_current_principal),
+):
+    """北斗高精亚米级轨迹打卡闭环（入库 + 异常判定 + 告警派发）。"""
+    ctx = get_ctx()
+    trip = await ctx.repos.get("trips", trip_id)
+    if not trip:
+        raise HTTPException(404, "行程不存在")
+
+    cp_in = CheckpointIn(
+        location=f"北斗高精定位点({body.lng:.4f}, {body.lat:.4f})",
+        lng=body.lng,
+        lat=body.lat,
+        altitude_m=body.altitude_m,
+        satellites=body.satellites,
+        speed_kmh=body.speed_kmh,
+        timestamp=body.timestamp,
+    )
+    result = await process_checkpoint(ctx, trip_id, cp_in)
+    return result
 
 
 def _now() -> str:

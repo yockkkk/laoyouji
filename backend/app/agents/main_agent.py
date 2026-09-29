@@ -33,6 +33,8 @@ SYSTEM_PROMPT = """你是"康乐"，老年人的健康生活管家，是整个�
 # 你的家族（按需调度，不要自己抢子助理的活）
 - health 安康助手：健康指标记录（血压/血糖/心率等）、健康分诊（保健/观察/建议就医/紧急）、慢病登记、看病挂号、用药提醒、报告解读、饮食推荐
 - travel 银发导航：本地出行路线（就医/散步）、叫车去医院、出行天气
+- bds_nav 北斗导航：北斗亚米级适老路线规划（避开陡坡/无台阶/走电梯/查微地形）、公共休憩长椅检索
+- weather 气象感知：出行气象环境、紫外线指数、地表体感、林荫遮阳指数与穿衣防雨防暑提醒
 - community 邻里帮：线下社交·运动活动（棋牌室/养老院/公园健身），排解孤独
 
 # 核心行动铁律（极其重要）
@@ -94,6 +96,9 @@ _KIND_ALIASES = {
     "medical_plan": "medical_plan", "medical": "medical_plan",
     "就医计划": "medical_plan", "就医计划书": "medical_plan",
     "就医出行计划书": "medical_plan",
+    "bds_escort_plan": "bds_escort_plan", "bds_plan": "bds_escort_plan",
+    "北斗护航方案": "bds_escort_plan", "北斗适老出行护航方案书": "bds_escort_plan",
+    "护航方案": "bds_escort_plan", "北斗方案": "bds_escort_plan",
     "health_card": "health_card", "health": "health_card", "用药": "health_card",
     "community_card": "community_card", "community": "community_card",
     "service": "community_card",
@@ -104,6 +109,7 @@ _KIND_ANNOUNCE = {
                  "打印出来照着走就行。",
     "medical_plan": "就医出行计划书给您做好啦，一共四页：挂号、怎么去、要带的东西、天气。"
                     "打印出来照着走就行。",
+    "bds_escort_plan": "《北斗适老出行护航方案书》给您做好啦，一共五页：体征适配、北斗路线、微地形与长椅、气象防护、安全守护与就医绿通。打印出来照着走就行。",
     "health_card": "用药和复查的安排给您写在一张卡上了，贴在药盒边上。",
     "community_card": "社区活动推荐单给您列好了，挑一个近的约上老伙计去。",
 }
@@ -178,7 +184,10 @@ async def delegate(turn, args: dict) -> dict:
         await turn.emit("report", report.to_dict())
 
     lines = []
-    agent_names = {"health": "安康助手", "travel": "银发导航", "community": "邻里帮"}
+    agent_names = {
+        "health": "安康助手", "travel": "银发导航", "community": "邻里帮",
+        "bds_nav": "北斗导航", "weather": "气象感知",
+    }
     for report in reports:
         who = agent_names.get(report.agent, report.agent)
         mark = "✔" if report.ok else ("⏳" if report.suspended else "✘")
@@ -216,7 +225,7 @@ async def compose_deliverable(turn, args: dict) -> dict:
 
     # card 由驱动器统一 emit（``_run_tools`` 看到结果里的 card 就推 + 落
     # artifact/card），这里不自己再 emit 一次 —— 否则老人端会看到两张一样的卡
-    if kind in ("trip_plan", "medical_plan"):
+    if kind in ("trip_plan", "medical_plan", "bds_escort_plan"):
         # 计划书落库为 trip（幂等去重 upsert，避免重复生成）：既是可验收交付物，也是行程守护的起点
         trip_row, _ = await upsert_trip_plan(turn.ctx.repos, turn.user.get("id"), card)
         # 向绑定的家属生成未读通知
@@ -291,7 +300,9 @@ def _reports_from_log(turn) -> list[AgentReport]:
 _DIGEST_FIELDS = {
     "appointment": ("hospital", "department", "doctor", "date", "time"),
     "route": ("origin", "destination", "mode"),
+    "bds_route": ("route_name", "total_distance_m", "stairs_count", "barrier_free_score"),
     "weather": ("city", "date", "condition"),
+    "weather_escort": ("city", "condition", "temp_range", "shade_coverage_percent"),
     "activities": ("title", "date", "place"),
 }
 
@@ -363,9 +374,10 @@ def register_main_agent_tools(registry) -> None:
                 "type": "object",
                 "properties": {
                     "agent": {"type": "string",
-                              "enum": ["health", "travel", "community"],
+                              "enum": ["health", "travel", "community", "bds_nav", "weather"],
                               "description": "health=安康助手, travel=银发导航, "
-                                             "community=邻里帮"},
+                                             "community=邻里帮, bds_nav=北斗导航规划, "
+                                             "weather=气象感知"},
                     "instruction": {"type": "string",
                                     "description": "给子助理的任务说明，"
                                                    "要含老人原话里的关键信息"
@@ -383,11 +395,12 @@ def register_main_agent_tools(registry) -> None:
         "生成确定性交付物（字段由系统从子助理结果里取，不要自己复述内容）。",
         {
             "kind": {"type": "string",
-                     "enum": ["trip_plan", "medical_plan", "health_card", "community_card"],
-                     "description": "trip_plan=出行计划书, medical_plan=就医出行计划书（四页可打印）, "
+                     "enum": ["trip_plan", "medical_plan", "bds_escort_plan", "health_card", "community_card"],
+                     "description": "bds_escort_plan=北斗适老出行护航方案书（五页可打印）, "
+                                    "trip_plan=出行计划书, medical_plan=就医出行计划书（四页可打印）, "
                                     "health_card=用药与复查卡, "
                                     "community_card=社区活动推荐单"},
-            "city": {"type": "string", "description": "就医目的地城市（trip_plan / medical_plan 用）"},
+            "city": {"type": "string", "description": "就医目的地城市（trip_plan / medical_plan / bds_escort_plan 用）"},
         },
         compose_deliverable, agent="main",
     ))

@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import logging
 
+from app.agents.bds_nav_agent import BdsNavAgent, register_bds_tools
 from app.agents.community_agent import CommunityAgent
 from app.agents.health_agent import HealthAgent
 from app.agents.main_agent import MainAgent, register_main_agent_tools
 from app.agents.travel_agent import TravelAgent
+from app.agents.weather_agent import WeatherAgent, register_weather_escort_tools
 from app.config import Settings, settings
 from app.core.broadcast import SessionBroadcast
 from app.core.bus import EventBus, SESSION_FLUSH
@@ -71,6 +73,8 @@ def build_context(cfg: Settings | None = None) -> AppContext:
     register_travel_tools(tools)
     register_health_tools(tools)
     register_community_tools(tools)
+    register_bds_tools(tools)
+    register_weather_escort_tools(tools)
     register_main_agent_tools(tools)
 
     # ---- Provider 声明（能力契约）----
@@ -189,5 +193,7 @@ def build_context(cfg: Settings | None = None) -> AppContext:
         "travel": TravelAgent(),
         "health": HealthAgent(),
         "community": CommunityAgent(),
+        "bds_nav": BdsNavAgent(),
+        "weather": WeatherAgent(),
     }
     return ctx
