@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_ctx
+from app.api.deps import get_ctx, get_current_principal
 from app.auth.security import (AuthError, Principal, create_access_token,
                                create_refresh_token, decode_token, hash_password,
                                verify_password)
@@ -94,10 +94,8 @@ async def _principal_from_token(token: str, ctx, expected: str = "access") -> Pr
 
 
 @router.get("/me")
-async def me(principal: Principal = Depends(lambda: None)):
-    # 由 deps.get_current_principal 在正式业务路由中复用；这里避免循环导入。
-    from app.api.deps import get_current_principal
-    return {"user": public_user((await get_current_principal()).user)}
+async def me(principal: Principal = Depends(get_current_principal)):
+    return {"user": public_user(principal.user)}
 
 
 @router.post("/refresh")
