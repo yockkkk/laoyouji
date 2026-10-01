@@ -23,6 +23,7 @@ class LLMResponse:
 
 # 流式增量回调：on_delta(text_fragment) 由 AgentLoop 提供（转发为 SSE delta）
 DeltaCallback = Callable[[str], Awaitable[None]]
+ThinkingCallback = Callable[[str], Awaitable[None]]
 
 
 class LLMProvider:
@@ -31,5 +32,7 @@ class LLMProvider:
     name: str = "llm"
 
     async def chat(self, messages: list[dict], tools: list[dict] | None = None,
-                   on_delta: DeltaCallback | None = None) -> LLMResponse:
+                   on_delta: DeltaCallback | None = None,
+                   on_thinking: ThinkingCallback | None = None) -> LLMResponse:
         raise NotImplementedError
+

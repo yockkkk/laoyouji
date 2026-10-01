@@ -14,6 +14,7 @@ import logging
 
 from app.agents.bds_nav_agent import BdsNavAgent, register_bds_tools
 from app.agents.community_agent import CommunityAgent
+from app.agents.guardian_agent import GuardianAgent, register_guardian_tools
 from app.agents.health_agent import HealthAgent
 from app.agents.main_agent import MainAgent, register_main_agent_tools
 from app.agents.travel_agent import TravelAgent
@@ -23,6 +24,7 @@ from app.core.broadcast import SessionBroadcast
 from app.core.bus import EventBus, SESSION_FLUSH
 from app.core.compaction import install_compaction
 from app.core.context import AppContext
+from app.core.mailbox import install_mailbox_hook
 from app.core.events import SessionEventLog
 from app.core.guard import Guard  # noqa: F401（类型引用）
 from app.core.guards import install_loop_guards
@@ -57,6 +59,7 @@ from app.shared.plain_language import PlainLanguageEngine
 from app.tools.community_tools import register_community_tools
 from app.tools.common_tools import register_common_tools
 from app.tools.health_tools import register_health_tools
+from app.tools.peer_tools import register_peer_tools
 from app.tools.travel_tools import register_travel_tools
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,8 @@ def build_context(cfg: Settings | None = None) -> AppContext:
     register_bds_tools(tools)
     register_weather_escort_tools(tools)
     register_main_agent_tools(tools)
+    register_peer_tools(tools)
+    register_guardian_tools(tools)
 
     # ---- Provider 声明（能力契约）----
     for name, proto in [
@@ -170,6 +175,7 @@ def build_context(cfg: Settings | None = None) -> AppContext:
     ctx.disposers = [
         *install_loop_guards(bus, tool_timeout_s=cfg.tool_timeout_s),
         install_compaction(bus),
+        install_mailbox_hook(bus),
         # 红线 R1/R2：诊断口吻的输出在**离开模型的那一刻**就被改写，
         # 不指望提示词自觉（提示词只是第一道，不是最后一道）
         *install_medical_safety(bus),
@@ -195,5 +201,6 @@ def build_context(cfg: Settings | None = None) -> AppContext:
         "community": CommunityAgent(),
         "bds_nav": BdsNavAgent(),
         "weather": WeatherAgent(),
+        "guardian": GuardianAgent(),
     }
     return ctx

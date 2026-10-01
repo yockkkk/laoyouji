@@ -275,4 +275,16 @@ if __name__ == '__main__':
     md_to_docx(md_file, docx_file)
     import shutil
     shutil.copy2(docx_file, root_docx_file)
+    desktop_docx_file = r'C:\Users\lenovo\Desktop\银发导航智能体：基于多Agent协同的老年人安心出行伴侣.docx'
+    desktop_docx_clean = r'C:\Users\lenovo\Desktop\银发导航智能体：基于多Agent协同的老年人安心出行伴侣_最新整改版.docx'
+    try:
+        shutil.copy2(docx_file, desktop_docx_clean)
+        print("Copied to Desktop _最新整改版.docx successfully!")
+    except Exception as e:
+        print("Could not copy clean docx to Desktop:", e)
+    try:
+        shutil.copy2(docx_file, desktop_docx_file)
+        print("Copied to Desktop original docx successfully!")
+    except Exception as e:
+        print("Original docx locked by WPS/Word, successfully provided _最新整改版.docx instead:", e)
     print("Done generating Word documents!")

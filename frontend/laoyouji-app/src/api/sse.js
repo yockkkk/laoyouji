@@ -17,6 +17,10 @@ const _DURABLE_TO_SSE = {
   'confirmation/suspended': 'suspended',
   'confirmation/resolved': 'confirmation_resolved',
   'guardian/alert': 'guardian_alert',
+  'peer/message': 'peer_message',
+  'task_board/sync': 'task_board_sync',
+  'agent/handoff': 'agent_handoff',
+  'thinking/delta': 'thinking_delta',
 }
 
 function rowToEvent(row) {

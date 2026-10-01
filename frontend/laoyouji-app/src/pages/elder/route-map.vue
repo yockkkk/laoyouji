@@ -101,7 +101,7 @@
 
     <!-- 适老地图视窗 (Leaflet 渲染高德栅格瓦片，坐标 GCJ-02) -->
     <view class="map-section" :class="{ 'fullscreen-mode': isMapFullscreen }">
-      <div id="elder-amap-container" class="amap-box"></div>
+      <div id="elder-amap-container" class="amap-box" @touchmove.stop></div>
       <view v-if="mapLoading" class="map-loading-mask">
         <text class="loading-icon" aria-hidden="true">⏳</text>
         <text class="loading-text">北斗适老实景地图加载中…</text>
@@ -574,9 +574,13 @@ export default {
         this.leafletMap = L.map(container, {
           zoomControl: true,
           attributionControl: true,
-          zoomSnap: 0.5,
-          zoomDelta: 0.5,
+          zoomSnap: 1,
+          zoomDelta: 1,
+          zoomAnimation: true,
+          fadeAnimation: true,
+          markerZoomAnimation: true,
           scrollWheelZoom: true,
+          wheelPxPerZoomLevel: 120,
         }).setView(toLeafletLatLng(this.elderCoords), 15)
 
         if (this.leafletMap.attributionControl) {
@@ -797,24 +801,39 @@ export default {
         try {
           this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
             padding: this.isMapFullscreen ? [60, 60] : [30, 30],
+            animate: true,
+            duration: 0.8,
+            easeLinearity: 0.25,
           })
           return
         } catch (e) {}
       }
       if (this.elderCoords) {
-        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 15)
+        this.leafletMap.flyTo(toLeafletLatLng(this.elderCoords), 15, {
+          animate: true,
+          duration: 0.8,
+          easeLinearity: 0.25,
+        })
       }
     },
     locateElder() {
       if (!this.leafletMap || !this.elderCoords) return
-      this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 16)
+      this.leafletMap.flyTo(toLeafletLatLng(this.elderCoords), 16, {
+        animate: true,
+        duration: 0.8,
+        easeLinearity: 0.25,
+      })
       uni.showToast({ title: '已定位到北斗高精当前位置', icon: 'none' })
     },
     onStepSelected(payload) {
       const { step, index } = payload
       this.currentStepIndex = index
       if (step && step.coords && this.leafletMap) {
-        this.leafletMap.setView(toLeafletLatLng(step.coords), 16)
+        this.leafletMap.flyTo(toLeafletLatLng(step.coords), 16, {
+          animate: true,
+          duration: 0.6,
+          easeLinearity: 0.25,
+        })
       }
     },
     onStepSpeak(payload) {
@@ -1248,6 +1267,10 @@ export default {
   width: 100%;
   height: 54vh;
   background: #e2e8f0;
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: contain;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 

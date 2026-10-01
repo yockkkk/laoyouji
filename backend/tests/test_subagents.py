@@ -133,6 +133,7 @@ async def test_available_declares_what_each_subagent_can_report(ctx):
         "community": ("activities", "call_action", "walk_route", "recipe"),
         "bds_nav": ("bds_route",),
         "weather": ("weather_escort",),
+        "guardian": ("guardian_status",),
     }
     assert "main" not in ctx.subagents.names(), "总智能体不能把自己派出去"
 

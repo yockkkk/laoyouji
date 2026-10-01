@@ -95,7 +95,21 @@
                 :expires-at="m.expiresAt"
                 :status="m.status"
               />
+              <AgentHandoffCard
+                v-else-if="m.kind === 'handoff'"
+                :from-agent="m.fromAgent"
+                :to-agent="m.toAgent"
+                :reason="m.reason"
+                :detail="m.detail"
+              />
             </view>
+            <ThinkingTraceBubble
+              v-if="thinking && activeThinking"
+              :agent="activeThinking.agent"
+              :delta="activeThinking.delta"
+              :raw-thought="activeThinking.thought"
+              :color="activeThinking.color"
+            />
             <view :id="'bottom-anchor'" class="bottom-anchor"></view>
           </view>
         </scroll-view>
@@ -219,6 +233,8 @@ import PlanCard from '../../components/PlanCard.vue'
 import CallCard from '../../components/CallCard.vue'
 import RecipeCard from '../../components/RecipeCard.vue'
 import ConfirmCard from '../../components/ConfirmCard.vue'
+import ThinkingTraceBubble from '../../components/ThinkingTraceBubble.vue'
+import AgentHandoffCard from '../../components/AgentHandoffCard.vue'
 import LyjMic from '../../components/LyjMic.vue'
 import AgentExecutionTree from '../../components/AgentExecutionTree.vue'
 import { get, post } from '../../api/client'
@@ -233,10 +249,21 @@ import { takeUtterance } from '../../store/handoff'
 const AGENT_LABEL = {
   main: '康乐',
   travel: '银发导航',
+  bds_nav: '北斗导航',
   health: '安康助手',
+  weather: '气象感知',
+  guardian: '安澜卫士',
   community: '邻里帮',
 }
-const AGENT_ICON = { main: '🤵', travel: '🧭', health: '🏥', community: '🏘️' }
+const AGENT_ICON = {
+  main: '🤵',
+  travel: '🧭',
+  bds_nav: '🛰️',
+  health: '🏥',
+  weather: '🌤️',
+  guardian: '🛡️',
+  community: '🏘️',
+}
 
 // ---- 历史弹层的日期分组 ------------------------------------------------
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -261,7 +288,17 @@ function dayLabel(iso) {
 }
 
 export default {
-  components: { ChatBubble, PlanCard, CallCard, RecipeCard, ConfirmCard, LyjMic, AgentExecutionTree },
+  components: {
+    ChatBubble,
+    PlanCard,
+    CallCard,
+    RecipeCard,
+    ConfirmCard,
+    ThinkingTraceBubble,
+    AgentHandoffCard,
+    LyjMic,
+    AgentExecutionTree,
+  },
   data() {
     return {
       user: null,
@@ -269,6 +306,7 @@ export default {
       messages: [],
       draft: '',
       thinking: false,
+      activeThinking: null,
       scrollTop: 0,
       anchor: '',
       inputMode: 'voice', // voice (按住说话) | text (打字输入)
@@ -302,6 +340,7 @@ export default {
         }
         if (m.kind === 'card') return true // 交付物本来就是给老人看的
         if (m.kind === 'suspend') return true // 家人确认卡，老人必须看到
+        if (m.kind === 'handoff') return true // 智能体协同交接卡，让多Agent透明生动
         return false // todo / tool / status 一律只进右侧链路
       })
 
@@ -346,6 +385,16 @@ export default {
                 (!key && ex.tool && ex.tool === m.tool)),
           )
           if (!dup) result.push(m)
+        } else if (m.kind === 'handoff') {
+          // 同一两端与原因的交接卡去重
+          const dupHandoff = result.some(
+            (ex) =>
+              ex.kind === 'handoff' &&
+              ex.fromAgent === m.fromAgent &&
+              ex.toAgent === m.toAgent &&
+              ex.reason === m.reason,
+          )
+          if (!dupHandoff) result.push(m)
         } else {
           result.push(m)
         }
@@ -823,6 +872,7 @@ export default {
       // 自愈重发时这句已经在屏幕上了，别让老人看见自己说了两遍
       if (!_isRetry) this.messages.push({ kind: 'text', text, isUser: true })
       this.thinking = true
+      this.activeThinking = null
       this._todoMsg = null
       const bubble = { kind: 'text', text: '', agent: 'main' }
       let bubbleOpen = false
@@ -862,6 +912,7 @@ export default {
         this.messages.push({ kind: 'text', text: SESSION_GONE_TEXT, agent: 'main' })
       }
       this.thinking = false
+      this.activeThinking = null
       this._scrollBottom()
       // 这一轮里挂起的事，家人是这一轮之后才在手机上点的。流已经关了，
       // 所以从这里起改成回去读日志（见 _watchConfirmations）。
@@ -1087,11 +1138,63 @@ export default {
           break
         }
 
-        case 'guardian_alert':
-          this.messages.push({ kind: 'status', text: '📍 位置有变化，已通知家人' })
+        case 'thinking_delta': {
+          const agent = d.agent || 'main'
+          const colors = {
+            main: '#E65100',
+            health: '#2E7D32',
+            bds_nav: '#1565C0',
+            weather: '#0288D1',
+            guardian: '#6A1B9A',
+            travel: '#E65100',
+            community: '#C2185B',
+          }
+          this.activeThinking = {
+            agent,
+            delta: d.delta || '',
+            thought: d.thought || d.delta || '',
+            color: colors[agent] || '#E65100',
+          }
+          this._scrollBottom()
           break
+        }
+
+        case 'agent_handoff': {
+          const fromAgent = d.from_agent || 'main'
+          const toAgent = d.to_agent || 'bds_nav'
+          const reason = d.reason || d.task_summary || '多智能体专业协同'
+          this.messages.push({
+            kind: 'handoff',
+            fromAgent,
+            toAgent,
+            reason,
+            detail: d.detail || '',
+          })
+          this._scrollBottom()
+          break
+        }
+
+        case 'peer_message': {
+          const fromAgent = d.sender || 'main'
+          const toAgent = d.recipient || 'bds_nav'
+          const content = d.content || d.summary || ''
+          this.messages.push({
+            kind: 'handoff',
+            fromAgent,
+            toAgent,
+            reason: content,
+            detail: d.message_type === 'broadcast' ? '广播协同磋商' : '点对点信箱通信',
+          })
+          this._scrollBottom()
+          break
+        }
+
+        case 'task_board_sync': {
+          break
+        }
 
         case 'final':
+          this.activeThinking = null
           // 清理可能遗留的未闭合"正在处理…"状态气泡
           this.messages = this.messages.filter(
             (m) => !(m.kind === 'status' && m.text && m.text.includes('正在处理')),

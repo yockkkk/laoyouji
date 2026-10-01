@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from app.providers.llm.base import DeltaCallback, LLMProvider, LLMResponse, ToolCallReq
+from app.providers.llm.base import DeltaCallback, LLMProvider, LLMResponse, ThinkingCallback, ToolCallReq
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,8 @@ class DeepSeekProvider(LLMProvider):
         self._timeout = timeout
 
     async def chat(self, messages: list[dict], tools: list[dict] | None = None,
-                   on_delta: DeltaCallback | None = None) -> LLMResponse:
+                   on_delta: DeltaCallback | None = None,
+                   on_thinking: ThinkingCallback | None = None) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
@@ -48,7 +49,7 @@ class DeepSeekProvider(LLMProvider):
         last_exc: Exception | None = None
         for attempt in range(3):  # ADR：流式不稳 → 3 次指数退避
             try:
-                return await self._request_once(url, headers, payload, on_delta)
+                return await self._request_once(url, headers, payload, on_delta, on_thinking)
             except LLMConfigError:
                 raise                       # 配置错，重试无意义
             except Exception as exc:  # noqa: BLE001
@@ -60,7 +61,8 @@ class DeepSeekProvider(LLMProvider):
         raise RuntimeError(f"DeepSeek 请求连续失败: {last_exc}")
 
     async def _request_once(self, url: str, headers: dict, payload: dict,
-                            on_delta: DeltaCallback | None) -> LLMResponse:
+                            on_delta: DeltaCallback | None,
+                            on_thinking: ThinkingCallback | None = None) -> LLMResponse:
         content_parts: list[str] = []
         # tool_calls 按 index 聚合：流式时 id/name/arguments 分片到达
         tc_acc: dict[int, dict] = {}

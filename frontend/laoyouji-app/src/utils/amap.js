@@ -148,16 +148,16 @@ export function ensureAmapMarkerStyles() {
 .elder-map-marker.badge-start{background:#10b981;}
 .elder-map-marker.badge-station{background:#2563eb;}
 .elder-map-marker.badge-end{background:#ef4444;}
-.elder-live-pulse-marker{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;}
-.elder-live-pulse-marker .pulse-ring{position:absolute;width:50px;height:50px;border-radius:50%;background:rgba(42,130,228,.35);animation:elderBreathe 1.8s infinite ease-out;}
-@keyframes elderBreathe{0%{transform:scale(.6);opacity:1;}100%{transform:scale(1.6);opacity:0;}}
-.elder-live-pulse-marker .pulse-core{position:relative;z-index:2;background:#2A82E4;color:#fff;font-size:12px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;}
+.elder-live-pulse-marker{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;transform:translateZ(0);will-change:transform;}
+.elder-live-pulse-marker .pulse-ring{position:absolute;width:50px;height:50px;border-radius:50%;background:rgba(42,130,228,.35);animation:elderBreathe 1.8s infinite cubic-bezier(0.25,1,0.5,1);transform:translateZ(0);will-change:transform,opacity;backface-visibility:hidden;}
+@keyframes elderBreathe{0%{transform:scale3d(.6,.6,1);opacity:1;}100%{transform:scale3d(1.6,1.6,1);opacity:0;}}
+.elder-live-pulse-marker .pulse-core{position:relative;z-index:2;background:#2A82E4;color:#fff;font-size:12px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;transform:translateZ(0);}
 /* —— 子女端 guardian 标记 —— */
 .child-map-station-badge{display:inline-block;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;line-height:1.2;color:#fff;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:auto;}
-.child-elder-breathe-marker{position:relative;width:90px;height:40px;display:flex;align-items:center;justify-content:center;}
-.child-elder-breathe-marker .breathe-wave{position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,.35);animation:childBreatheWave 1.6s infinite ease-out;}
-@keyframes childBreatheWave{0%{transform:scale(.6);opacity:1;}100%{transform:scale(2.0);opacity:0;}}
-.child-elder-breathe-marker .breathe-core{position:relative;z-index:2;background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:3px 8px;border-radius:12px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:nowrap;}
+.child-elder-breathe-marker{position:relative;width:90px;height:40px;display:flex;align-items:center;justify-content:center;transform:translateZ(0);will-change:transform;}
+.child-elder-breathe-marker .breathe-wave{position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,.35);animation:childBreatheWave 1.6s infinite cubic-bezier(0.25,1,0.5,1);transform:translateZ(0);will-change:transform,opacity;backface-visibility:hidden;}
+@keyframes childBreatheWave{0%{transform:scale3d(.6,.6,1);opacity:1;}100%{transform:scale3d(2.0,2.0,1);opacity:0;}}
+.child-elder-breathe-marker .breathe-core{position:relative;z-index:2;background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:3px 8px;border-radius:12px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:nowrap;transform:translateZ(0);}
 .child-offroute-marker-bubble{display:inline-block;background:#ef4444;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:4px 10px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(239,68,68,.4);white-space:nowrap;animation:offrouteBounce .8s infinite alternate;}
 @keyframes offrouteBounce{from{transform:translateY(0);}to{transform:translateY(-4px);}}
 `

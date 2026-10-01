@@ -53,6 +53,31 @@ ARTIFACT_CARD = "artifact/card"
 CONFIRM_SUSPENDED = "confirmation/suspended"
 CONFIRM_RESOLVED = "confirmation/resolved"
 GUARDIAN_ALERT = "guardian/alert"
+PEER_MESSAGE = "peer/message"
+TASK_BOARD_SYNC = "task_board/sync"
+AGENT_HANDOFF = "agent/handoff"
+THINKING_DELTA = "thinking/delta"
+
+# 智能体专属主题色与头衔规范（与前端和评测基准对齐）
+AGENT_THEME_COLORS: dict[str, str] = {
+    "main": "#E65100",      # 暖心橙
+    "health": "#67C23A",    # 健康绿
+    "bds_nav": "#409EFF",   # 北斗蓝
+    "weather": "#E6A23C",   # 气象金
+    "guardian": "#9B5DE5",  # 守护紫
+    "travel": "#409EFF",    # 导航蓝（向后兼容）
+    "community": "#E6A23C", # 邻里金（向后兼容）
+}
+
+AGENT_AVATAR_TITLES: dict[str, str] = {
+    "main": "康乐总管",
+    "health": "安康助手",
+    "bds_nav": "北斗导航",
+    "weather": "气象感知",
+    "guardian": "安澜卫士",
+    "travel": "银发导航",
+    "community": "邻里帮",
+}
 
 # SSE 线格式名（前端契约）→ 持久事件类型（内核词表）
 _SSE_TO_DURABLE = {
@@ -67,6 +92,10 @@ _SSE_TO_DURABLE = {
     "suspended": CONFIRM_SUSPENDED,
     "confirmation_resolved": CONFIRM_RESOLVED,
     "guardian_alert": GUARDIAN_ALERT,
+    "peer_message": PEER_MESSAGE,
+    "task_board_sync": TASK_BOARD_SYNC,
+    "agent_handoff": AGENT_HANDOFF,
+    "thinking_delta": THINKING_DELTA,
 }
 
 # 仅这些持久事件参与 LLM 历史派生。

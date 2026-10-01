@@ -14,12 +14,14 @@ from app.auth.security import Principal
 from app.core.bus import SESSION_FLUSH
 from app.core.context import AppContext, TurnContext
 from app.core.events import (
+    AGENT_HANDOFF,
     ARTIFACT_CARD,
     ASSISTANT_FINAL,
     ASSISTANT_MESSAGE,
     CONFIRM_RESOLVED,
     CONFIRM_SUSPENDED,
     MAIN_SCOPE,
+    PEER_MESSAGE,
     TODO_WRITE,
     TOOL_CALL,
     TOOL_RESULT,
@@ -423,9 +425,14 @@ async def get_chat_history(
             for m in messages:
                 if m.get("kind") == "suspend" and (m.get("confirmationId") == cid or (cid and str(m.get("confirmationId")) == str(cid))):
                     m["status"] = status
-                if m.get("kind") == "tool" and (m.get("confirmationId") == cid or (cid and str(m.get("confirmationId")) == str(cid))):
-                    m["status"] = "completed" if (status in ("executed", "approved", "completed")) else ("rejected" if status == "rejected" else status)
-
+        elif event.type in (PEER_MESSAGE, AGENT_HANDOFF):
+            messages.append({
+                "kind": "handoff",
+                "fromAgent": payload.get("from_agent") or payload.get("sender") or "main",
+                "toAgent": payload.get("to_agent") or payload.get("recipient") or "bds_nav",
+                "reason": payload.get("reason") or payload.get("content") or payload.get("task_summary") or "",
+                "detail": payload.get("detail") or payload.get("summary") or "",
+            })
 
     latest_seq = max((e.seq for e in events), default=0)
     return {

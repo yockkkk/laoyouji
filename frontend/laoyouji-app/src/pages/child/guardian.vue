@@ -187,7 +187,7 @@
       <!-- 真实高德地图行程守护视窗 (Leaflet + 高德栅格瓦片渲染) -->
       <view class="gaode-guard-card">
         <!-- 地图 Canvas 挂载点 -->
-        <div id="child-gaode-map" class="child-amap-canvas"></div>
+        <div id="child-gaode-map" class="child-amap-canvas" @touchmove.stop></div>
 
         <!-- 北斗多重电子围栏图层图例 -->
         <view class="geofence-legend-strip">
@@ -770,9 +770,13 @@ export default {
           this.leafletMap = L.map(container, {
             zoomControl: true,
             attributionControl: true,
-            zoomSnap: 0.5,
-            zoomDelta: 0.5,
+            zoomSnap: 1,
+            zoomDelta: 1,
+            zoomAnimation: true,
+            fadeAnimation: true,
+            markerZoomAnimation: true,
             scrollWheelZoom: true,
+            wheelPxPerZoomLevel: 120,
           }).setView([28.21, 112.99], 14)
           if (this.leafletMap.attributionControl) {
             this.leafletMap.attributionControl.setPrefix(false)
@@ -1087,12 +1091,21 @@ export default {
     },
     resetChildMapView() {
       if (this.leafletMap && this.routePolyline) {
-        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
+          padding: [40, 40],
+          animate: true,
+          duration: 0.8,
+          easeLinearity: 0.25,
+        })
       }
     },
     focusElderLocation() {
       if (this.leafletMap && this.elderCoords) {
-        this.leafletMap.setView(toLeafletLatLng(this.elderCoords), 15)
+        this.leafletMap.flyTo(toLeafletLatLng(this.elderCoords), 15, {
+          animate: true,
+          duration: 0.8,
+          easeLinearity: 0.25,
+        })
       }
     },
     callElder() {
@@ -1654,6 +1667,10 @@ export default {
   width: 100%;
   height: 56vh;
   background: #f1f5f9;
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: contain;
   transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .gaode-guard-card.expanded .child-amap-canvas {
