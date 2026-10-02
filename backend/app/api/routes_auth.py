@@ -22,7 +22,7 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     role: str
     phone: str | None = None
-    city: str = "南京"
+    city: str = "长沙"
     dialect: str = "mandarin"
 
 

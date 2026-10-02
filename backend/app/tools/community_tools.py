@@ -175,8 +175,14 @@ def walk_estimate(distance_km: float, rest_stops: int = 0, *,
 async def suggest_walk(turn, args: dict) -> dict:
     """给一条老人走得动的**环形**路线：走回出发点，就不存在"走远了回不来"。"""
     provider = turn.ctx.resolve("community")
-    city = str(args.get("city") or turn.user.get("city") or "南京").strip()
-    loops = await provider.walk_loops(city=city)
+    city = str(args.get("city") or turn.user.get("city") or "").strip()
+    loops = await provider.walk_loops(city=city) if city else []
+    if not loops:
+        loops = await provider.walk_loops(city="长沙")
+    if not loops:
+        loops = await provider.walk_loops(city="南京")
+    if not loops:
+        loops = await provider.walk_loops()
     if not loops:
         return fail("这条线路我这儿没有现成的环线，别照着瞎走，出门前问一下社区。")
 
@@ -337,7 +343,7 @@ def register_community_tools(registry) -> None:
         "suggest_walk",
         "给一条环形散步路线：说清多远、走多久、在哪儿歇。只给现成的环线，查不到就说没有。",
         {
-            "city": {"type": "string", "description": "城市，如 南京；不填按老人所在城市"},
+            "city": {"type": "string", "description": "城市，如 长沙；不填按老人所在城市"},
             "minutes": {"type": "number", "description": "老人想走多久（分钟）"},
         },
         suggest_walk, agent="community", report_key="walk_route",

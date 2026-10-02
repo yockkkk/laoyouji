@@ -188,14 +188,14 @@ export default {
       const currentUser = getCurrentUser()
       let city = (currentUser && currentUser.city) || ''
       if (!city) {
-        for (const c of ['南京', '北京', '上海', '杭州', '苏州']) {
+        for (const c of ['长沙', '南京', '北京', '上海', '杭州', '苏州']) {
           if ((this.title + destination + origin).includes(c)) {
             city = c
             break
           }
         }
       }
-      city = city || '南京'
+      city = city || '长沙'
 
       uni.navigateTo({
         url: `/pages/elder/route-map?title=${encodeURIComponent(this.title || '就医出行路线规划')}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(city)}&trip_id=${encodeURIComponent(this.tripId || '')}`,

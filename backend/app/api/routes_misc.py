@@ -113,7 +113,7 @@ async def demo_family():
 
 
 @router.get("/weather")
-async def weather(city: str = "南京", date_offset: str | None = None):
+async def weather(city: str = "长沙", date_offset: str | None = None):
     """首页天气卡片（走 Weather Provider 接缝，mock/真实可换）。"""
     ctx = get_ctx()
     provider = ctx.registry.resolve("weather")

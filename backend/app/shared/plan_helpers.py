@@ -63,7 +63,7 @@ def extract_destination(data: dict[str, Any] | None) -> str:
                                 return _clean(v)
     # 3. From title or purpose
     title = data.get("title") or data.get("purpose") or ""
-    for known in ("北京", "上海", "杭州", "南京", "苏州", "广州", "深圳", "成都", "重庆", "武汉", "西安", "青岛", "黄山"):
+    for known in ("长沙", "北京", "上海", "杭州", "南京", "苏州", "广州", "深圳", "成都", "重庆", "武汉", "西安", "青岛", "黄山"):
         if known in title:
             return known
     scenic_map = {
@@ -85,6 +85,11 @@ def extract_destination(data: dict[str, Any] | None) -> str:
         "同仁": "北京",
         "华西": "成都",
         "湘雅": "长沙",
+        "湘雅医院": "长沙",
+        "烈士公园": "长沙",
+        "岳麓山": "长沙",
+        "橘子洲": "长沙",
+        "省人民医院": "长沙",
         "瑞金": "上海",
         "华山医院": "上海",
     }

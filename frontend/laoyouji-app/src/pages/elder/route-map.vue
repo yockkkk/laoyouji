@@ -99,9 +99,28 @@
       </view>
     </view>
 
+    <!-- 湖南省大学生智能导航大赛 · 北斗实景示范路线快捷切换 -->
+    <view class="scene-switch-bar">
+      <view class="scene-switch-header">
+        <text class="scene-title">🎯 湖南省智能导航大赛 · 示范场景切换</text>
+      </view>
+      <view class="scene-chips">
+        <button
+          v-for="(sc, sIdx) in demoScenes"
+          :key="sc.id"
+          class="scene-chip"
+          :class="{ active: currentSceneIdx === sIdx }"
+          @tap="switchDemoScene(sIdx)"
+        >
+          <text class="chip-icon">{{ sc.icon }}</text>
+          <text class="chip-label">{{ sc.label }}</text>
+        </button>
+      </view>
+    </view>
+
     <!-- 适老地图视窗 (Leaflet 渲染高德栅格瓦片，坐标 GCJ-02) -->
     <view class="map-section" :class="{ 'fullscreen-mode': isMapFullscreen }">
-      <div id="elder-amap-container" class="amap-box" @touchmove.stop></div>
+      <div id="elder-amap-container" class="amap-box"></div>
       <view v-if="mapLoading" class="map-loading-mask">
         <text class="loading-icon" aria-hidden="true">⏳</text>
         <text class="loading-text">北斗适老实景地图加载中…</text>
@@ -226,10 +245,11 @@ export default {
       city: '长沙', // 默认赛事演示城市，可由 URL 或 user.city 覆盖
       tripId: '',
       title: '',
-      originName: '家',
-      destinationName: '湖南省人民医院',
-      routeDuration: '约18分钟',
-      routeDistance: '1.2公里',
+      currentSceneIdx: 0,
+      originName: '家（华夏路社区）',
+      destinationName: '中南大学湘雅医院',
+      routeDuration: '约8分钟',
+      routeDistance: '0.48公里',
       routeMode: '步行',
       routeNotice: '正在获取北斗适老高精路线规划…',
       mapLoading: true,
@@ -241,16 +261,186 @@ export default {
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
-      elderCoords: [112.9862, 28.1925], // 默认长沙市中心坐标（或老人常住地）
+      elderCoords: [112.9862, 28.2154], // 长沙市开福区华夏路社区·北斗康养示范小区
       elderMarker: null,
       routePolyline: null,
       routeCasing: null,
       stationMarkers: [],
       tileLayer: null,
       leafletMap: null,
+      resizeObserver: null,
       steps: [],
       routePoints: [],
       polylinePath: [],
+      // 湖南省大学生智能导航科技创新大赛 3 大核心示范场景
+      demoScenes: [
+        {
+          id: 'xiangya',
+          label: '湘雅老院区绿通',
+          icon: '🏥',
+          origin: '家（长沙市开福区华夏路社区）',
+          destination: '中南大学湘雅医院',
+          city: '长沙',
+          desc: '适老防滑步道 · 湘雅路有声斑马线 · 门诊无障碍坡道',
+          duration: '约8分钟',
+          distance: '0.48公里',
+          score: 98,
+          points: [
+            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9862, lat: 28.2154 },
+            { location: '华夏路林荫街心花园', name: '街心花园休息长椅', lng: 112.9865, lat: 28.2148 },
+            { location: '湘雅路有声安全斑马线', name: '湘雅路有声安全斑马线', lng: 112.9868, lat: 28.2143 },
+            { location: '中南大学湘雅医院', name: '中南大学湘雅医院（湘雅路院区）', lng: 112.9870, lat: 28.2140 }
+          ],
+          polyline: [
+            [112.9862, 28.2154],
+            [112.9863, 28.2151],
+            [112.9865, 28.2148],
+            [112.9867, 28.2145],
+            [112.9868, 28.2143],
+            [112.9870, 28.2140]
+          ],
+          steps: [
+            {
+              title: '第 1 步：华夏路社区南门无障碍出口',
+              landmark: '华夏路社区便民服务亭',
+              icon: '🏡',
+              content: '出小区沿华夏路适老防滑步道往南前行 150 米，途经街心花园休息长椅。',
+              accessibleFeatures: ['无台阶', '全程平缓缓坡 (<2%)', '林荫遮阳步道'],
+              voiceHint: '张阿姨，顺着咱们小区门口平平的防滑步道慢慢走，路边有长椅可以歇歇脚。',
+              coords: [112.9862, 28.2154]
+            },
+            {
+              title: '第 2 步：湘雅路口有声安全斑马线',
+              landmark: '湘雅路口有声红绿灯',
+              icon: '🚦',
+              content: '沿绿荫道慢行至湘雅路路口，过配备清脆语音提示的有声斑马线（绿灯时长 45 秒）。',
+              accessibleFeatures: ['无台阶', '人车分流安全岛', '声响红绿灯指引 (45秒)'],
+              voiceHint: '张阿姨，经过路口有清脆的提示音，绿灯时间很长，慢慢过，不用着急。',
+              coords: [112.9868, 28.2143]
+            },
+            {
+              title: '第 3 步：中南大学湘雅医院门诊大楼 1 号无障碍坡道',
+              landmark: '中南大学湘雅医院门诊大楼',
+              icon: '🏥',
+              content: '抵达湘雅医院门诊大楼，顺着左侧平缓无障碍专用坡道进入大厅，直通骨科与挂号处。',
+              accessibleFeatures: ['无台阶', '防滑无障碍专用坡道', '无障碍直梯', '导医志愿者引导'],
+              voiceHint: '到达湘雅医院啦！走左边平缓坡道进门就是导医台，骨科在二楼。',
+              coords: [112.9870, 28.2140]
+            }
+          ]
+        },
+        {
+          id: 'park',
+          label: '烈士公园晨练步道',
+          icon: '🌳',
+          origin: '家（长沙市开福区华夏路社区）',
+          destination: '湖南烈士公园',
+          city: '长沙',
+          desc: '年嘉湖西路林荫道 · 避开陡坡台阶 · 途经3处便民休息长椅',
+          duration: '约15分钟',
+          distance: '1.2公里',
+          score: 96,
+          points: [
+            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9862, lat: 28.2154 },
+            { location: '开福寺路绿道', name: '开福寺路林荫绿道', lng: 112.9890, lat: 28.2130 },
+            { location: '年嘉湖西路步道', name: '年嘉湖适老缓坡步道', lng: 112.9930, lat: 28.2090 },
+            { location: '湖南烈士公园西门', name: '湖南烈士公园（西门无障碍入口）', lng: 112.9970, lat: 28.2060 }
+          ],
+          polyline: [
+            [112.9862, 28.2154],
+            [112.9875, 28.2140],
+            [112.9890, 28.2130],
+            [112.9910, 28.2110],
+            [112.9930, 28.2090],
+            [112.9950, 28.2075],
+            [112.9970, 28.2060]
+          ],
+          steps: [
+            {
+              title: '第 1 步：华夏路社区东门林荫绿道',
+              landmark: '华夏路便民服务站',
+              icon: '🏡',
+              content: '出东门沿树荫平缓慢行道前行，路面平整，无坑洼台阶。',
+              accessibleFeatures: ['无台阶', '全程缓坡 (<3%)', '绿荫遮阳率 92%'],
+              voiceHint: '张阿姨，顺着东门阴凉的树荫道慢慢走，路特别平。',
+              coords: [112.9862, 28.2154]
+            },
+            {
+              title: '第 2 步：开福寺路适老休息长椅区',
+              landmark: '开福寺路适老驿站',
+              icon: '🪑',
+              content: '途经适老休息驿站，设有便民长椅与遮阳棚，可随心小憩。',
+              accessibleFeatures: ['无台阶', '配备爱心长椅', '直饮水补给点'],
+              voiceHint: '张阿姨，前面有爱心长椅，走累了坐下歇歇喝口水。',
+              coords: [112.9890, 28.2130]
+            },
+            {
+              title: '第 3 步：湖南烈士公园西门无障碍平缓通道',
+              landmark: '烈士公园西大门',
+              icon: '🌳',
+              content: '由烈士公园西门平缓通道进园，直通年嘉湖环湖适老健身木栈道。',
+              accessibleFeatures: ['无台阶', '防滑木栈道', '全程无障碍贯通'],
+              voiceHint: '到达烈士公园西门啦！顺着平平的木栈道进园，空气特别好。',
+              coords: [112.9970, 28.2060]
+            }
+          ]
+        },
+        {
+          id: 'renmin',
+          label: '省人民医院老年专线',
+          icon: '🏛️',
+          origin: '家（长沙市开福区华夏路社区）',
+          destination: '湖南省人民医院',
+          city: '长沙',
+          desc: '人车分流安全绿道 · 45秒长绿灯斑马线 · 南大门无障碍直梯',
+          duration: '约22分钟',
+          distance: '1.8公里',
+          score: 95,
+          points: [
+            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9862, lat: 28.2154 },
+            { location: '蔡锷北路宽道', name: '蔡锷北路林荫步道', lng: 112.9840, lat: 28.2080 },
+            { location: '解放西路安全岛', name: '解放西路有声红绿灯', lng: 112.9820, lat: 28.1980 },
+            { location: '湖南省人民医院', name: '湖南省人民医院（天心阁院区）', lng: 112.9810, lat: 28.1920 }
+          ],
+          polyline: [
+            [112.9862, 28.2154],
+            [112.9850, 28.2110],
+            [112.9840, 28.2080],
+            [112.9830, 28.2030],
+            [112.9820, 28.1980],
+            [112.9810, 28.1920]
+          ],
+          steps: [
+            {
+              title: '第 1 步：华夏路平缓无障碍步道',
+              landmark: '华夏路社区便民亭',
+              icon: '🏡',
+              content: '顺华夏路绿荫通道前行，全程缓坡无台阶。',
+              accessibleFeatures: ['无台阶', '人车分流', '防滑路面'],
+              voiceHint: '张阿姨，咱们慢慢走，沿路都是平平的防滑步道。',
+              coords: [112.9862, 28.2154]
+            },
+            {
+              title: '第 2 步：解放西路有声安全斑马线',
+              landmark: '解放西路口安全岛',
+              icon: '🚦',
+              content: '过有声信号灯斑马线，安全绿灯时长 45 秒，中途设行人安全岛。',
+              accessibleFeatures: ['无台阶', '45秒长绿灯', '语音声响指引'],
+              voiceHint: '张阿姨，路口绿灯时间长，有清脆语音提示，慢慢过不用着急。',
+              coords: [112.9820, 28.1980]
+            },
+            {
+              title: '第 3 步：湖南省人民医院南门无障碍专用梯',
+              landmark: '湖南省人民医院天心阁院区',
+              icon: '🏥',
+              content: '抵达省人民医院，走左侧专用防滑缓坡进入门诊大厅，直通无障碍电梯。',
+              accessibleFeatures: ['无台阶', '专用防滑缓坡', '无障碍直梯'],
+              voiceHint: '张阿姨，到达省人民医院了！走左侧平缓坡道直接进大厅。',
+              coords: [112.9810, 28.1920]
+            }
+          ]
+        }
+      ],
       // 北斗高精时空状态
       bdsSatelliteCount: 18,
       bdsFixStatus: 'RTK固定解 (亚米级差分)',
@@ -318,6 +508,10 @@ export default {
   },
   onUnload() {
     this.stopReporting()
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect()
+      this.resizeObserver = null
+    }
     if (typeof window !== 'undefined') {
       window.removeEventListener('popstate', this.handlePopState)
     }
@@ -498,52 +692,72 @@ export default {
     },
     // 生成长沙典型地标的高保真适老指引步骤
     generateFallbackElderLandmarkSteps() {
-      return [
-        {
-          title: '第 1 步：烈士公园南门大樟树入口',
-          landmark: '烈士公园南门百年大樟树',
-          icon: '🌳',
-          content: '在公园南门大樟树与便民服务站右转，顺着平坦缓坡无障碍步道直走。',
-          instruction: '在公园南门大樟树与便民服务站右转，顺着平坦缓坡无障碍步道直走。',
-          accessibleFeatures: ['无台阶', '全程缓坡 (<4%)', '绿荫遮阳步道'],
-          voiceHint: `${this.userName}，您走到公园门口的大樟树那儿，顺着右边平平的道儿走，路特别好走，没台阶。`,
-          tip: '出发前记得带好随身温水，步伐放缓不着急。',
-          coords: [112.9862, 28.1925],
-        },
-        {
-          title: '第 2 步：中国建设银行平缓通道',
-          landmark: '中国建设银行便民网点',
-          icon: '🏦',
-          content: '往前走看到中国建设银行，从银行右侧平缓通道过去，避开行车道。',
-          instruction: '往前走看到中国建设银行，从银行右侧平缓通道过去，避开行车道。',
-          accessibleFeatures: ['无台阶', '全程缓坡 (<4%)', '途经2处休息长椅'],
-          voiceHint: `${this.userName}，前面是建设银行，顺着银行边上的无障碍平道走，路边有长椅可以坐着歇会儿。`,
-          tip: '建行门口设有便民长椅与遮阳棚，走累了可以坐下来歇脚。',
-          coords: [112.9875, 28.1938],
-        },
-        {
-          title: '第 3 步：便民大药房与宽敞安全斑马线',
-          landmark: '便民大药房红绿灯路口',
-          icon: '🚦',
-          content: '路过大药房门前宽敞林荫道，过有声信号灯人行斑马线，绿灯通行时间长达45秒。',
-          instruction: '路过大药房门前宽敞林荫道，过有声信号灯人行斑马线，绿灯通行时间长达45秒。',
-          accessibleFeatures: ['无台阶', '人车分流安全步道', '声响红绿灯指引'],
-          voiceHint: `${this.userName}，经过大药房后过红绿灯，这个路口有清脆的提示音，绿灯时间很长，慢慢过。`,
-          tip: '路口红绿灯伴随清脆语音提示，安全时间充足，不急行。',
-          coords: [112.989, 28.1952],
-        },
-        {
-          title: '第 4 步：湖南省人民医院正门平缓坡道',
-          landmark: '湖南省人民医院南门无障碍直梯',
-          icon: '🏥',
-          content: '抵达医院南门，顺着左侧平缓防滑无障碍坡道进入门诊大厅，直达无障碍垂直电梯。',
-          instruction: '抵达医院南门，顺着左侧平缓防滑无障碍坡道进入门诊大厅，直达无障碍垂直电梯。',
-          accessibleFeatures: ['无台阶', '防滑无障碍坡道', '有无障碍直梯', '志愿者导医台'],
-          voiceHint: `${this.userName}，已到达医院南大门，顺着左边的平缓坡道进门诊大楼，一进门就是导医台。`,
-          tip: '大厅入口有志愿者导医，已为您将平安到达消息同步给子女。',
-          coords: [112.9912, 28.1968],
-        },
-      ]
+      const curScene = this.demoScenes[this.currentSceneIdx || 0]
+      if (curScene && curScene.steps && curScene.steps.length) {
+        return curScene.steps
+      }
+      return this.demoScenes[0].steps
+    },
+    async switchDemoScene(sIdx) {
+      this.currentSceneIdx = sIdx
+      const sc = this.demoScenes[sIdx]
+      if (!sc) return
+
+      this.originName = sc.origin
+      this.destinationName = sc.destination
+      this.city = sc.city
+      this.routeDuration = sc.duration
+      this.routeDistance = sc.distance
+      this.barrierFreeScore = sc.score
+      this.steps = sc.steps
+      this.polylinePath = sc.polyline
+      this.routePoints = sc.points
+      this.elderCoords = [sc.points[0].lng, sc.points[0].lat]
+      this.currentStepIndex = 0
+
+      // 尝试调用后端直接路线规划接口同步
+      try {
+        const directRes = await get('/api/trips/route/direct', {
+          origin: sc.origin,
+          destination: sc.destination,
+          city: '长沙',
+        }).catch(() => null)
+        if (directRes && directRes.route && directRes.route.ok) {
+          const r = directRes.route
+          if (r.duration) this.routeDuration = r.duration
+          if (r.distance_km) this.routeDistance = `${r.distance_km}公里`
+          if (Array.isArray(r.steps) && r.steps.length) {
+            this.steps = r.steps.map((st, idx) => this.enrichStepWithLandmarks(st, idx, r))
+          }
+          if (Array.isArray(r.polyline) && r.polyline.length) {
+            this.polylinePath = r.polyline.map((p) => [p.lng, p.lat])
+          }
+        }
+
+        const quickRes = await post('/api/trips/quick', {
+          origin: sc.origin,
+          destination: sc.destination,
+          elder_id: this.user ? this.user.id : null,
+          purpose: `湖南省智能导航大赛演示：前往${sc.destination}无障碍出行`,
+        }).catch(() => null)
+        if (quickRes && quickRes.trip) {
+          this.tripId = quickRes.trip.id
+        }
+      } catch (e) {
+        console.warn('切换场景后端同步异常:', e)
+      }
+
+      if (this.leafletMap) {
+        this.renderRoute()
+        this.resetView()
+      }
+
+      speak(`已切换至赛事示范路线【${sc.label}】：从${sc.origin}到${sc.destination}，亚米级北斗避障护航已开启。`)
+      uni.showToast({
+        title: `已切换至：${sc.label}`,
+        icon: 'none',
+        duration: 2500,
+      })
     },
     async initMap() {
       this.mapFailed = false
@@ -595,12 +809,32 @@ export default {
           attribution: AMAP_TILE_ATTRIBUTION,
         }).addTo(this.leafletMap)
 
+        // 监听容器尺寸动态调整，彻底消除高度突变或初始化尺寸未定导致的底图灰色半边
+        if (typeof ResizeObserver !== 'undefined') {
+          if (this.resizeObserver) {
+            this.resizeObserver.disconnect()
+          }
+          this.resizeObserver = new ResizeObserver(() => {
+            if (this.leafletMap) {
+              this.leafletMap.invalidateSize({ animate: false })
+            }
+          })
+          this.resizeObserver.observe(container)
+        }
+
         this.renderRoute(L)
         this.mapLoading = false
+
         this.$nextTick(() => {
           setTimeout(() => {
-            if (this.leafletMap) this.leafletMap.invalidateSize()
-          }, 200)
+            if (this.leafletMap) this.leafletMap.invalidateSize({ animate: false })
+          }, 80)
+          setTimeout(() => {
+            if (this.leafletMap) {
+              this.leafletMap.invalidateSize({ animate: false })
+              this.resetView()
+            }
+          }, 300)
         })
       } catch (err) {
         console.error('地图渲染失败:', err)
@@ -612,6 +846,26 @@ export default {
       L = L || window.L
       if (!L || !this.leafletMap) return
 
+      // 先清理所有旧图层，防止多路线叠加
+      if (this.routeCasing) {
+        try { this.leafletMap.removeLayer(this.routeCasing) } catch (e) {}
+        this.routeCasing = null
+      }
+      if (this.routePolyline) {
+        try { this.leafletMap.removeLayer(this.routePolyline) } catch (e) {}
+        this.routePolyline = null
+      }
+      if (this.elderMarker) {
+        try { this.leafletMap.removeLayer(this.elderMarker) } catch (e) {}
+        this.elderMarker = null
+      }
+      if (this.stationMarkers && this.stationMarkers.length) {
+        this.stationMarkers.forEach((m) => {
+          try { this.leafletMap.removeLayer(m) } catch (e) {}
+        })
+        this.stationMarkers = []
+      }
+
       // 如果没有 polylinePath，从 steps 抽取
       if (!this.polylinePath.length && this.steps.length) {
         this.polylinePath = this.steps.map((s) => s.coords)
@@ -620,21 +874,23 @@ export default {
       const latlngs = this.polylinePath.map((p) => toLeafletLatLng(p))
 
       // 路线描边 + 适老高辨识度天青蓝
-      this.routeCasing = L.polyline(latlngs, {
-        color: '#ffffff',
-        weight: 12,
-        opacity: 0.95,
-        lineJoin: 'round',
-        lineCap: 'round',
-      }).addTo(this.leafletMap)
+      if (latlngs.length >= 2) {
+        this.routeCasing = L.polyline(latlngs, {
+          color: '#ffffff',
+          weight: 12,
+          opacity: 0.95,
+          lineJoin: 'round',
+          lineCap: 'round',
+        }).addTo(this.leafletMap)
 
-      this.routePolyline = L.polyline(latlngs, {
-        color: '#2563eb', // WCAG AAA 高对比鲜艳明亮蓝
-        weight: 8,
-        opacity: 0.98,
-        lineJoin: 'round',
-        lineCap: 'round',
-      }).addTo(this.leafletMap)
+        this.routePolyline = L.polyline(latlngs, {
+          color: '#2563eb', // WCAG AAA 高对比鲜艳明亮蓝
+          weight: 8,
+          opacity: 0.98,
+          lineJoin: 'round',
+          lineCap: 'round',
+        }).addTo(this.leafletMap)
+      }
 
       // 标注地标与起终点
       this.stationMarkers = []
@@ -661,8 +917,11 @@ export default {
         zIndexOffset: 1000,
       }).addTo(this.leafletMap)
 
-      if (latlngs.length) {
-        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
+      if (latlngs.length >= 2 && this.routePolyline) {
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
+          padding: [50, 50],
+          maxZoom: 16,
+        })
       }
     },
     startReporting() {
@@ -1253,6 +1512,72 @@ export default {
   font-weight: 800;
 }
 
+/* 赛事示范路线快捷切换栏 */
+.scene-switch-bar {
+  margin: 0 24rpx 18rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 16rpx 20rpx;
+  border: 2rpx solid #e2e8f0;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+.scene-switch-header {
+  margin-bottom: 12rpx;
+}
+
+.scene-title {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.5rpx;
+}
+
+.scene-chips {
+  display: flex;
+  gap: 12rpx;
+  overflow-x: auto;
+  padding-bottom: 4rpx;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scene-chip {
+  flex: 1;
+  min-width: 0;
+  min-height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 16rpx;
+  background: #f1f5f9;
+  border: 2rpx solid #cbd5e1;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 26rpx;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  margin: 0;
+}
+
+.scene-chip.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 900;
+  box-shadow: 0 4rpx 12rpx rgba(37, 99, 235, 0.15);
+}
+
+.chip-icon {
+  font-size: 30rpx;
+}
+
+.chip-label {
+  font-size: 26rpx;
+}
+
 /* 高德地图容器 (58% 黄金分屏比例) */
 .map-section {
   position: relative;
@@ -1265,13 +1590,13 @@ export default {
 
 .amap-box {
   width: 100%;
-  height: 54vh;
+  height: 52vh;
+  min-height: 380px;
   background: #e2e8f0;
-  touch-action: none !important;
+  touch-action: pan-x pan-y !important;
   -webkit-user-select: none;
   user-select: none;
   overscroll-behavior: contain;
-  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .map-section.fullscreen-mode {

@@ -82,7 +82,7 @@ async def guard_route(origin: str, destination: str, city: str = "") -> dict:
     时以正文为准，裸一个"家"才用到它）。未传时优先从出发地/目的地推断或兜底南京。
     """
     if not city:
-        city = city_of(origin) or city_of(destination) or "南京"
+        city = city_of(origin) or city_of(destination) or "长沙"
     route = await amap_client.plan_route(origin, destination, "公交", city)
     return route if _is_local_drawable(route) else _blank_route(origin, destination)
 
@@ -195,15 +195,15 @@ def resolve_trip_origin(trip: dict[str, Any]) -> str:
                             return v
     plan_title = plan_obj.get("title") if isinstance(plan_obj, dict) else ""
     purpose = (trip.get("purpose") or plan_title or "").strip()
-    if "北京" in purpose and ("返程" in purpose or "回南京" in purpose or "回家" in purpose):
+    if "北京" in purpose and ("返程" in purpose or "回南京" in purpose or "回长沙" in purpose or "回家" in purpose):
         return "北京南站"
-    if "上海" in purpose and ("返程" in purpose or "回南京" in purpose or "回家" in purpose):
+    if "上海" in purpose and ("返程" in purpose or "回南京" in purpose or "回长沙" in purpose or "回家" in purpose):
         return "上海虹桥站"
-    if "杭州" in purpose and ("返程" in purpose or "回南京" in purpose or "回家" in purpose):
+    if "杭州" in purpose and ("返程" in purpose or "回南京" in purpose or "回长沙" in purpose or "回家" in purpose):
         return "杭州东站"
-    if "苏州" in purpose and ("返程" in purpose or "回南京" in purpose or "回家" in purpose):
+    if "苏州" in purpose and ("返程" in purpose or "回南京" in purpose or "回长沙" in purpose or "回家" in purpose):
         return "苏州站"
-    return "家（南京鼓楼区）"
+    return "家（长沙市开福区华夏路社区）"
 
 
 def resolve_trip_destination(trip: dict[str, Any]) -> str:
@@ -216,8 +216,8 @@ def resolve_trip_destination(trip: dict[str, Any]) -> str:
             plan_obj = {}
     plan_title = plan_obj.get("title") if isinstance(plan_obj, dict) else ""
     purpose = (trip.get("purpose") or plan_title or "").strip()
-    if "返程" in purpose or "回家" in purpose or "回宁" in purpose or "回南京" in purpose:
-        return "家（南京鼓楼区）"
+    if "返程" in purpose or "回家" in purpose or "回宁" in purpose or "回南京" in purpose or "回长沙" in purpose:
+        return "家（长沙市开福区华夏路社区）"
     if trip.get("destination"):
         return str(trip["destination"]).strip()
     if isinstance(plan_obj, dict):
@@ -230,11 +230,17 @@ def resolve_trip_destination(trip: dict[str, Any]) -> str:
                         if v and "站" not in v:
                             return v
     for spot in sorted(LOCATION_COORDS.keys(), key=len, reverse=True):
-        if spot in ("家", "南京", "北京", "上海", "杭州", "苏州", "家（南京鼓楼区）"):
+        if spot in ("家", "南京", "北京", "上海", "杭州", "苏州", "长沙", "家（长沙市开福区华夏路社区）", "家（南京鼓楼区）"):
             continue
         if spot in purpose:
             return spot
     city = extract_destination(trip)
+    if city and ("湘雅" in purpose or "长沙" in city or "湖南" in city or "烈士" in purpose):
+        if "烈士" in purpose:
+            return "湖南烈士公园"
+        if "人民医院" in purpose:
+            return "湖南省人民医院"
+        return "中南大学湘雅医院"
     if city and ("北京" in city or "北京" in purpose):
         return "北京积水潭医院"
     if city and ("鼓楼" in purpose or "南京" in city):
@@ -245,7 +251,7 @@ def resolve_trip_destination(trip: dict[str, Any]) -> str:
         return "杭州市第一人民医院"
     if city and ("苏州" in city or "苏大" in purpose):
         return "苏州大学附属第一医院"
-    return city or purpose or "北京积水潭医院"
+    return city or purpose or "中南大学湘雅医院"
 
 
 # ---------------------------------------------------------------------- R6 门禁
@@ -540,8 +546,8 @@ class CheckinIn(BaseModel):
 
 
 class QuickTripIn(BaseModel):
-    origin: str = "家（南京鼓楼区）"
-    destination: str = "北京积水潭医院"
+    origin: str = "家（长沙市开福区华夏路社区）"
+    destination: str = "中南大学湘雅医院"
     elder_id: str | None = None
     purpose: str | None = None
 
@@ -602,7 +608,7 @@ async def list_trips(elder_id: str | None = None, limit: int = 20,
 
 
 @router.get("/route/direct", dependencies=[Depends(get_current_principal)])
-async def direct_route(origin: str = "家（南京鼓楼区）", destination: str = "北京积水潭医院",
+async def direct_route(origin: str = "家（长沙市开福区华夏路社区）", destination: str = "中南大学湘雅医院",
                        city: str = ""):
     """直接通过起点与目的地获取高德规划轨迹、途经站点与换乘步骤。
 
@@ -610,7 +616,7 @@ async def direct_route(origin: str = "家（南京鼓楼区）", destination: st
     匿名可打就等于白送一个规划代理，也让"这片接口有没有门"变成一个要逐条记的事。
     """
     if not city:
-        city = city_of(origin) or city_of(destination) or "南京"
+        city = city_of(origin) or city_of(destination) or "长沙"
     route_data = await guard_route(origin, destination, city)
     return {"ok": True, "origin": origin, "destination": destination, "city": city, "route": route_data}
 

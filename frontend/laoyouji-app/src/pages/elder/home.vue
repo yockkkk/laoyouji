@@ -158,7 +158,7 @@ export default {
     },
     async loadWeather() {
       try {
-        const d = await get('/api/weather', { city: this.user.city || '南京' })
+        const d = await get('/api/weather', { city: this.user.city || '长沙' })
         if (!d || !d.ok) return
         const icons = { 晴: '☀️', 多云: '⛅', 阴: '☁️', 小雨: '🌦️', 雨: '🌧️' }
         const icon = Object.keys(icons).find((k) => (d.condition || '').includes(k))

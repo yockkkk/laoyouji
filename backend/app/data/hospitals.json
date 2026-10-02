@@ -1,12 +1,145 @@
 {
   "source": "医院与号源（演示数据）：医院名、科室、医生、号源与价格均由竞赛原型内置，不是真实号源；正式落地要接挂号平台的开放接口",
-  "cities": ["北京", "上海", "南京"],
+  "cities": ["长沙", "南京", "北京", "上海"],
   "elder_homes": {
+    "长沙": {"name": "家（长沙市开福区华夏路社区）", "lng": 112.9862, "lat": 28.2154},
     "北京": {"name": "家（北京西城区）", "lng": 116.3650, "lat": 39.9400},
     "上海": {"name": "家（上海徐汇区）", "lng": 121.4380, "lat": 31.1900},
     "南京": {"name": "家（南京鼓楼区）", "lng": 118.7732, "lat": 32.0618}
   },
   "hospitals": [
+    {
+      "name": "中南大学湘雅医院",
+      "city": "长沙",
+      "level": "三级甲等",
+      "specialty": "南湘雅百年名院，神经、骨科与老年病国家重点专科",
+      "address": "湖南省长沙市开福区湘雅路87号",
+      "accessible": true,
+      "location": {"lng": 112.9870, "lat": 28.2140},
+      "departments": [
+        {
+          "name": "骨科",
+          "doctors": [
+            {
+              "name": "邱勇",
+              "title": "主任医师·教授",
+              "fee": 100,
+              "slots": [
+                {"date": "+1", "time": "上午 08:30", "remaining": 5},
+                {"date": "+3", "time": "上午 08:30", "remaining": 8}
+              ]
+            },
+            {
+              "name": "刘德胜",
+              "title": "副主任医师",
+              "fee": 60,
+              "slots": [
+                {"date": "+1", "time": "下午 14:00", "remaining": 12}
+              ]
+            }
+          ]
+        },
+        {
+          "name": "老年医学科",
+          "doctors": [
+            {
+              "name": "陈琼",
+              "title": "主任医师·教授",
+              "fee": 90,
+              "slots": [{"date": "+1", "time": "上午 09:00", "remaining": 6}]
+            }
+          ]
+        },
+        {
+          "name": "心内科",
+          "doctors": [
+            {
+              "name": "杨天伦",
+              "title": "主任医师·教授",
+              "fee": 100,
+              "slots": [{"date": "+2", "time": "上午 08:30", "remaining": 7}]
+            }
+          ]
+        },
+        {
+          "name": "呼吸内科",
+          "doctors": [
+            {
+              "name": "胡成平",
+              "title": "主任医师·教授",
+              "fee": 90,
+              "slots": [{"date": "+1", "time": "上午 09:00", "remaining": 5}]
+            }
+          ]
+        },
+        {
+          "name": "消化内科",
+          "doctors": [
+            {
+              "name": "刘小伟",
+              "title": "主任医师·教授",
+              "fee": 90,
+              "slots": [{"date": "+1", "time": "下午 14:00", "remaining": 7}]
+            }
+          ]
+        },
+        {
+          "name": "眼科",
+          "doctors": [
+            {
+              "name": "夏晓波",
+              "title": "主任医师·教授",
+              "fee": 80,
+              "slots": [{"date": "+1", "time": "上午 09:30", "remaining": 9}]
+            }
+          ]
+        },
+        {
+          "name": "风湿免疫科",
+          "doctors": [
+            {
+              "name": "左晓霞",
+              "title": "主任医师·教授",
+              "fee": 90,
+              "slots": [{"date": "+1", "time": "上午 08:30", "remaining": 6}]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "湖南省人民医院",
+      "city": "长沙",
+      "level": "三级甲等",
+      "specialty": "省级老年医学中心与心脑急诊救治绿色通道",
+      "address": "湖南省长沙市天心区解放西路61号",
+      "accessible": true,
+      "location": {"lng": 112.9772, "lat": 28.1915},
+      "departments": [
+        {
+          "name": "骨科",
+          "doctors": [
+            {
+              "name": "李强",
+              "title": "主任医师",
+              "fee": 80,
+              "slots": [{"date": "+1", "time": "上午 08:30", "remaining": 6}]
+            }
+          ]
+        },
+        {
+          "name": "老年医学科",
+          "doctors": [
+            {
+              "name": "周丽华",
+              "title": "主任医师",
+              "fee": 70,
+              "slots": [{"date": "+1", "time": "上午 09:00", "remaining": 8}]
+            }
+          ]
+        }
+      ]
+    },
     {
       "name": "北京积水潭医院",
       "city": "北京",

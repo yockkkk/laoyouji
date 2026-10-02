@@ -83,7 +83,7 @@ async def seed_demo(repo: Repository) -> dict[str, Any]:
 KANGLE_PERSONA = {
     "age": 72,
     "sex": "女",
-    "city": "南京",
+    "city": "长沙",
     "living": "独居",
     "children": "儿子李明在北京",
     "conditions": [

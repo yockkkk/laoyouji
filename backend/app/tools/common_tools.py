@@ -6,7 +6,7 @@ from app.tools.common import make_tool, ok
 
 async def get_weather(turn, args: dict) -> dict:
     provider = turn.ctx.resolve("weather")
-    w = await provider.get(args.get("city", turn.user.get("city", "南京")),
+    w = await provider.get(args.get("city", turn.user.get("city", "长沙")),
                            args.get("date"))
     return ok(
         summary=f"{w['city']} {w['date']}：{w['condition']}，"

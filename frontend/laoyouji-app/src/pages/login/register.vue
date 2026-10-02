@@ -51,7 +51,7 @@
 
       <view class="input-row">
         <text class="label">居住城市</text>
-        <input class="input" v-model="form.city" placeholder="例如：南京 / 北京" />
+        <input class="input" v-model="form.city" placeholder="例如：长沙 / 北京" />
       </view>
 
       <button class="btn-main submit-btn" :loading="loading" @tap="submitRegister">
@@ -74,7 +74,7 @@ export default {
         password: '',
         name: '',
         phone: '',
-        city: '南京',
+        city: '长沙',
         dialect: 'mandarin',
       },
       loading: false,
