@@ -99,10 +99,10 @@
       </view>
     </view>
 
-    <!-- 湖南省大学生智能导航大赛 · 北斗实景示范路线快捷切换 -->
+    <!-- 常用适老出行路线快捷切换 -->
     <view class="scene-switch-bar">
       <view class="scene-switch-header">
-        <text class="scene-title">🎯 湖南省智能导航大赛 · 示范场景切换</text>
+        <text class="scene-title">📍 常用适老出行路线切换</text>
       </view>
       <view class="scene-chips">
         <button
@@ -179,7 +179,7 @@
     <view class="steps-section">
       <view class="section-header">
         <view class="section-title-line">
-          <text class="section-title">🚶 关键路口地标实景指引</text>
+          <text class="section-title">🚶 换乘步骤大字指引与地标实景</text>
           <text class="landmark-tag">避开台阶与陡坡</text>
         </view>
         <text class="section-subtitle">跟着大树、银行与缓坡走 · 不记复杂方向与米数</text>
@@ -459,7 +459,7 @@ export default {
   },
   computed: {
     userName() {
-      if (this.user && this.user.name) {
+      if (this.user && this.user.role === 'elder' && this.user.name) {
         const n = this.user.name
         return n.length >= 2 ? `${n[0]}阿姨` : n
       }
@@ -497,6 +497,12 @@ export default {
   },
   mounted() {
     this.user = getCurrentUser()
+    if (this.user && this.user.role === 'child') {
+      uni.redirectTo({
+        url: `/pages/child/guardian?trip_id=${encodeURIComponent(this.tripId || '')}`,
+      })
+      return
+    }
     if (!this.city && this.user && this.user.city) {
       this.city = this.user.city
     }
@@ -738,7 +744,7 @@ export default {
           origin: sc.origin,
           destination: sc.destination,
           elder_id: this.user ? this.user.id : null,
-          purpose: `湖南省智能导航大赛演示：前往${sc.destination}无障碍出行`,
+          purpose: `前往${sc.destination}适老无障碍出行`,
         }).catch(() => null)
         if (quickRes && quickRes.trip) {
           this.tripId = quickRes.trip.id
@@ -752,7 +758,7 @@ export default {
         this.resetView()
       }
 
-      speak(`已切换至赛事示范路线【${sc.label}】：从${sc.origin}到${sc.destination}，亚米级北斗避障护航已开启。`)
+      speak(`已切换至适老路线【${sc.label}】：从${sc.origin}到${sc.destination}，亚米级北斗避障护航已开启。`)
       uni.showToast({
         title: `已切换至：${sc.label}`,
         icon: 'none',
@@ -884,7 +890,7 @@ export default {
         }).addTo(this.leafletMap)
 
         this.routePolyline = L.polyline(latlngs, {
-          color: '#2563eb', // WCAG AAA 高对比鲜艳明亮蓝
+          color: '#2A82E4', // WCAG AAA 高对比鲜艳明亮蓝
           weight: 8,
           opacity: 0.98,
           lineJoin: 'round',
@@ -1115,10 +1121,10 @@ export default {
       try {
         const res = await get('/api/family/members').catch(() => null)
         if (res && Array.isArray(res.items) && res.items.length) {
-          const m = res.items[0]
-          if (m && m.user) {
-            this.familyContactName = m.user.name || '李明'
-            this.familyContactPhone = m.user.phone || '13812345678'
+          const childMember = res.items.find((m) => m.user && m.user.role === 'child') || res.items[0]
+          if (childMember && childMember.user) {
+            this.familyContactName = childMember.user.name || '李明'
+            this.familyContactPhone = childMember.user.phone || '13812345678'
           }
         }
       } catch (e) {}
@@ -1590,7 +1596,7 @@ export default {
 
 .amap-box {
   width: 100%;
-  height: 52vh;
+  height: 58vh;
   min-height: 380px;
   background: #e2e8f0;
   touch-action: pan-x pan-y !important;

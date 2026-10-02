@@ -178,12 +178,6 @@ async def suggest_walk(turn, args: dict) -> dict:
     city = str(args.get("city") or turn.user.get("city") or "").strip()
     loops = await provider.walk_loops(city=city) if city else []
     if not loops:
-        loops = await provider.walk_loops(city="长沙")
-    if not loops:
-        loops = await provider.walk_loops(city="南京")
-    if not loops:
-        loops = await provider.walk_loops()
-    if not loops:
         return fail("这条线路我这儿没有现成的环线，别照着瞎走，出门前问一下社区。")
 
     scored = [(loop, walk_estimate(loop["distance_km"],
@@ -219,7 +213,7 @@ async def suggest_walk(turn, args: dict) -> dict:
         # 前端 _toCard 只把 subtitle / disclaimer / footnote 收进卡脚，
         # 另起一个 notes 键会被静默丢掉 —— 披露模拟数据是硬要求，不能丢在半路上。
         "subtitle": summary_note,
-        "footnote": "（路线是竞赛原型内置的演示数据，正式落地对接社区与地图开放接口）",
+        "footnote": "（路线是系统内置的演示数据，正式落地对接社区与地图开放接口）",
     }
     return ok(
         summary=f"{loop['name']}：全程 {est['distance_km']} 公里，"

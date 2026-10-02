@@ -34,12 +34,12 @@
       </view>
     </view>
 
-    <!-- 适老高德路线规划醒目大字入口 (靶区 >= 48px) -->
+    <!-- 适老高德路线规划 / 子女实时守护看板入口 (靶区 >= 48px) -->
     <view v-if="hasRouteAction" class="route-action-box" @tap.stop="goToRouteMap">
       <button class="btn-route-action" hover-class="btn-route-action-active">
-        <text class="route-icon">🗺️</text>
-        <text class="route-text">查看高德路线规划</text>
-        <text class="route-badge">适老专线 ›</text>
+        <text class="route-icon">{{ isChild ? '🛡️' : '🗺️' }}</text>
+        <text class="route-text">{{ isChild ? '查看长辈守护路线' : '查看高德路线规划' }}</text>
+        <text class="route-badge">{{ isChild ? '北斗守护 ›' : '适老专线 ›' }}</text>
       </button>
     </view>
 
@@ -137,6 +137,10 @@ export default {
       for (const n of this.notes || []) parts.push(n)
       return parts.join('。')
     },
+    isChild() {
+      const u = getCurrentUser()
+      return !!(u && u.role === 'child')
+    },
   },
   methods: {
     toggleExpand() {
@@ -186,6 +190,13 @@ export default {
       }
 
       const currentUser = getCurrentUser()
+      if (currentUser && currentUser.role === 'child') {
+        uni.navigateTo({
+          url: `/pages/child/guardian?trip_id=${encodeURIComponent(this.tripId || '')}&title=${encodeURIComponent(this.title || '')}&destination=${encodeURIComponent(destination)}`,
+        })
+        return
+      }
+
       let city = (currentUser && currentUser.city) || ''
       if (!city) {
         for (const c of ['长沙', '南京', '北京', '上海', '杭州', '苏州']) {

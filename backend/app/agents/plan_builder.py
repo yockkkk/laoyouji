@@ -49,7 +49,7 @@ BASE_CHECKLIST = [
 
 DISCLAIMER = ("本计划书由康乐根据查询结果自动生成，仅供出行参考。"
               "医疗相关内容不构成诊断意见，请以医生面诊结论为准。")
-MOCK_NOTE = "（竞赛原型：号源、路线、天气数据来自模拟接口，正式落地对接官方开放 API）"
+MOCK_NOTE = "（演示模式：号源、路线、天气数据来自模拟接口，正式落地对接官方开放 API）"
 
 
 @dataclass
@@ -555,7 +555,7 @@ def build_bds_escort_plan(elder: dict, reports: Iterable[AgentReport], *,
         "complete": not missing,
         "disclaimer": ("本方案书由北斗多Agent协同决策引擎自动生成，融合北斗高精度时空数据与适老微地形算法，"
                        "医疗内容仅供参考，请遵医嘱。"),
-        "footnote": "（第八届湖南省大学生智能导航科技创新大赛：基于北斗三号亚米级定位与多Agent协同）",
+        "footnote": "（老友记：基于北斗三号亚米级定位与多Agent协同适老护航）",
     }
 
 

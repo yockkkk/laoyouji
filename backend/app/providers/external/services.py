@@ -380,5 +380,5 @@ class MockPaymentProvider(PaymentProvider):
             "ok": True,
             "transaction_no": derive_no("P", amount, subject, payer),
             "amount": amount, "subject": subject,
-            "channel": "模拟支付（竞赛原型，未扣真实资金）",
+            "channel": "模拟支付（演示环境，未扣真实资金）",
         }

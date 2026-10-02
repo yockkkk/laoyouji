@@ -1665,7 +1665,7 @@ export default {
 }
 .child-amap-canvas {
   width: 100%;
-  height: 56vh;
+  height: 58vh;
   background: #f1f5f9;
   touch-action: none !important;
   -webkit-user-select: none;
