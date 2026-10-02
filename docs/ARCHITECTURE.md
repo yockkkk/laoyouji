@@ -265,3 +265,67 @@ executed 记录 result（票号/订单号），写 audit_log。
 **其它**
 - `db/schema.sql` 全量 DDL
 - `docs/DESIGN.md` 前端设计基线（token / 信息架构 / 导航模型 / 组件契约 / SSE 界面契约）
+
+## 7. 多智能体对等通信信箱与协作研讨中枢 (Teammate Mailbox)
+
+深度借鉴 Claude Code (`teammateMailbox.ts`) 与 Nanobot (`agent/loop.py _pending_queues`) 架构：
+- **突破单向派发局限**：实现分布式的多智能体对等通信信箱中枢 (`app/core/mailbox.py`)。每个智能体 (`main`, `health`, `bds_nav`, `weather`, `guardian`) 均拥有独立的 Mailbox。
+- **电文信封协议 (`PeerMessage`)**：支持 `direct`（点对点）、`broadcast`（全员广播）、`proposal`（协商提议）、`handoff`（角色交接）、`ack`（确认回执）与 `emergency`（紧急熔断插队）。
+- **双通道投递管道**：
+  1. *主动调用管道*：智能体可通过工具主动向同伴发起电文查询与约束注入（如 HealthAgent 向 BdsNavAgent 注入膝关节避台阶约束）；
+  2. *被动注水管道*：`PRE_STEP` 瀑布中间件在每个 Step 启动时自动检查收件箱，将同伴电文安全拼接进提示词上下文中；
+  3. *防死循环熔断*：设置 `MAX_DELIBERATION_HOPS = 3`，防止同伴之间无限轮转对答。
+
+## 8. 自适应分层认知记忆系统 (Adaptive Hierarchical Memory)
+
+借鉴 Nanobot (`agent/memory.py`) 与 Claude Code (`teamMemoryOps.ts`) 设计的三层记忆模型 (`app/core/memory.py`)：
+- **Tier 1 - 工作记忆 (Working Memory)**：当前会话轮次内的即时上下文与工具调用结果缓存；
+- **Tier 2 - 情景日志 (Episodic History Ledger)**：以 Append-only JSONL 格式 (`episodic_history.jsonl`) 记录长辈日常出行偏好、常去地标及体征变化事件；
+- **Tier 3 - 语义画像巩固 (Consolidated Semantic Profile)**：以 Markdown 规范 (`ELDER_PROFILE.md`) 沉淀长辈的慢性病史、耐力极限、生活习惯及子女关联偏好，每次会话启动自动装配，无需长辈重复交代。
+
+## 9. 北斗高精时空基准与适老微地形代价路由
+
+- **亚米级时空基准**：接入北斗三号双频 RTK 与地基增强差分校正，解析 NMEA-0183 报文（$BDGGA），提供 $< 0.5\text{m}$ 高精度授时与平面坐标定位。
+- **CGCS2000 坐标系**：全面采用我国自主知识产权的 2000 国家大地坐标系，保障地理空间基准的绝对合规与高精度。
+- **适老微地形代价路由模型 (Micro-Terrain Cost Model)**：
+  $$\text{Cost}(e) = L(e) \cdot \left(1 + w_{\text{step}} \cdot N_{\text{step}}(e) + w_{\text{slope}} \cdot S(e) - w_{\text{shade}} \cdot \text{Shade}(e) - w_{\text{bench}} \cdot \text{Bench}(e)\right)$$
+  - 遇到长台阶时对患有膝疾老人施加无穷大阻断惩罚；
+  - 优先选择树荫绿道、坡度 $< 3\%$ 的平缓步道，沿途 200 米服务半径精准串联市政休憩长椅。
+- **抗微动滤波算法 (Adaptive Anti-Micro-Motion KF)**：
+  - 针对老人行走缓慢（$0.6 \sim 0.8\text{ m/s}$）与停步休息特征，当 $v < 0.3\text{ m/s}$ 时自动冻结位置增益，消除 GPS 静态漂移导致的航向乱跳。
+
+## 10. 前端适老高精地图手势隔离与 60fps 渲染优化 (`route-map.vue`)
+
+- **手势事件穿透隔离**：通过 `touch-action: none`、`@touchmove.stop` 与自定义手势拦截，彻底消除 Uni-app 页面全局滚动与 Leaflet 地图拖拽的手势冲突；
+- **栅格瓦片抗锯齿与重绘抑制**：规避非整数 `zoomSnap` 引发的二次重排，启用 CSS3 GPU 硬件加速；
+- **平滑缓动算法 (Smooth PanTo/FlyTo)**：长辈位置移动与步骤视口聚焦采用贝塞尔曲线过渡动画，杜绝生硬闪跳，保持全程稳定 60fps 流畅视效。
+
+## 11. 老人端与子女端双端角色定位与交互解耦
+
+- **老人端 (`pages/elder/route-map.vue`)**：
+  - 定位：极简、大字、低认知负荷的纯粹人行实景导航；
+  - 核心操作：大生活化地标卡片播报、慢速语音指引、“🕊️ 一键给家人报平安”；
+  - 去数字化设计：无多余层级与杂乱按钮，专注长辈平稳前行。
+- **子女端 (`pages/child/guardian.vue`)**：
+  - 定位：全天候数字孪生守护看板与远程应急调度中枢；
+  - 核心操作：
+    - 卫星遥测监控：实时显示参与解算的北斗卫星颗数（如 19 颗）、CGCS2000 差分精度、航向与步速；
+    - 动态安全走廊与电子围栏：可视化走廊范围，偏航与异常滞留超限毫秒触发声光警报；
+    - 双向亲情主动关爱：“📞 一键致电长辈”与“💬 发送安心关怀”。
+
+## 12. Docker 容器化架构与本地一键运行体系
+
+系统支持基于 Docker 的全环境微服务编排隔离运行：
+- **后端容器 (`laoyouji-backend`)**：
+  - 运行环境：Python 3.12-slim；
+  - 容器端口：8000（健康探针 `/api/health` 毫秒返回）；
+  - 数据卷持久化：SQLite/Local 文件挂载与日志卷隔离。
+- **前端容器 (`laoyouji-frontend`)**：
+  - 运行环境：Node 20-alpine；
+  - 容器端口：5174（暴露 Vite H5 开发与热重载服务）；
+  - 反向代理配置：内置 Vite Proxy，无缝桥接 `/api` 流量至 `laoyouji-backend:8000`。
+- **一键运维脚本**：
+  - `docker-start.bat`：一键构建并后台启动容器；
+  - `docker-stop.bat`：一键平滑停止容器；
+  - `docker-logs.bat`：聚合跟踪前后端运行日志；
+  - `docker-test.bat`：在隔离容器内一键执行全量测试套件。

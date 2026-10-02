@@ -395,14 +395,14 @@ def build_presentation(output_path):
     add_image_placeholder(s7, Inches(7.9), Inches(2.8), Inches(4.6), Inches(4.2), "【请在此插入：原始漂移轨迹 vs 北斗抗微动平滑滤波轨迹对比实测图】")
 
     # =========================================================================
-    # SLIDE 8: 智能体协同机制：5大领域智能体家族分工
+    # SLIDE 8: 智能体协同机制：5大领域智能体家族与对等信箱磋商
     # =========================================================================
     s8 = prs.slides.add_slide(blank_layout)
     set_canvas_bg(s8)
-    add_page_header(s8, "智能体协同机制：5大领域智能体家族分工与全序事件总线")
+    add_page_header(s8, "智能体协同机制：5大智能体家族与对等信箱磋商 (Teammate Mailbox)")
 
     agents = [
-        ("MainAgent (主调度)", "用户意图分析 · 任务分解编排 · 并发调度驱动 · 响应聚合播报", COLOR_NAVY_DARK),
+        ("MainAgent (主调度)", "用户意图分析 · 任务分解编排 · 并发调度驱动 · 实时心智流显像", COLOR_NAVY_DARK),
         ("HealthAgent (健康体能)", "慢病画像约束 · 步频上限动态测算 · 关节耐力评估 · 休息点配比", COLOR_EMERALD),
         ("BdsNavAgent (北斗导航)", "亚米级微地形路网求解 · 100%避台阶 · 沿途长椅与无障碍坡道匹配", COLOR_BLUE_ACCENT),
         ("WeatherAgent (气象感知)", "体感温差计算 · 骤雨路面湿滑预警 · 防晒林荫走廊引导 · 穿戴指引", COLOR_AMBER),
@@ -426,7 +426,7 @@ def build_presentation(output_path):
         p_r.font.name = "Microsoft YaHei"
         p_r.space_before = Pt(2)
 
-    add_image_placeholder(s8, Inches(7.9), Inches(1.5), Inches(4.6), Inches(5.5), "【请在此插入：5大智能体拓扑协同交互图 / 微内核全序事件总线架构图】")
+    add_image_placeholder(s8, Inches(7.9), Inches(1.5), Inches(4.6), Inches(5.5), "【请在此插入：Teammate Mailbox 对等信箱通信拓扑图 / 实时心智流前端显像截图】")
 
     # =========================================================================
     # SLIDE 9: 确定性交付：零幻觉《北斗适老出行护航方案书》
@@ -468,22 +468,22 @@ def build_presentation(output_path):
     add_image_placeholder(s10, Inches(7.9), Inches(1.5), Inches(4.6), Inches(5.5), "【请在此插入：老人端大麦克风首页 + 实景地标导航卡片真机操作截图】")
 
     # =========================================================================
-    # SLIDE 11: 纵深三层守护：北斗高精动态安全走廊与异常滞留预警
+    # SLIDE 11: 纵深三层守护与双端分离：长辈极简导航 vs 子女全维大屏
     # =========================================================================
     s11 = prs.slides.add_slide(blank_layout)
     set_canvas_bg(s11)
-    add_page_header(s11, "纵深三层守护：北斗高精动态安全走廊与异常滞留预警")
+    add_page_header(s11, "纵深三层守护与双端分离：长辈极简实景导航 vs 子女安心守护大屏")
 
     add_card(s11, Inches(0.8), Inches(1.5), Inches(6.8), Inches(5.5))
     tb11 = s11.shapes.add_textbox(Inches(1.0), Inches(1.65), Inches(6.4), Inches(5.2))
     tf11 = tb11.text_frame
     tf11.word_wrap = True
-    add_bullet_item(tf11, "第一层：500-1500m 常住生活圈围栏", "长辈日常在小区内活动不产生打扰式告警；离开生活圈时子女端进入柔性“关注态”。", is_first=True)
-    add_bullet_item(tf11, "第二层：50-80m 航迹动态安全微走廊", "沿规划步道构建动态缓冲区。一旦偏航连续2周期，向老人温和语音纠偏，子女端提示微偏航。")
-    add_bullet_item(tf11, "第三层：长椅智能甄别与异常滞留告警", "长椅/凉亭静止识别为休整，自动抑制误报；若在偏僻无设施路段静止超15分钟，秒级触发高危预警。")
-    add_bullet_item(tf11, "一键报平安与双向亲情互动", "长辈到达公园点击报平安，子女端即刻收到带有北斗精准时空签章的平安卡片。")
+    add_bullet_item(tf11, "长辈端（route-map.vue）：极简步道实景导航", "杜绝复杂按钮，仅保留步道沿线、地标大卡片、慢速语音播报与『🕊️ 一键给家人报平安』，防迷路不添扰。", is_first=True)
+    add_bullet_item(tf11, "子女端（guardian.vue）：数字孪生高精大屏", "汇聚19颗北斗卫星高精度遥测指标（$BDGGA）、CGCS2000坐标轨迹、航向与步速，实现毫秒级远程护航。")
+    add_bullet_item(tf11, "高精动态安全微走廊与异常滞留", "沿路线自动生成50-80m安全走廊；长椅休整自动豁免，偏僻路段滞留超限自动触发声光告警。")
+    add_bullet_item(tf11, "快捷亲情双向守护动作", "子女端提供『📞 一键致电长辈』与『💬 发送安心关怀』，与长辈端一键报平安形成温暖双向闭环。")
 
-    add_image_placeholder(s11, Inches(7.9), Inches(1.5), Inches(4.6), Inches(5.5), "【请在此插入：子女端安全大屏 guardian.vue 电子围栏绘制与轨迹监控截图】")
+    add_image_placeholder(s11, Inches(7.9), Inches(1.5), Inches(4.6), Inches(5.5), "【请在此插入：老人端极简导航 vs 子女端守护大屏双端界面实机对比截图】")
 
     # =========================================================================
     # SLIDE 12: 突发险情秒级防御：500毫秒级三甲医院急救绿通
@@ -527,26 +527,26 @@ def build_presentation(output_path):
     add_image_placeholder(s13, Inches(7.9), Inches(1.5), Inches(4.6), Inches(5.5), "【请在此插入：R6数据脱敏设置与反向审计账本真机截图】")
 
     # =========================================================================
-    # SLIDE 14: 严苛工程检验：146项全绿自动化测试与性能指标
+    # SLIDE 14: 严苛工程检验：147项自动化测试与Docker容器化架构
     # =========================================================================
     s14 = prs.slides.add_slide(blank_layout)
     set_canvas_bg(s14)
-    add_page_header(s14, "严苛工程检验：146项全绿自动化测试与性能指标")
+    add_page_header(s14, "严苛工程检验：147项全绿自动化测试与Docker容器化微服务")
 
-    add_kpi_card(s14, Inches(0.8), Inches(1.5), Inches(3.6), Inches(1.1), "146", "项测试", "全覆盖自动化测试套件 100% 通过 (12.35s)", COLOR_EMERALD)
-    add_kpi_card(s14, Inches(4.8), Inches(1.5), Inches(3.6), Inches(1.1), "< 200", "ms", "核心北斗与适老微地形API接口平均响应时延", COLOR_BLUE_ACCENT)
-    add_kpi_card(s14, Inches(8.8), Inches(1.5), Inches(3.6), Inches(1.1), "1.2", "秒", "5大Agent并发端到端推理与方案装配全耗时", COLOR_AMBER)
+    add_kpi_card(s14, Inches(0.8), Inches(1.5), Inches(3.6), Inches(1.1), "147", "项测试", "自动化测试套件 100% 通过 (8.87s 全绿)", COLOR_EMERALD)
+    add_kpi_card(s14, Inches(4.8), Inches(1.5), Inches(3.6), Inches(1.1), "Docker", "一键部署", "前后端双容器编排隔离，docker compose一键启动", COLOR_BLUE_ACCENT)
+    add_kpi_card(s14, Inches(8.8), Inches(1.5), Inches(3.6), Inches(1.1), "< 200", "ms", "核心北斗与适老微地形API高并发平均响应", COLOR_AMBER)
 
     add_card(s14, Inches(0.8), Inches(2.8), Inches(6.8), Inches(4.2))
     tb14 = s14.shapes.add_textbox(Inches(1.0), Inches(2.95), Inches(6.4), Inches(3.9))
     tf14 = tb14.text_frame
     tf14.word_wrap = True
-    add_bullet_item(tf14, "极限对抗性测试验证", "覆盖12项高斯坐标极限漂移、复杂凹多边形电子围栏穿透碰撞、弱网丢包自愈用例。", is_first=True)
-    add_bullet_item(tf14, "多Agent并发死锁防护", "微内核全序事件契约，高并发压力下零死锁、零竞态、单轮闭环率 100%。")
-    add_bullet_item(tf14, "急救熔断与故障隔离", "模拟气象接口断网或大模型波动，系统毫秒级降级为本地离线微地形规则，保障导航不掉线。")
-    add_bullet_item(tf14, "国家级大赛严谨底座", "完备的测试驱动工程实践，具备冲击国家级一等奖的软件工业级品质。")
+    add_bullet_item(tf14, "极限对抗性测试验证", "覆盖高斯坐标极限漂移、复杂凹多边形电子围栏穿透碰撞、弱网丢包自愈等高对抗用例。", is_first=True)
+    add_bullet_item(tf14, "多Agent信箱并发死锁防护", "微内核全序事件总线与Teammate Mailbox，高并发下零死锁、零竞态、单轮闭环率 100%。")
+    add_bullet_item(tf14, "容器化开箱即用体验", "提供标准 Dockerfile 与 docker-compose.yml，搭配一键启动脚本，脱离环境差异束缚。")
+    add_bullet_item(tf14, "国家级大赛严谨底座", "测试驱动与容器化最佳实践，验证了系统具备工业级工程成熟度与可靠性。")
 
-    add_image_placeholder(s14, Inches(7.9), Inches(2.8), Inches(4.6), Inches(4.2), "【请在此插入：Pytest 终端 146 项测试全绿通过截图 / 性能压测曲线图】")
+    add_image_placeholder(s14, Inches(7.9), Inches(2.8), Inches(4.6), Inches(4.2), "【请在此插入：Pytest 终端 147 项测试全绿通过截图 / Docker Compose 运行截图】")
 
     # =========================================================================
     # SLIDE 15: 真实长辈实测：SUS适老化工效学评估与指标跃升

@@ -25,8 +25,19 @@
 
 安全管控中间层：高危确认状态机（冻结参数 + 确认后重放，当前工具集无触发者，预留给支付类工具）· **就医知会子女（知会不审批）** · 方言 ASR · 大白话翻译 · 隐私分级（老人掌控）。
 
-## 一键启动（离线可演，无需任何 API Key）
+## 一键启动
 
+### 方式 A：Docker 容器化一键编排（最简开箱即用）
+```bash
+# Windows 双击或命令行执行
+docker-start.bat        # 自动构建并启动前端(5174)与后端(8000)
+docker-logs.bat         # 实时查看前后端日志
+docker-test.bat         # 容器内运行自动化测试 (147项全绿)
+docker-stop.bat         # 平滑停止容器
+```
+启动后直接访问前端：`http://localhost:5174`，后端健康探针：`http://localhost:8000/api/health`。
+
+### 方式 B：本地命令行启动（Python + Node）
 ```bash
 # 1. 后端（Python 3.12）
 cd backend

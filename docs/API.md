@@ -59,6 +59,7 @@ Base URL: `http://127.0.0.1:8000`（开发）
 | `suspended` | `{confirmation_id, tool, summary, amount, expires_at, message}` | `confirmation/suspended` | 高危操作已挂起，等子女确认 |
 | `confirmation_resolved` | `{confirmation_id, tool, ok, status}` | `confirmation/resolved` | 子女点完了。`status` = `executed`/`rejected`/`failed` |
 | `guardian_alert` | `{trip_id, location, note, elder}` | `guardian/alert` | 偏航告警（由 checkpoint 上报侧推入本会话） |
+| `peer_message` | `{id, from_agent, to_agent, msg_type, summary, content, data}` | — | 智能体对等通信电文，前端呈现流光心智显像。`persist=False` |
 | `final` | `{text}` | `assistant/final` | 本轮结束语 |
 | `error` | `{message}` | — | 出错，`message` 是写给老人听的一句话 |
 
@@ -191,3 +192,70 @@ PUT body：`{child_id, location_level, health_level}`。取值不在词表内返
 
 - `location_level`: `realtime` | `city` | `off`
 - `health_level`: `full` | `summary` | `off`
+
+---
+
+## 北斗适老多智能体协同出行护航 API (/api/bds)
+
+### POST /api/bds/escort/route
+计算适老微地形低坡度零台阶路线与生活化地标指引。
+
+- **请求体 (`ElderEscortRouteRequest`)**：
+  ```json
+  {
+    "origin": [112.9862, 28.2045],
+    "destination": [112.9945, 28.2120],
+    "elder_id": "elder_123",
+    "elder_profile": {
+      "name": "张桂芳",
+      "chronic_conditions": ["膝关节退行性病变", "轻度高血压"],
+      "mobility_level": "medium",
+      "max_walk_distance_m": 800
+    },
+    "weather_condition": "slight_rain"
+  }
+  ```
+- **响应体 (`ElderEscortRouteResponse`)**：
+  包含 `points` (CGCS2000坐标序列)、`steps` (地标生活化指引)、`summary` (总距离、预计步行时间、平缓指数、避开台阶数、沿途长椅数)、`corridor_polygon` (25米安全走廊多边形坐标)。
+
+### GET /api/bds/telemetry/live
+获取当前北斗三号亚米级高精度差分遥测数据。
+
+- **响应格式**：
+  ```json
+  {
+    "timestamp": "2026-10-02T18:30:00Z",
+    "lat": 28.204512,
+    "lng": 112.986234,
+    "alt_m": 45.2,
+    "speed_mps": 0.72,
+    "satellites_in_use": 19,
+    "hdop": 0.68,
+    "fix_quality": 4,
+    "nmea_raw": "$BDGGA,103000.00,2812.2707,N,11259.1740,E,4,19,0.68,45.2,M,0.0,M,,*47",
+    "coordinate_system": "CGCS2000"
+  }
+  ```
+
+### POST /api/bds/escort/audit-destination
+目的地涉诈主动安全防御前置审核。
+
+- **请求体**：`{"destination_name": "某保健品免费体验馆", "destination_coords": [112.98, 28.20]}`
+- **响应体**：`{"passed": false, "risk_level": "high", "reason": "命中古法养生会销涉诈黑灰产高危特征库", "safe_alternatives": ["湖南烈士公园老年活动中心"]}`
+
+### POST /api/bds/escort/emergency-sos
+突发身体不适或跌倒，一键触发三甲医院急救绿色通道毫秒级重划。
+
+- **请求体**：
+  ```json
+  {
+    "coords": [112.9862, 28.2045],
+    "elder_name": "张桂芳",
+    "condition": "突发心慌胸闷"
+  }
+  ```
+- **响应体**：毫秒级锁定就近三甲医院（中南大学湘雅医院 / 湖南省人民医院），重划平缓避障急救通道，并返回一键呼叫 120 预填文本与子女强提醒电文。
+
+### POST /api/bds/escort/plan-book
+装配生成 5 页完整版《北斗适老出行护航方案书》。
+包含：第一联（慢病体能适配）、第二联（北斗微地形平缓路线）、第三联（气象防跌穿戴指引）、第四联（子女守护动态走廊）、第五联（三甲急诊就医备用联）。
