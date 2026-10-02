@@ -46,6 +46,7 @@ from app.core.events import (
     USER_MESSAGE,
 )
 from app.core.tool import ToolCall
+from app.core.topic_anchor import TopicAnchor, update_topic_anchor
 from app.providers.llm.base import LLMResponse
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,7 @@ class AgentTurn:
     stop_reason: str = ""
     final_text: str = ""
     suspended: bool = False
+    topic_anchor: Any = None
 
     @property
     def tool_names(self) -> list[str]:
@@ -156,6 +158,7 @@ class StepRequest:
     agent_turn: AgentTurn
     messages: list[dict] = field(default_factory=list)
     tools: list[dict] | None = None
+    topic_anchor: Any = None
 
 
 class AgentDriver:
@@ -207,6 +210,16 @@ class AgentDriver:
             # 子智能体的指令写进**它自己的作用域**：它因此看不到老人的原话，
             # 也看不到兄弟智能体的往来 —— 这是作用域隔离的落点。
             self._append(USER_MESSAGE, {"text": instruction})
+            if self.agent_id == MAIN_SCOPE:
+                if hasattr(self.log, "update_topic_anchor"):
+                    self.log.update_topic_anchor(self.turn.session_id, instruction)
+                elif hasattr(self.turn, "topic_anchor"):
+                    self.turn.topic_anchor = update_topic_anchor(self.turn.topic_anchor, instruction)
+
+        if hasattr(self.log, "get_topic_anchor"):
+            agent_turn.topic_anchor = self.log.get_topic_anchor(self.turn.session_id)
+        elif hasattr(self.turn, "topic_anchor"):
+            agent_turn.topic_anchor = self.turn.topic_anchor
 
         try:
             await self._loop(agent_turn)
@@ -265,7 +278,7 @@ class AgentDriver:
             await self._run_tools(step, response, agent_turn)
             self._append(STEP_END, {"index": step.index,
                                     "tool_calls": len(response.tool_calls)},
-                         step_id=step.id)
+                          step_id=step.id)
 
     # ------------------------------------------------------------------ 请求
     async def _request(self, step: AgentStep,
@@ -288,7 +301,25 @@ class AgentDriver:
                     f"- 常住城市：{city}（极其重要：若老人未指定其他出发城市，老人当前所在位置默认即为此城市）\n"
                     f"- 方言习惯：{dialect}\n\n"
                 )
+
+            # 主题锚点与防漂移指令注入
+            topic_anchor = None
+            if hasattr(self.log, "get_topic_anchor"):
+                topic_anchor = self.log.get_topic_anchor(self.turn.session_id)
+            elif hasattr(self.turn, "topic_anchor"):
+                topic_anchor = self.turn.topic_anchor
+            elif hasattr(self.ctx, "topic_anchors"):
+                topic_anchor = self.ctx.topic_anchors.get(self.turn.session_id)
+
+            req.topic_anchor = topic_anchor
+            topic_directive = ""
+            if topic_anchor and hasattr(topic_anchor, "render_prompt_directive"):
+                topic_directive = topic_anchor.render_prompt_directive()
+
             system_prompt = user_anchor + (self.agent.system_prompt or "")
+            if topic_directive:
+                system_prompt = system_prompt + "\n" + topic_directive
+
             req.messages = ([{"role": "system",
                               "content": system_prompt}]
                             + self.log.derive_messages(self.turn.session_id,

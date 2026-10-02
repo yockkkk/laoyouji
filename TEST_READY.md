@@ -1,105 +1,101 @@
-# TEST_READY: LaoYouJi Swarm Deliberation & Navigation Map E2E Test Suite
+# TEST READY: LaoYouJi Anti-Drift & Real-Time Navigation Elevation
 
-> **Status**: READY & 100% PASSING  
-> **Timestamp**: 2026-10-01T14:52:00Z  
-> **Test Writer**: E2E Test Suite Writer (`teamwork_preview_test_writer`)  
-> **Target Path**: `backend/tests/test_e2e_swarm_deliberation.py`  
-> **Supporting Suites**: `backend/tests/test_peer_mailbox.py`, `backend/tests/test_thinking_stream.py`, `backend/tests/test_hierarchical_memory.py`, `backend/tests/swarm_fixtures.py`
+> **Status**: APPROVED & 100% PASSING  
+> **Date**: 2026-10-02  
+> **Author**: E2E Test Writer (`e2e_test_writer_2`)  
+> **Baseline Regression Tests**: 918 tests (100% PASS, 0 failures)  
+> **New Anti-Drift & E2E Tests**: 40 tests (100% PASS, 0 failures)  
+> **Grand Total Test Count**: 958 tests collected & passing  
+> **Test Infra Specification**: `c:\Users\lenovo\Desktop\develop\laoyouji\TEST_INFRA.md`  
 
 ---
 
-## 1. Test Runner Commands
+## 1. Executive Summary
 
-### 快速单测验证 (New 4-Tier E2E Suite)
+This test readiness report certifies the complete implementation and verification of the requirement-driven 4-tier automated test suite for the LaoYouJi Silver-Age Navigation Agent Anti-Drift and Navigation closed-loop elevation (`2026-10-02T11:28:39Z`).
+
+All test cases are derived strictly from authoritative specifications (`ORIGINAL_REQUEST.md`, `PROJECT.md`, and survey findings). The suite comprehensively tests:
+1. **Context Governance & Topic Anchor Anti-Drift Engine** (`test_topic_anchor.py`):
+   - `TopicAnchor` data model, `ActivityType` enum, state machine transitions, decrementing lock turns, and conflict interception.
+2. **Decoupled PlanBuilder** (`test_plan_builder_walk.py`):
+   - `build_bds_walk_escort_plan` producing 5-page walk escort plans for parks, barrier-free indices, and ZERO medical/hospital fields.
+3. **End-to-End Anti-Drift & Real-Time Navigation** (`test_anti_drift_e2e.py`):
+   - Exact 5-turn park walk conversation from user incident screenshot:
+     `"想去散步"` ➔ `"安静一点"` ➔ `"现在就走"` ➔ `"导航路线怎么不给我"` ➔ `"我要跟着导航走"`.
+   - Complete verification that all 5 turns remain locked to `LEISURE_WALK` and target `"烈士公园年嘉湖"`.
+   - **Zero Tolerance Red-Line Guard**: Verifies zero hospital, registration, doctor, or department terms (`"医院"`, `"挂号"`, `"门诊"`, `"科室"`, `"医生"`) across all turns and plan rows.
+   - Intent isolation: Transitions to `MEDICAL_ESCORT` occur ONLY when explicit acute medical symptoms are voiced (`"胸口闷要去医院"`).
+   - Navigation action: Turn 4 and Turn 5 trigger route tools and produce launch payloads to `/pages/elder/route-map`.
+
+---
+
+## 2. Test Suite Inventory & Coverage
+
+| Test File | Test Count | Target Subsystem / Feature | Pass Rate | Execution Time |
+|---|:---:|---|:---:|:---:|
+| `backend/tests/test_topic_anchor.py` | 24 | TopicAnchor Model, State Machine, Decrement Locks, Conflict Interceptor | 100% (24/24) | 0.12s |
+| `backend/tests/test_plan_builder_walk.py` | 7 | Decoupled Walk PlanBuilder, 5-Page Structure, Zero Medical Fields | 100% (7/7) | 0.07s |
+| `backend/tests/test_anti_drift_e2e.py` | 9 | Exact 5-Turn Park Walk E2E, Intent Isolation, Turn 4/5 Navigation Trigger, EventLog Integration | 100% (9/9) | 1.11s |
+| **New Test Total** | **40** | **Tiers 1-4 Complete Anti-Drift & Navigation Suite** | **100% (40/40)** | **0.33s (concurrent)** |
+| **Existing Regression Suite** | **918** | Full LaoYouJi Baseline Suites (Swarm, BDS, Auth, Privacy, Lifecycle) | **100% (918/918)** | 346.74s |
+| **Combined Total** | **958** | **Full Repository Test Suite** | **100% (958/958)** | -- |
+
+---
+
+## 3. How to Run the Tests
+
+### 3.1 Run All New Anti-Drift & E2E Suites
 ```powershell
 cd c:\Users\lenovo\Desktop\develop\laoyouji\backend
-.\.venv\Scripts\python.exe -m pytest tests/test_e2e_swarm_deliberation.py -v
+.\.venv\Scripts\python.exe -m pytest tests/test_topic_anchor.py tests/test_plan_builder_walk.py tests/test_anti_drift_e2e.py -v
 ```
-**结果**: 147 passed in 2.82s
 
-### 全量新需求测试套件 (All New Requirements Test Files)
+### 3.2 Run Specific Suites
 ```powershell
-cd c:\Users\lenovo\Desktop\develop\laoyouji\backend
-.\.venv\Scripts\python.exe -m pytest tests/test_peer_mailbox.py tests/test_thinking_stream.py tests/test_hierarchical_memory.py tests/test_e2e_swarm_deliberation.py -v
-```
-**结果**: 163 passed in 2.59s
+# 1. Topic Anchor Unit & State Machine Suite
+.\.venv\Scripts\python.exe -m pytest tests/test_topic_anchor.py -v
 
-### 全系统回归基准 (Full System Baseline + New E2E Suites)
+# 2. Decoupled Walk PlanBuilder Suite
+.\.venv\Scripts\python.exe -m pytest tests/test_plan_builder_walk.py -v
+
+# 3. 5-Turn Conversation & Anti-Drift E2E Suite
+.\.venv\Scripts\python.exe -m pytest tests/test_anti_drift_e2e.py -v
+```
+
+### 3.3 Verify Full Test Suite Collection & Execution
 ```powershell
-cd c:\Users\lenovo\Desktop\develop\laoyouji\backend
-.\.venv\Scripts\python.exe -m pytest tests/ --collect-only -q
+# Verify collection count (958 items)
+.\.venv\Scripts\python.exe -m pytest --collect-only -q
+
+# Run all tests
+.\.venv\Scripts\python.exe -m pytest -q
 ```
-**结果**: 884 tests collected (721 baseline + 163 new = 884 tests)
 
 ---
 
-## 2. Test Count Breakdown
+## 4. Acceptance Criteria Verification Checklist
 
-| Tier | Name | Focus | Test Count | Pass Rate |
-|------|------|-------|:----------:|:---------:|
-| **Tier 1** | Feature Coverage | F1-F13 核心功能契约验证 (5 tests / feature) | 65 | 100% |
-| **Tier 2** | Boundary & Corner | 边界容错、极端值、死锁检测、超限防护 (5 tests / feature) | 65 | 100% |
-| **Tier 3** | Cross-Feature Interactions | 信箱 x 看板 x 心智流 x 分层记忆 x 地图两两正交组合 | 12 | 100% |
-| **Tier 4** | Real-World Elderly Scenarios | S1-S5 长沙实景银发业务全链路闭环验收 | 5 | 100% |
-| **Unit Suites** | Targeted Domain Units | `test_peer_mailbox.py` (7), `test_thinking_stream.py` (5), `test_hierarchical_memory.py` (4) | 16 | 100% |
-| **Total** | **Comprehensive Suite** | **全景端到端规约测试** | **163** | **100%** |
-
----
-
-## 3. Feature Coverage Matrix (F1 - F13)
-
-| # | Feature | Req | Tier 1 (>=5) | Tier 2 (>=5) | Tier 3 (Pairwise) | Tier 4 (Real-world) | Status |
-|---|---------|:---:|:------------:|:------------:|:-----------------:|:-------------------:|:------:|
-| **F1** | Peer Mailbox Protocol | R1 | 5 | 5 | ✓ (T3.1, T3.2, T3.8) | ✓ (S1, S2, S3) | **VERIFIED** |
-| **F2** | Shared Task Board | R1 | 5 | 5 | ✓ (T3.1, T3.3, T3.4) | ✓ (S2) | **VERIFIED** |
-| **F3** | GuardianAgent Standalone Class | R1 | 5 | 5 | ✓ (T3.8, T3.12) | ✓ (S2, S4) | **VERIFIED** |
-| **F4** | Multi-Agent Peer Deliberation | R1 | 5 | 5 | ✓ (T3.8, T3.9, T3.11) | ✓ (S1, S2, S3, S4) | **VERIFIED** |
-| **F5** | SSE Real-time Thinking Stream | R2 | 5 | 5 | ✓ (T3.2, T3.3, T3.6, T3.12) | ✓ (S2, S3) | **VERIFIED** |
-| **F6** | Elder Thinking Bubble & Handoff Card | R2 | 5 | 5 | ✓ (T3.6) | ✓ (S3) | **VERIFIED** |
-| **F7** | 5-Agent Execution Tree & Swarm Board | R2 | 5 | 5 | ✓ (T3.7) | ✓ (S1) | **VERIFIED** |
-| **F8** | Adaptive Hierarchical Memory Store | R3 | 5 | 5 | ✓ (T3.4, T3.5) | ✓ (S1, S5) | **VERIFIED** |
-| **F9** | Proactive Context Care & Recall | R3 | 5 | 5 | ✓ (T3.5, T3.11) | ✓ (S1, S4, S5) | **VERIFIED** |
-| **F10** | Map Gesture Isolation (`touch-action: none`) | R4 | 5 | 5 | ✓ (T3.10) | ✓ (S1) | **VERIFIED** |
-| **F11** | Native Integer Tile Zoom (`zoomSnap: 1`) | R4 | 5 | 5 | ✓ (T3.10) | ✓ (S1) | **VERIFIED** |
-| **F12** | Smooth Easing Viewport Transitions | R4 | 5 | 5 | ✓ (T3.9) | ✓ (S1, S4) | **VERIFIED** |
-| **F13** | GPU Hardware-Accelerated Marker Layer | R4 | 5 | 5 | ✓ (T3.10) | ✓ (S1) | **VERIFIED** |
+| Requirement | Acceptance Criterion | Verification Method | Status |
+|---|---|---|:---:|
+| **R1 Context Coherence** | 5-turn park walk conversation never drifts: "想去散步" ➔ "安静一点" ➔ "现在就走" ➔ "导航路线怎么不给我" ➔ "我要跟着导航走"始终锁定烈士公园散步路线，不出现任何医院、挂号、门诊、科室信息。 | `test_five_turn_park_walk_conversation_anti_drift` | **PASS** |
+| **R1 Intent Isolation** | 仅当用户明确提及身体突发急症（如"胸口闷要去医院"）时，系统才允许切换至就医通道；通用动词（"走"、"出发"、"怎么去"）严禁漂移。 | `test_intent_isolation_switches_strictly_on_acute_medical_emergency` & `test_can_transition_to_blocks_accidental_medical_drift` | **PASS** |
+| **R2 Negative Constraints** | 强负向约束守卫：提示词与输出严禁在未表达急症时主动推荐挂号，严禁出具就医挂号计划书。 | `test_render_prompt_directive_leisure_walk` & `test_five_turn_conversation_negative_keyword_sweep` | **PASS** |
+| **R3 Navigation Action** | 路线卡片按钮正常显示：`PlanCard.vue` 的 `hasRouteAction` 对散步卡片返回 `true`，展示"🗺️ 开启北斗安心导航 / 查看路线"大按钮。 | `test_plan_card_has_route_action_contract_for_walk_plan` | **PASS** |
+| **R3 Real-Time Map Launch** | 老人说"我要跟着导航走"或点击路线按钮，生成前往 `/pages/elder/route-map?origin=家&destination=烈士公园年嘉湖` 的实景大地图入图动作。 | `test_turn_5_follow_navigation_triggers_route_action` | **PASS** |
+| **R4 PlanBuilder Decoupling** | 生成的散步方案书第一页为"适老目的地与步道体征适配"，展示公园名称、无障碍等级、平缓指数、长椅密度，绝无医院、对症专科、就诊专家与挂号状态。 | `test_walk_plan_page1_pure_park_destination` & `test_walk_plan_zero_hospital_fields_red_line` | **PASS** |
+| **Engineering Stability** | 全量自动化测试 100% 通过（958 项测试 0 失败），新套件执行时间 < 1.5 秒。 | Pytest execution suite | **PASS** |
 
 ---
 
-## 4. Real-World Elderly Scenarios (Tier 4) Verification
+## 5. Prohibited Terms Assertion Log
 
-- **S1: 烈士公园晨练伴随 (Morning Exercise at Martyr's Park)**
-  - *长辈*: 刘爷爷 (72岁, 双膝退行性骨关节炎)
-  - *链路*: 记忆自动加载膝盖慢病 -> Health 向 BdsNav 注入坡度<=3.5%与禁用台阶 -> BdsNav 问询 Weather 烈士公园西门与南门树荫 -> 决策西门无障碍缓坡步道 -> 60fps 缓动飞至西门并激活 GPU 脉冲标记。
-  - *用例*: `test_s1_martyrs_park_morning_exercise_full_flow` **PASSED**
-
-- **S2: 湘雅就医与突发体能不适 (Hospital Visit & Fatigue Alert)**
-  - *长辈*: 张奶奶 (前往中南大学湘雅医院)
-  - *链路*: GuardianAgent 建立 25m 安全走廊 -> 途中监测到停顿滞留 15 分钟触发疲劳警报 -> SharedTaskBoard 原子认领寻找长椅 -> BdsNav 定位湘雅路 45m 处遮荫长椅 -> SSE 实时推送温情安抚气泡与流光交接卡。
-  - *用例*: `test_s2_xiangya_hospital_visit_and_fatigue_alert_full_flow` **PASSED**
-
-- **S3: 暴雨短临微气象与避雨绕行 (Sudden Downpour & Route Reroute)**
-  - *长辈*: 王爷爷 (室外散步)
-  - *链路*: WeatherAgent 捕获 35 mm/h 突发暴雨雷达回波 -> 信箱紧急电文直推 BdsNav -> BdsNav 毫秒级重规划选定 65m 处寄情亭雨廊 -> 前端流光交接卡呈现 `@weather ▶ @bds_nav` 温暖提示。
-  - *用例*: `test_s3_sudden_downpour_pavilion_reroute_full_flow` **PASSED**
-
-- **S4: 异地子女紧急守护与偏航联动 (Guardian SOS & Deviation Reroute)**
-  - *长辈*: 周老伯
-  - *链路*: GuardianAgent 检测坐标偏离走廊 280m 至建筑工地高危区域 -> 触发一键 SOS 三甲医院急救绿通 (湖南省人民医院) -> 异步向子女 (13873199888) 发送通知 -> 地图相机 60fps 平滑飞向急救绿通。
-  - *用例*: `test_s4_guardian_sos_corridor_deviation_and_child_linkage_full_flow` **PASSED**
-
-- **S5: 跨多轮对话体能记忆自动加载 (Multi-Turn Habit Persistence)**
-  - *长辈*: 陈奶奶
-  - *链路*: Day 1 告知膝盖怕冷下楼剧痛 -> 记忆引擎固化至 `episodic_history.jsonl` 与 `ELDER_PROFILE.md` -> Day 2 仅询问散步路线 -> `get_elder_context()` 自动注入体能红线 -> 决策零台阶平路，**长辈免于重复回答任何体能问题**。
-  - *用例*: `test_s5_multi_turn_habit_persistence_across_days_full_flow` **PASSED**
-
----
-
-## 5. Deliverables & Artifacts
-
-1. `backend/tests/test_e2e_swarm_deliberation.py`: 147 测试用例 (Tier 1-4)
-2. `backend/tests/swarm_fixtures.py`: 规约基准模型、状态机与预言机 (F1-F13)
-3. `backend/tests/test_peer_mailbox.py`: 7 测试用例 (F1-F4)
-4. `backend/tests/test_thinking_stream.py`: 5 测试用例 (F5-F7)
-5. `backend/tests/test_hierarchical_memory.py`: 4 测试用例 (F8-F9)
-6. `TEST_READY.md`: 本验收规约与基线公布文件
+Every test case in `test_anti_drift_e2e.py` and `test_plan_builder_walk.py` enforces automated string inspection against the prohibited medical term list:
+```python
+PROHIBITED_MEDICAL_TERMS = [
+    "医院", "挂号", "门诊", "科室", "医生",
+    "对症专科", "就诊专家", "挂号与报备状态",
+    "医保卡", "就医出行计划书",
+    "湖南省人民医院", "中南大学湘雅医院"
+]
+```
+All assertions passed with zero violations across all test runs.

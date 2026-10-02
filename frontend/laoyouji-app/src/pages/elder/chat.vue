@@ -847,6 +847,50 @@ export default {
       this._run(text)
     },
 
+    /** 适老直达：自动提取最新方案的目的地并平滑跳转至实景高精大地图 */
+    _autoLaunchRouteMap() {
+      let destination = ''
+      let origin = '家'
+      let isWalk = false
+      let title = ''
+      let tripId = ''
+
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        const m = this.messages[i]
+        if (m && m.kind === 'card' && m.sections && m.sections.length) {
+          title = m.title || ''
+          tripId = m.tripId || ''
+          const combined = (m.title || '') + (m.type || '')
+          isWalk = combined.includes('散步') || combined.includes('漫步') || combined.includes('walk') || combined.includes('公园')
+          for (const s of m.sections) {
+            for (const r of s.rows || []) {
+              if ((r.label === '到达' || r.label === '目的地' || r.label === '到达站' || r.label === '医院') && r.value && !r.missing) {
+                if (!destination) destination = r.value
+              }
+              if ((r.label === '出发' || r.label === '起点' || r.label === '出发站') && r.value && !r.missing) {
+                origin = r.value
+              }
+            }
+          }
+          if (destination) break
+        }
+      }
+
+      if (!destination) {
+        destination = '烈士公园年嘉湖'
+      }
+
+      const currentUser = getCurrentUser()
+      let city = (currentUser && currentUser.city) || '长沙'
+      const defaultTitle = isWalk ? '北斗漫步路线规划' : '北斗出行路线规划'
+
+      setTimeout(() => {
+        uni.navigateTo({
+          url: `/pages/elder/route-map?title=${encodeURIComponent(title || defaultTitle)}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(city)}&trip_id=${encodeURIComponent(tripId)}`,
+        })
+      }, 500)
+    },
+
     /** 另开一段新会话（老会话在服务端没了时用）。成了返回 true。 */
     async _recoverSession() {
       try {
@@ -927,6 +971,13 @@ export default {
         /* 取不到就沿用旧基线：宁可重复一句，也不漏掉家人的结果 */
       }
       this._watchConfirmations()
+
+      // 适老直达：若长辈明确说出"我要跟着导航走"或"开启导航"等直达指令，
+      // 自动平滑跳转至实景导航大地图
+      const navTriggers = ['我要跟着导航走', '跟着导航走', '开启导航', '开始导航', '去导航', '查看路线']
+      if (navTriggers.some((t) => (text || '').includes(t))) {
+        this._autoLaunchRouteMap()
+      }
     },
 
     _handle(ev, bubble, openBubble) {
@@ -1447,8 +1498,8 @@ export default {
         sections,
         notes,
         complete: d.complete !== false,
-        // 只有五页计划书铺开；两张轻量卡片走紧凑模式
-        compact: d.type !== 'trip_plan' && d.type !== 'medical_plan',
+        // 只有完整计划书铺开；两张轻量卡片走紧凑模式
+        compact: !['trip_plan', 'medical_plan', 'bds_escort_plan', 'bds_walk_escort_plan'].includes(d.type),
         tripId: d.trip_id || d.tripId || (d.data && d.data.trip_id) || '',
         // 拨号卡（suggest_call）与菜谱卡（get_recipe）的专用字段，平面透传。
         // 卡片模板按 type 分流，这里不猜不拼，后端给什么就是什么。

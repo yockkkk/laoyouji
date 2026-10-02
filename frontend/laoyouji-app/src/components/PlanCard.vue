@@ -38,7 +38,7 @@
     <view v-if="hasRouteAction" class="route-action-box" @tap.stop="goToRouteMap">
       <button class="btn-route-action" hover-class="btn-route-action-active">
         <text class="route-icon">{{ isChild ? '🛡️' : '🗺️' }}</text>
-        <text class="route-text">{{ isChild ? '查看长辈守护路线' : '查看高德路线规划' }}</text>
+        <text class="route-text">{{ isChild ? '查看长辈守护路线' : '开启北斗安心导航 / 查看路线' }}</text>
         <text class="route-badge">{{ isChild ? '北斗守护 ›' : '适老专线 ›' }}</text>
       </button>
     </view>
@@ -106,16 +106,18 @@ export default {
     hasRouteAction() {
       if (this.compact) return false
       const str = (this.title || '') + JSON.stringify(this.sections || [])
-      // 判据是"这份计划书讲的是不是一次要去某处的就医/出行"，与**哪座城市无关** ——
-      // 康乐在哪个城市都该工作，按"标题里有没有北京/上海/南京"来开关按钮，
-      // 等于把这个产品焊死在演示用的那座城上。
-      // 原来的 '车票' 也一并去掉：那是已砍掉的城际车票页留下的词，现在没有计划书
-      // 会提到它（对照 backend/app/agents/plan_builder.py 的四页）。
       return (
+        str.includes('散步') ||
+        str.includes('漫步') ||
+        str.includes('公园') ||
+        str.includes('绿道') ||
+        str.includes('环线') ||
         str.includes('就医') ||
         str.includes('出行') ||
         str.includes('路线') ||
-        str.includes('医院')
+        str.includes('医院') ||
+        str.includes('bds_walk_escort_plan') ||
+        str.includes('bds_escort_plan')
       )
     },
     missingCount() {
@@ -179,13 +181,9 @@ export default {
         destination = hospital
       }
 
-      // 原来这里有一串"标题里出现哪个城市名就凑哪家医院"的推断，最后兜底写死
-      // "北京积水潭医院"。那是个真 bug：计划书里根本没给出医院时（比如挂号那步
-      // 还没跑），点"查看路线"会把老人导去一个**本市产品够不到的城市**，而且
-      // 是静默的 —— 屏幕上会显示一条去北京的路线，看起来像真的。
       // 拿不到目的地就不跳转：说清楚缺了什么，让老人回到能补上它的那一步。
       if (!destination) {
-        uni.showToast({ title: '这份计划书里还没有目的地，先让康乐挂好号再来看路线', icon: 'none' })
+        uni.showToast({ title: '这份计划书里还没有目的地，先让康乐规划好再来看路线', icon: 'none' })
         return
       }
 
@@ -208,8 +206,11 @@ export default {
       }
       city = city || '长沙'
 
+      const isWalk = (this.title || '').includes('散步') || (this.title || '').includes('漫步') || (this.title || '').includes('公园')
+      const defaultTitle = isWalk ? '北斗漫步路线规划' : '就医出行路线规划'
+
       uni.navigateTo({
-        url: `/pages/elder/route-map?title=${encodeURIComponent(this.title || '就医出行路线规划')}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(city)}&trip_id=${encodeURIComponent(this.tripId || '')}`,
+        url: `/pages/elder/route-map?title=${encodeURIComponent(this.title || defaultTitle)}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(city)}&trip_id=${encodeURIComponent(this.tripId || '')}`,
       })
     },
   },

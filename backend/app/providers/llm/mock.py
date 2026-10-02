@@ -71,6 +71,10 @@ class MockLLMProvider(LLMProvider):
 
         if "delegate" in tool_names:                 # 总智能体
             return self._main(user_text, transcript)
+        if "plan_bds_elder_route" in tool_names:     # 北斗导航（适老微地形）
+            return self._bds_nav(user_text, transcript)
+        if "get_bds_weather_escort" in tool_names:   # 气象感知
+            return self._weather(user_text, transcript)
         if "plan_route" in tool_names:               # 银发导航（本地出行）
             return self._travel(user_text, transcript)
         if "register_appointment" in tool_names:     # 安康助手（挂号）
@@ -98,8 +102,60 @@ class MockLLMProvider(LLMProvider):
     # ---------------------------------------------------------------- 总智能体
 
     def _main(self, text: str, transcript: str) -> LLMResponse:
-        """本地就医旗舰调度：挂号 ‖ 天气 并行 → 路线（依赖挂到的医院）→ 计划书。"""
+        """总智能体调度：北斗适老散步护航 ‖ 本地就近就医。"""
         waves = self._ran(transcript, "delegate")
+
+        # 场景 S：北斗适老散步 / 公园漫步护航闭环（拦截在就医之前，防漂移）
+        if _is_walk_opening(text) and "烈士公园" not in text and "年嘉湖" not in text and "安静" not in text:
+            return LLMResponse(
+                content="大爷，心情不好出门走走最散心了。您是想找个有树荫、安静点的公园湖边，还是就在附近平坦的步道走走？跟我说说，我帮您选个好地方。"
+            )
+
+        if _wants_bds_walk(text, transcript):
+            dest = _walk_destination_from(text, transcript)
+            if waves == 0:
+                return LLMResponse(
+                    content=f"好嘞，给您规划去{dest}的散步路线。我这就让北斗导航查零台阶平缓步道，气象感知查林荫与舒适度。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": f"北斗规划：从家到{dest}零台阶平缓步道", "status": "in_progress"},
+                                {"content": "微气象感知：查长沙林荫遮阳与舒适度", "status": "in_progress"},
+                                {"content": "生成北斗适老漫步护航方案书", "status": "pending"},
+                            ]
+                        }),
+                        ToolCallReq(id=self._cid(), name="delegate", arguments={
+                            "tasks": [
+                                {"agent": "bds_nav", "label": "北斗步道规划",
+                                 "instruction": f"规划老人在长沙从家到{dest}的适老微地形平缓步道，要求避开台阶陡坡、标记沿途休憩长椅。"},
+                                {"agent": "weather", "label": "林荫气象感知",
+                                 "instruction": f"查长沙今天前往{dest}的林荫遮阳指数与微气候防护提示。"},
+                            ]
+                        }),
+                    ],
+                )
+            if not self._ran(transcript, "compose_deliverable"):
+                return LLMResponse(
+                    content="步道和天气都查好啦，给您做好五页漫步方案书。",
+                    tool_calls=[
+                        ToolCallReq(id=self._cid(), name="todo_write", arguments={
+                            "todos": [
+                                {"content": f"北斗规划：从家到{dest}零台阶平缓步道", "status": "completed"},
+                                {"content": "微气象感知：查长沙林荫遮阳与舒适度", "status": "completed"},
+                                {"content": "生成北斗适老漫步护航方案书", "status": "in_progress"},
+                            ]
+                        }),
+                        ToolCallReq(id=self._cid(), name="compose_deliverable", arguments={
+                            "kind": "bds_walk_escort_plan",
+                            "destination": dest,
+                            "city": "长沙",
+                        }),
+                    ],
+                )
+            return LLMResponse(
+                content=f"《北斗适老散步护航方案书》给您做好啦，一共五页，去{dest}全程零台阶、树荫多、长椅足。"
+                        f"您可以点击下方【🗺️ 开启北斗安心导航 / 查看路线】大按钮，就能跟着高精地图安心走，行程已自动知会子女守护。"
+            )
 
         # 场景 A：本地就近就医闭环（号源 + 本地路线 + 天气 + 四页就医出行计划书）
         if _wants_medical_trip(text):
@@ -274,6 +330,38 @@ class MockLLMProvider(LLMProvider):
 
         return LLMResponse(content="我在呢。您可以跟我说：想看病挂号、出门怎么走，"
                                    "或者想找人一起下棋遛弯，我都能帮您张罗。")
+
+    # ---------------------------------------------------------------- 北斗导航 & 气象感知
+
+    def _bds_nav(self, instruction: str, transcript: str) -> LLMResponse:
+        """北斗导航：规划适老平缓步道。"""
+        dest = _walk_destination_from(instruction, transcript)
+        if not self._ran(transcript, "plan_bds_elder_route"):
+            return LLMResponse(
+                content=f"我这就通过北斗高精定位为您规划去{dest}的平缓无台阶步道。",
+                tool_calls=[
+                    ToolCallReq(id=self._cid(), name="plan_bds_elder_route", arguments={
+                        "destination": dest,
+                        "origin": [112.9862, 28.2045],
+                        "health_conditions": ["膝关节退行性病变", "避开台阶"],
+                    }),
+                ],
+            )
+        return LLMResponse(content=f"已为您规划好前往{dest}的北斗适老平缓绿道，全程零台阶。")
+
+    def _weather(self, instruction: str, transcript: str) -> LLMResponse:
+        """气象感知：查林荫遮阳与出行天气。"""
+        if not self._ran(transcript, "get_bds_weather_escort"):
+            return LLMResponse(
+                content="我来查查今天的微气象与林荫遮蔽情况。",
+                tool_calls=[
+                    ToolCallReq(id=self._cid(), name="get_bds_weather_escort", arguments={
+                        "city": "长沙",
+                        "date": "today",
+                    }),
+                ],
+            )
+        return LLMResponse(content="微气象已评估完成，今日林荫遮阳充足，适宜漫步。")
 
     # ---------------------------------------------------------------- 银发导航
 
@@ -500,6 +588,55 @@ class MockLLMProvider(LLMProvider):
 
 
 # ---------------------------------------------------------------------- 意图词
+
+def _is_walk_opening(text: str) -> bool:
+    """老人初步表达散步想法（未确定具体公园/目的地）。"""
+    if _wants_medical_trip(text):
+        return False
+    if text.strip() == "陪我散散步":
+        return False
+    return any(k in text for k in ("想去散步", "想散步", "想出门散步", "想走走", "去散散心", "想去散散心", "心情有点不好，想去散步", "心情有点不好"))
+
+
+def _wants_bds_walk(text: str, transcript: str) -> bool:
+    """是否进入北斗高精适老散步/公园漫步护航闭环。"""
+    if _wants_medical_trip(text):
+        return False
+    if text.strip() == "陪我散散步":
+        return False
+
+    bds_parks = ("烈士公园", "年嘉湖", "橘子洲", "岳麓山", "天心阁", "梅溪湖", "洋湖", "松雅湖", "植物园")
+    if any(p in text for p in bds_parks):
+        return True
+
+    # 历史中是否已有散步/公园背景
+    has_walk_context = any(w in transcript for w in ("散步", "遛弯", "公园", "年嘉湖", "烈士公园", "橘子洲", "走走"))
+    if has_walk_context:
+        movement_or_walk_words = (
+            "安静", "清静", "树荫", "走", "现在就走", "现在就走啊", "导航", "路线", "怎么走",
+            "带路", "我要跟着导航走", "导航路线怎么不给我", "出发", "给个路线", "把路线给我",
+            "跟着走", "怎么去"
+        )
+        if any(w in text for w in movement_or_walk_words):
+            return True
+
+    if ("散步" in text or "遛弯" in text) and any(w in text for w in ("路线", "导航", "怎么走", "怎么去", "方案", "护航", "湖南", "长沙", "公园", "安静")):
+        return True
+
+    return False
+
+
+def _walk_destination_from(text: str, transcript: str) -> str:
+    """从当前文本或历史会话中提取散步目标景点。"""
+    combined = f"{text}\n{transcript}"
+    if "橘子洲" in combined:
+        return "橘子洲头问天台"
+    if "岳麓山" in combined or "爱晚亭" in combined:
+        return "岳麓山爱晚亭"
+    if "年嘉湖" in combined or "烈士公园" in combined:
+        return "烈士公园年嘉湖"
+    return "烈士公园年嘉湖"
+
 
 def _wants_medical_trip(text: str) -> bool:
     """就医出行：**明确要看病、要挂号**（本地就近，不再区分本地/跨城）。

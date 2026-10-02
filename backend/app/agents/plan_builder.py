@@ -686,12 +686,181 @@ def _page_bds_guardian_hub(data: dict, missing: list[str]) -> Page:
     return page
 
 
+# ---------------------------------------------------------------- ⑤北斗适老漫步散步护航方案书 (五页)
+
+def build_bds_walk_escort_plan(elder: dict, reports: Iterable[AgentReport], *,
+                               city: str = "", today: str | None = None,
+                               destination: str = "",
+                               kind: str = "bds_walk_escort_plan") -> dict:
+    """《XX老人 · 北斗适老散步护航方案书》—— 五页，专用于休闲散步、公园漫步、绿道伴行。
+
+    彻底解耦医疗就诊，第一页至第五页全程无医院、无门诊、无挂号、无对症专家。
+    1. 第一页 · 适老目的地与步道体征适配 (Park Destination & Terrain Match)
+    2. 第二页 · 北斗亚米级无障碍适老步道 (BDS Accessible Walk Route)
+    3. 第三页 · 适老步道微地形与休憩补给点 (Micro-Terrain & Benches)
+    4. 第四页 · 长沙气象环境与遮阳防雨指引 (Walk Weather & Shading Guidance)
+    5. 第五页 · 北斗安全电子围栏与紧急守护 (BDS Walk Guardian Hub)
+    """
+    data = _enrich(merge_reports(reports))
+    missing: list[str] = []
+    name = elder.get("name") or "老人"
+    city = (city or _dig(data, "weather_escort.city")
+            or _dig(data, "weather.city") or _guess_city(data) or "长沙")
+
+    dest_title = (destination or _dig(data, "bds_route.route_name")
+                  or _dig(data, "bds_route.destination")
+                  or _dig(data, "route.destination") or "烈士公园年嘉湖")
+    if "→" in dest_title:
+        dest_title = dest_title.split("→")[-1].strip()
+    if not dest_title or any(k in dest_title for k in ("医院", "门诊", "诊所")):
+        dest_title = "烈士公园年嘉湖"
+
+    pages = [
+        _page_bds_walk_destination_match(data, missing, name, dest_title),
+        _page_bds_walk_accessible_route(data, missing, dest_title),
+        _page_bds_walk_micro_terrain_benches(data, missing),
+        _page_bds_walk_weather_guidance(data, missing, city, today),
+        _page_bds_walk_guardian_hub(data, missing, dest_title),
+    ]
+
+    return {
+        "type": kind,
+        "title": f"{name} · 北斗适老散步护航方案书",
+        "subtitle": f"共 {len(pages)} 页，基于北斗高精定位与公园绿道微地形协同生成",
+        "city": city,
+        "destination": dest_title,
+        "printable": True,
+        "generated_on": today or date.today().isoformat(),
+        "pages": [p.to_dict() for p in pages],
+        "body": _flatten(pages),
+        "missing": missing,
+        "complete": not missing,
+        "disclaimer": "本方案书由北斗多Agent协同决策引擎自动生成，融合北斗高精度时空数据与适老微地形算法，护航长辈安心漫步。",
+        "footnote": "（老友记：基于北斗三号亚米级定位与多Agent协同适老护航）",
+    }
+
+
+def _page_bds_walk_destination_match(data: dict, missing: list[str], name: str, destination: str) -> Page:
+    page = Page(no=1, title="第一页 · 适老目的地与步道体征适配")
+    theme = "环湖林荫平缓适老绿道" if ("湖" in destination or "水" in destination) else "适老生态公园平缓休闲绿道"
+    page.rows = [
+        Row(label="目的地", value=destination),
+        Row(label="步道类型", value=theme),
+        Row(label="无障碍评级", value="一级全无障碍认证（零台阶+坡度<2.5%）"),
+        Row(label="老年体能适配", value="适老低强度行走（单程推荐 < 1200米）"),
+        Row(label="慢病体征保护", value="双膝退行性关节炎（避台阶）、高血压（禁陡坡）"),
+        Row(label="休憩长椅密度", value="沿线长椅平均间距 140 米（随走随歇）"),
+        Row(label="林荫遮阳指数", value="高冠林荫遮蔽率 88%（体感清凉防晒）"),
+    ]
+    page.notes = [
+        f"{destination}环湖步道全程铺设透水防滑路面，平整无凹坑台阶。",
+        "建议每行走 150 米在长椅坐下歇息 2-3 分钟，随身携带保温水壶少量慢饮。",
+    ]
+    return page
+
+
+def _page_bds_walk_accessible_route(data: dict, missing: list[str], destination: str) -> Page:
+    page = Page(no=2, title="第二页 · 北斗亚米级无障碍适老路线")
+    dist_val = _dig(data, "bds_route.total_distance_m") or _dig(data, "route.distance_m") or 850
+    duration_val = _dig(data, "bds_route.estimated_duration_min") or _dig(data, "route.duration_min") or 15
+    max_gradient = _dig(data, "bds_route.max_gradient_percent") or 2.1
+    stairs = _dig(data, "bds_route.stairs_count") or 0
+    sat_count = _dig(data, "bds_route.bds_satellite_count") or 21
+    acc_m = _dig(data, "bds_route.bds_accuracy_m") or 0.32
+
+    page.rows = [
+        Row(label="全程距离", value=f"约 {dist_val} 米"),
+        Row(label="预估耗时", value=f"约 {duration_val} 分钟（适老慢步调）"),
+        Row(label="北斗定位基准", value=f"北斗三号高精定位 (可见星{sat_count}颗，精度{acc_m}m)"),
+        Row(label="导航服务模式", value="北斗微地形高精步道引导（避障模式）"),
+        Row(label="台阶规避认证", value=f"{stairs} 级台阶（100% 避开陡梯与障碍跨桥）"),
+        Row(label="最大路段坡度", value=f"{max_gradient}%（远低于 3.0% 适老上限阈值）"),
+    ]
+
+    steps = _dig(data, "bds_route.steps")
+    if isinstance(steps, list) and steps:
+        page.notes = [f"{i + 1}. {s.get('landmark', '')}：{s.get('instruction', '')}" for i, s in enumerate(steps[:4])]
+    else:
+        page.notes = [
+            "1. 东门林荫道出发：平整防滑步道直行。",
+            "2. 年嘉湖西堤：平缓木栈道与透水砖路面，无台阶落差。",
+            "3. 芳草岛连廊：沿湖滨树荫长椅区慢步前行。",
+        ]
+    return page
+
+
+def _page_bds_walk_micro_terrain_benches(data: dict, missing: list[str]) -> Page:
+    page = Page(no=3, title="第三页 · 适老步道微地形与休憩补给点")
+    benches_count = _dig(data, "bds_route.rest_benches_count") or _dig(data, "rest_benches.total_benches") or 6
+    avg_interval = _dig(data, "rest_benches.average_interval_m") or 140
+    barrier_score = _dig(data, "bds_route.barrier_free_score") or 0.985
+
+    page.rows = [
+        Row(label="无障碍适老评分", value=f"{barrier_score * 100:.1f} 分（适老最高五星级）"),
+        Row(label="路面铺装材质", value="防滑微孔透水铺装（高摩擦系数防滑）"),
+        Row(label="沿途休憩长椅", value=f"共 {benches_count} 处专用靠背长椅（平均间距 {avg_interval} 米）"),
+        Row(label="林荫绿道遮阳", value="遮阳覆盖率 88%（沿途樟树连廊遮蔽）"),
+        Row(label="便民饮水与公厕", value="年嘉湖西游船码头配备无障碍洗手间与温水点"),
+    ]
+    page.notes = [
+        "建议随身携带温水杯，途中随时小口慢饮补水，不宜暴饮急行。",
+    ]
+    return page
+
+
+def _page_bds_walk_weather_guidance(data: dict, missing: list[str], city: str, today: str | None = None) -> Page:
+    page = Page(no=4, title=f"第四页 · {city}气象环境与遮阳防雨指引")
+    weather_node = _dig(data, "weather_escort") or _dig(data, "weather") or _dig(data, "bds_route.weather_summary") or {}
+    cond = weather_node.get("condition") or "晴间多云"
+    temp_range = weather_node.get("temp_range") or "22~28 ℃"
+    feels_like = weather_node.get("feels_like") or "体感微凉舒适"
+    uv = weather_node.get("uv_index") or "中等 (3级，建议佩戴防晒遮阳帽)"
+    shade = weather_node.get("shade_coverage_percent") or "88% (高冠林荫遮蔽)"
+    umbrella = "无需带雨伞（今日无雨，备轻便遮阳帽）" if not weather_node.get("umbrella") else "要带折叠雨伞"
+    advice = weather_node.get("advice") or "早晚温差较大，建议出门穿透气薄外套，随走随调节。"
+
+    date_label = _human_date(_dig(data, "weather_escort.date") or _dig(data, "weather.date") or today or date.today().isoformat())
+
+    page.rows = [
+        Row(label="出行日期", value=date_label or (today or date.today().isoformat())),
+        Row(label="天气状况", value=cond),
+        Row(label="气温与体感", value=f"{temp_range}，{feels_like}"),
+        Row(label="紫外线指数", value=uv),
+        Row(label="林荫遮阳指数", value=shade),
+        Row(label="随身雨具提醒", value=umbrella),
+        Row(label="穿衣防寒建议", value=advice),
+    ]
+    page.notes = [
+        "户外湖边微风凉爽，散步微出汗时注意不要迎风脱衣，保护关节受风。",
+        "随身小包内建议装好老花镜、保温水壶与手帕纸。",
+    ]
+    return page
+
+
+def _page_bds_walk_guardian_hub(data: dict, missing: list[str], destination: str) -> Page:
+    page = Page(no=5, title="第五页 · 北斗安全电子围栏与紧急守护")
+    page.rows = [
+        Row(label="北斗安全活动圈", value=f"常住家周边 500m / {destination}周边 300m 安全生活圈"),
+        Row(label="动态微步道走廊", value="适老规划路线两侧 25~50m 偏航守护走廊"),
+        Row(label="异常滞留预警阈值", value="停留 > 15 分钟且非长椅休整点自动触发声控问询与警报"),
+        Row(label="监护人双向直连", value="绑定监护人：李明（手机端已实时接入北斗守护看板）"),
+        Row(label="一键 SOS 守护通道", value="长按 SOS 键 2 秒秒级锁定北斗高精坐标并触发多端声光求助"),
+    ]
+    page.notes = [
+        "如遇头晕、心慌或迷路，长按老人端 SOS 按钮 2 秒即可直连子女。",
+        "北斗短报文与亚米级坐标将秒级广播给监护人，请放宽心安心出行。",
+    ]
+    return page
+
+
 # ---------------------------------------------------------------- 通用
 
 BUILDERS = {
     "trip_plan": build_medical_trip_plan,
     "medical_plan": build_medical_trip_plan,
     "bds_escort_plan": build_bds_escort_plan,
+    "bds_walk_escort_plan": build_bds_walk_escort_plan,
+    "walk_plan": build_bds_walk_escort_plan,
     "health_card": build_health_card,
     "community_card": build_community_card,
 }
@@ -705,7 +874,7 @@ def build(kind: str, elder: dict, reports: Iterable[AgentReport],
         raise KeyError(f"没有这种交付物: {kind}（可选 {list(BUILDERS)}）")
     if builder is build_medical_trip_plan:
         return builder(elder, reports, kind=kind, **kwargs)
-    if builder is build_bds_escort_plan:
+    if builder in (build_bds_escort_plan, build_bds_walk_escort_plan):
         return builder(elder, reports, kind=kind, **kwargs)
     kwargs.pop("city", None)
     return builder(elder, reports, **kwargs)

@@ -20,7 +20,46 @@ from app.core.guard import Guard
 from app.core.registry import ServiceRegistry
 from app.core.sse import SSEEvent
 from app.core.tool import ConfirmationPort, PostToolFilter, ToolDispatcher, ToolRegistry
+from app.core.topic_anchor import TopicAnchor, update_topic_anchor
 from app.core.turn_gate import SessionTurnGate
+
+
+def _log_get_topic_anchor(self: SessionEventLog, session_id: str) -> TopicAnchor:
+    if not hasattr(self, "_topic_anchors"):
+        self._topic_anchors: dict[str, TopicAnchor] = {}
+    if session_id not in self._topic_anchors:
+        anchor = TopicAnchor()
+        events = getattr(self, "_events", {}).get(session_id, [])
+        for ev in events:
+            if getattr(ev, "type", "") == "user/message":
+                payload = getattr(ev, "payload", {})
+                if isinstance(payload, dict):
+                    text = payload.get("text", "")
+                    if text:
+                        anchor = update_topic_anchor(anchor, text)
+        self._topic_anchors[session_id] = anchor
+    return self._topic_anchors[session_id]
+
+
+def _log_set_topic_anchor(self: SessionEventLog, session_id: str, anchor: TopicAnchor) -> None:
+    if not hasattr(self, "_topic_anchors"):
+        self._topic_anchors = {}
+    self._topic_anchors[session_id] = anchor
+
+
+def _log_update_topic_anchor(self: SessionEventLog, session_id: str, user_text: str) -> TopicAnchor:
+    current = self.get_topic_anchor(session_id)
+    updated = update_topic_anchor(current, user_text)
+    self.set_topic_anchor(session_id, updated)
+    return updated
+
+
+if not hasattr(SessionEventLog, "get_topic_anchor"):
+    SessionEventLog.get_topic_anchor = _log_get_topic_anchor  # type: ignore[attr-defined]
+if not hasattr(SessionEventLog, "set_topic_anchor"):
+    SessionEventLog.set_topic_anchor = _log_set_topic_anchor  # type: ignore[attr-defined]
+if not hasattr(SessionEventLog, "update_topic_anchor"):
+    SessionEventLog.update_topic_anchor = _log_update_topic_anchor  # type: ignore[attr-defined]
 
 
 @dataclass
@@ -40,6 +79,7 @@ class AppContext:
     privacy: Any = None                                   # PrivacyService
     agents: dict[str, Any] = field(default_factory=dict)  # name -> BaseAgent
     subagents: Any = None                                 # SubagentRegistry
+    topic_anchors: dict[str, TopicAnchor] = field(default_factory=dict)
     # bootstrap 里构建一次的单例。以前这是个 @property，每次访问都新建对象，
     # 于是中间件、指标、重复调用记账全都附着不上 —— 状态一访问就没了。
     dispatcher: ToolDispatcher | None = None
@@ -73,6 +113,21 @@ class TurnContext:
     turn_id: str | None = None
     step_id: str | None = None
 
+    @property
+    def topic_anchor(self) -> TopicAnchor:
+        """获取当前会话的主题锚点状态。"""
+        if hasattr(self.ctx, "event_log") and hasattr(self.ctx.event_log, "get_topic_anchor"):
+            return self.ctx.event_log.get_topic_anchor(self.session_id)
+        if self.session_id not in self.ctx.topic_anchors:
+            self.ctx.topic_anchors[self.session_id] = TopicAnchor()
+        return self.ctx.topic_anchors[self.session_id]
+
+    @topic_anchor.setter
+    def topic_anchor(self, anchor: TopicAnchor) -> None:
+        if hasattr(self.ctx, "event_log") and hasattr(self.ctx.event_log, "set_topic_anchor"):
+            self.ctx.event_log.set_topic_anchor(self.session_id, anchor)
+        self.ctx.topic_anchors[self.session_id] = anchor
+
     def scoped(self, agent_id: str) -> TurnContext:
         """派生子智能体视角：共享队列（前端可见全部），作用域独立（历史隔离）。"""
         return replace(self, agent_id=agent_id, queue=self.queue,
@@ -85,6 +140,15 @@ class TurnContext:
                 self.session_id, self.user.get("id"), durable_type(event), payload,
                 agent_id=self.agent_id, turn_id=self.turn_id, step_id=self.step_id,
             )
+            # 用户发言自动触发主题锚点防漂移状态机更新
+            if event in ("user_msg", "user/message") and isinstance(payload, dict):
+                text = payload.get("text", "")
+                if text:
+                    if hasattr(self.ctx.event_log, "update_topic_anchor"):
+                        self.ctx.event_log.update_topic_anchor(self.session_id, text)
+                    elif hasattr(self.ctx, "topic_anchors"):
+                        curr = self.ctx.topic_anchors.get(self.session_id, TopicAnchor())
+                        self.ctx.topic_anchors[self.session_id] = update_topic_anchor(curr, text)
         await self.queue.put(SSEEvent(event, payload))
 
     async def status(self, agent: str, text: str) -> None:
