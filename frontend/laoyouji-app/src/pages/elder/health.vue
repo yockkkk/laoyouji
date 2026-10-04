@@ -177,6 +177,11 @@ export default {
       return 'lv-care'
     },
   },
+  onLoad(query) {
+    if (query && query.metric) {
+      this.pickMetric(query.metric)
+    }
+  },
   onShow() {
     this.user = getCurrentUser()
     if (!this.user) {

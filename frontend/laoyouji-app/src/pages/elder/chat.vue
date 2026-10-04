@@ -116,6 +116,26 @@
 
         <!-- 输入区：语音/打字一键切换条（紧凑设计，释放更多可视区域给消息列表） -->
         <view class="input-area">
+          <!-- 场景快捷引导胶囊栏（大字适老、点按即发、绝不强填输入框） -->
+          <view v-if="activeChips && activeChips.length" class="chips-box">
+            <view class="chips-top-hint">
+              <text class="chips-title">💡 您可以直接点选或按住下方说话：</text>
+              <text class="chips-dismiss" @tap="dismissChips">✕ 关闭</text>
+            </view>
+            <scroll-view class="chips-scroll" scroll-x :show-scrollbar="false">
+              <view class="chips-row">
+                <view
+                  v-for="(chip, idx) in activeChips"
+                  :key="idx"
+                  class="chip-pill"
+                  @tap="onSelectChip(chip)"
+                >
+                  <text class="chip-text">{{ chip.label }}</text>
+                </view>
+              </view>
+            </scroll-view>
+          </view>
+
           <view class="input-bar">
             <button
               class="mode-btn"
@@ -242,7 +262,7 @@ import { NET_FAILED_TEXT, SESSION_GONE_TEXT, TURN_FAILED_TEXT } from '../../api/
 import { chatStream, fetchEvents } from '../../api/sse'
 import { speak } from '../../api/asr'
 import { getCurrentUser, setAuthSession } from '../../store/user'
-import { takeUtterance } from '../../store/handoff'
+import { takeUtterance, takeScene } from '../../store/handoff'
 
 // 子智能体的门面。名字与后端 display_name 一致（travel_agent.py:30 等），
 // 图标与 ChatBubble 的 agentIcon 一致 —— 同一个 Agent 在哪儿出现都是同一张脸。
@@ -328,6 +348,7 @@ export default {
       _lastScrollAt: 0,
       showHistory: false,
       sessionList: [],
+      activeChips: [], // 场景化快捷建议胶囊列表 [{ label, text }]
     }
   },
   computed: {
@@ -790,6 +811,7 @@ export default {
           this._stopWatch()
           this._watchSeq = 0
           this._todoMsg = null
+          this.activeChips = []
           this._resetDefaultGreeting()
           uni.showToast({ title: '已开启新对话', icon: 'success' })
         }
@@ -803,19 +825,62 @@ export default {
     },
 
     /**
-     * 接首页交过来的一句话。
-     * autoSend=true 是老人自己说的 → 直接办；
-     * autoSend=false 是快捷入口的预设话术 → **只填进输入框**，等老人自己按发送。
+     * 接首页交过来的内容：
+     * 1. 语音交接（老人首页按住麦克风说话）：autoSend=true，直接执行；
+     * 2. 场景交接（看病挂号、心里闷、今天吃啥等）：
+     *    输入框绝不塞死板假话，保持语音输入模式；
+     *    智能管家主动发起亲切引导问候，在输入区上方呈现大字适老快捷胶囊。
      */
     _consumeHandoff() {
-      const h = takeUtterance()
-      if (!h || this.thinking) return
-      if (h.autoSend) {
-        this.$nextTick(() => this._run(h.text))
-      } else {
-        this.draft = h.text
-        this.inputMode = 'text'
+      const u = takeUtterance()
+      if (u && !this.thinking) {
+        if (u.autoSend) {
+          this.$nextTick(() => this._run(u.text))
+        }
       }
+
+      const s = takeScene()
+      if (s) {
+        this.applySceneHandoff(s)
+      }
+    },
+
+    applySceneHandoff(s) {
+      if (!s) return
+      // 彻底消除假预填：draft 必须保持为空，输入模式保持为语音条，绝不强行切至键盘
+      this.draft = ''
+      this.inputMode = 'voice'
+      this.activeChips = s.chips || []
+
+      // 智能体主动关怀：在消息列表追加一条来自管家的温馨引导问候气泡
+      if (s.greeting) {
+        const lastMsg = this.messages[this.messages.length - 1]
+        if (!lastMsg || lastMsg.text !== s.greeting) {
+          const guideMsg = {
+            kind: 'text',
+            text: s.greeting,
+            agent: 'main',
+            isUser: false,
+          }
+          this.messages.push(guideMsg)
+          this.$nextTick(() => {
+            this._scrollBottom(true)
+          })
+        }
+      }
+    },
+
+    onSelectChip(chip) {
+      if (this.thinking || !chip) return
+      const text = (chip.text || chip.label || '').trim()
+      this.activeChips = []
+      if (text) {
+        this._run(text)
+      }
+    },
+
+    dismissChips() {
+      this.activeChips = []
     },
 
     toggleInputMode() {
@@ -838,12 +903,14 @@ export default {
     sendText() {
       const text = (this.draft || '').trim()
       if (!text || this.thinking) return
+      this.activeChips = []
       this.draft = ''
       this._run(text)
     },
 
     onSpoken(text) {
       if (this.thinking) return
+      this.activeChips = []
       this._run(text)
     },
 
@@ -1847,6 +1914,60 @@ export default {
   padding-bottom: calc(#{$lyj-space-sm} + env(safe-area-inset-bottom, 0px));
   flex-shrink: 0;
   box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.03);
+}
+.chips-box {
+  margin-bottom: 14rpx;
+  background: #f8fafc;
+  border: 2rpx solid #e2e8f0;
+  border-radius: $lyj-radius;
+  padding: 12rpx 16rpx 14rpx 16rpx;
+}
+.chips-top-hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10rpx;
+}
+.chips-title {
+  font-size: 26rpx;
+  color: #64748b;
+  font-weight: 600;
+}
+.chips-dismiss {
+  font-size: 24rpx;
+  color: #94a3b8;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  background: #f1f5f9;
+}
+.chips-scroll {
+  white-space: nowrap;
+  width: 100%;
+}
+.chips-row {
+  display: inline-flex;
+  gap: 16rpx;
+  padding: 4rpx 2rpx;
+}
+.chip-pill {
+  display: inline-flex;
+  align-items: center;
+  background: #eff6ff;
+  border: 2rpx solid #bfdbfe;
+  padding: 12rpx 24rpx;
+  border-radius: 36rpx;
+  white-space: nowrap;
+  box-shadow: 0 2rpx 8rpx rgba(37, 99, 235, 0.08);
+  transition: all 0.15s ease;
+  &:active {
+    background: #dbeafe;
+    transform: scale(0.96);
+  }
+}
+.chip-text {
+  font-size: 30rpx;
+  color: #1d4ed8;
+  font-weight: 700;
 }
 .input-bar {
   display: flex;

@@ -28,7 +28,7 @@
             v-for="q in quicks"
             :key="q.label"
             class="quick-item"
-            @tap="quick(q.text)"
+            @tap="quick(q)"
           >
             <text class="quick-icon">{{ q.icon }}</text>
             <text class="quick-label">{{ q.label }}</text>
@@ -83,26 +83,78 @@
 import LyjMic from '../../components/LyjMic.vue'
 import { get } from '../../api/client'
 import { getCurrentUser } from '../../store/user'
-import { putUtterance } from '../../store/handoff'
+import { putUtterance, putScene } from '../../store/handoff'
 import { syncAll, consumePendingRoute } from '../../utils/native'
 
 /**
- * 快捷入口的文案与离线剧本的意图词是配套的（app/providers/llm/mock.py）。
- * 改这几句话之前先去核对 _wants_medical_trip / _wants_community /
- * _wants_call / _wants_recipe —— 文案改了而意图词不认，点了就没反应。
- * 已经砍掉的入口（买票出门 / 订餐送饭 / 防骗问问）不再摆出来：留着点了没反应，
- * 比不给入口更让人犯嘀咕。
+ * 快捷入口重构：杜绝向老人输入框强行填入僵硬写死的假台词。
+ * 1. "量个血压"：直达健康记录页（/pages/elder/health?metric=bp），一键测量与录入，省去聊天绕路；
+ * 2. "看病挂号" / "心里闷" / "今天吃啥"：场景化引导进入聊天，输入框保持干净与语音就绪，
+ *    由智能管家主动发起亲切问询，并在输入区上方呈现大字适老快捷胶囊供点按或直接语音说话。
  */
 const QUICKS = [
-  // "血压"命中 _wants_health（vital）→ 安康助手分诊
-  { icon: '🩺', label: '量个血压', text: '帮我记一下血压，高压 138 低压 86' },
-  // "医院"命中 _wants_medical_trip → 挂号 + 就近路线 + 计划书
-  { icon: '🏥', label: '看病挂号', text: '我想去鼓楼医院看腿疼的老毛病' },
-  // "心里闷"命中 _wants_community，进 _community 后 "心里闷" 又命中
-  // _wants_call → 先落一张一键拨号卡（不是先推活动）
-  { icon: '💬', label: '心里闷', text: '我心里闷得慌，一个人没意思' },
-  // "教我做"命中 _wants_community，进 _community 后命中 _wants_recipe → 菜谱卡
-  { icon: '🍲', label: '今天吃啥', text: '教我做一道软烂清淡的家常菜' },
+  // 1. 量个血压：健康工具直达
+  {
+    icon: '🩺',
+    label: '量个血压',
+    type: 'nav',
+    url: '/pages/elder/health?metric=bp',
+  },
+  // 2. 看病挂号：智能导诊场景
+  {
+    icon: '🏥',
+    label: '看病挂号',
+    type: 'scene',
+    scene: {
+      id: 'hospital',
+      title: '看病挂号',
+      agent: 'health',
+      greeting: '您好！我是康乐。请问您今天身体哪里不舒服想挂号，还是想去哪家医院？您可以直接按住说话告诉我，也可以点选下方的常见科室：',
+      chips: [
+        { label: '🩺 全科/慢病门诊', text: '我想去医院全科门诊做个常规复查' },
+        { label: '❤️ 头晕胸闷心内科', text: '我最近有点头晕心慌，想看心血管内科' },
+        { label: '🦴 腿脚关节酸痛', text: '我想去医院看腿疼的老毛病，挂个骨科' },
+        { label: '🏥 湖南省人民医院', text: '我想去湖南省人民医院就诊，帮我查查路线' },
+        { label: '🏥 湘雅医院挂号', text: '我想去中南大学湘雅医院就医挂号' },
+      ],
+    },
+  },
+  // 3. 心里闷：暖心陪伴场景
+  {
+    icon: '💬',
+    label: '心里闷',
+    type: 'scene',
+    scene: {
+      id: 'companion',
+      title: '心里闷',
+      agent: 'community',
+      greeting: '我在呢！一个人在家里呆久了觉得闷，随时找我聊聊天。今天是有什么烦心事，还是想听段老戏曲、给家人通个电话？',
+      chips: [
+        { label: '😊 随便唠唠家常', text: '我心里有点闷，一个人没意思，陪我唠唠嗑' },
+        { label: '🎵 听听经典戏曲', text: '我想听一段经典湖南花鼓戏解解闷' },
+        { label: '🌳 去附近公园走走', text: '在家里呆闷了，推荐一个附近安静平坦的小公园散步' },
+        { label: '📞 给家人打个电话', text: '我想给家里人打个电话说说话' },
+      ],
+    },
+  },
+  // 4. 今天吃啥：适老营养膳食场景
+  {
+    icon: '🍲',
+    label: '今天吃啥',
+    type: 'scene',
+    scene: {
+      id: 'recipe',
+      title: '今天吃啥',
+      agent: 'community',
+      greeting: '今天想吃点什么顺口清淡的？我来为您推荐适合老年人少油少盐、软烂好咀嚼的营养家常菜。',
+      chips: [
+        { label: '🥬 清淡少油少盐菜', text: '教我做一道适合老年人少油少盐、软烂清淡的家常菜' },
+        { label: '🥣 养胃降压杂粮粥', text: '我想熬一锅清淡养胃、适合高血压的营养杂粮粥' },
+        { label: '🥕 报家里菜帮搭配', text: '家里只有青菜和豆腐，帮我搭配一道营养家常做法' },
+        { label: '🍲 社区助老食堂', text: '帮我看看今天的社区助老食堂有什么菜' },
+      ],
+    },
+  },
 ]
 
 export default {
@@ -197,12 +249,22 @@ export default {
     },
 
     /**
-     * 快捷入口：**填进输入框等老人自己按发送**，不自动发。
-     * 老人点的是"看病挂号"四个字，卡片背后那句"我想去北京看腿疼的老毛病"
-     * 带着症状细节 —— 那是替老人编的话，不能悄悄替他说出去。
+     * 快捷入口触发：
+     * 1. 工具类（如量血压）直接 navigateTo 对应功能页，大字交互直达；
+     * 2. 场景类（导诊/陪伴/食谱）通过 putScene 注入场景上下文并切换到会话，
+     *    聊天页由智能体主动发起关怀对话，并提供场景大字胶囊，输入框绝不强塞假台词！
      */
-    quick(text) {
-      putUtterance(text, false)
+    quick(q) {
+      if (!q) return
+      if (q.type === 'nav' && q.url) {
+        uni.navigateTo({ url: q.url })
+        return
+      }
+      if (q.type === 'scene' && q.scene) {
+        putScene(q.scene)
+        uni.switchTab({ url: '/pages/elder/chat' })
+        return
+      }
       uni.switchTab({ url: '/pages/elder/chat' })
     },
   },
