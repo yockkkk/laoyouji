@@ -38,7 +38,7 @@
       <view class="metric-divider"></view>
       <view class="metric-item">
         <text class="metric-label">协同智能体</text>
-        <text class="metric-val tabular-num">{{ activeAgentsCount }} / 3</text>
+        <text class="metric-val tabular-num">{{ activeAgentsCount }} / 6</text>
       </view>
       <view class="metric-divider"></view>
       <view class="metric-item">
@@ -391,7 +391,277 @@
             </view>
           </view>
 
-          <!-- 分支 3：邻里帮 (Community Agent · 邻里帮) -->
+          <!-- 分支 3：北斗导航 (BdsNav Agent · 北斗高精导航) -->
+          <view class="subagent-branch-card bds-branch" :class="{ 'collapsed': collapsedAgents.bds_nav, 'is-inactive': !isBdsNavActive, 'is-active-branch': isBdsNavActive }">
+            <view class="branch-header" @tap="toggleAgentCollapse('bds_nav')">
+              <view class="branch-header-left">
+                <view class="avatar-box bds-avatar">
+                  <text class="avatar-icon">🛰️</text>
+                </view>
+                <view class="branch-title-group">
+                  <view class="branch-name-row">
+                    <text class="branch-name">北斗导航</text>
+                    <text class="branch-en-tag">BdsNav Agent · 北斗高精导航</text>
+                  </view>
+                  <text class="branch-desc">亚米级RTK定位 · 适老微地形避障 · 休憩长椅</text>
+                </view>
+              </view>
+              <view class="branch-header-right">
+                <view class="state-badge" :class="bdsNavStatusClass">
+                  <text class="state-icon">{{ bdsNavStatusIcon }}</text>
+                  <text class="state-text">{{ bdsNavStatusText }}</text>
+                </view>
+                <text class="accordion-arrow">{{ collapsedAgents.bds_nav ? '▼' : '▲' }}</text>
+              </view>
+            </view>
+
+            <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.bds_nav }">
+              <view class="branch-body">
+                <!-- 智能体推理独白 -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">北斗智能体推理独白 (BdsNav Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.bds_nav }}</text>
+                </view>
+
+                <!-- 空工具提示 -->
+                <view v-if="bdsNavTools.length === 0" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isBdsNavActive ? '正在进行北斗高精时空解算与微地形分析…' : '本轮未派发北斗微地形时空工具' }}</text>
+                </view>
+
+                <!-- 工具节点列表 -->
+                <view v-if="bdsNavTools.length > 0" class="tools-flow">
+                  <view
+                    v-for="tool in bdsNavTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="[tool.isHighRisk ? 'high-risk-node' : '', 'node-' + tool.status]"
+                  >
+                    <view class="node-connector-dot" :class="{ 'risk-dot': tool.isHighRisk }"></view>
+                    <view class="node-card-inner">
+                      <view class="node-top-row">
+                        <view class="node-name-box">
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
+                          <text v-if="tool.isHighRisk" class="risk-badge">🛡️ 家人确认保护</text>
+                        </view>
+                        <view class="node-tags-group">
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
+                          </view>
+                        </view>
+                      </view>
+                      <view class="mono-params-box">
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tokIdx) in parseParamsTokens(tool.args)" :key="tokIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
+                      </view>
+                      <view v-if="tool.result" class="result-box">
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 {{ tool.result }}</text>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 分支 4：气象感知 (Weather Agent · 气象环境感知) -->
+          <view class="subagent-branch-card weather-branch" :class="{ 'collapsed': collapsedAgents.weather, 'is-inactive': !isWeatherActive, 'is-active-branch': isWeatherActive }">
+            <view class="branch-header" @tap="toggleAgentCollapse('weather')">
+              <view class="branch-header-left">
+                <view class="avatar-box weather-avatar">
+                  <text class="avatar-icon">🌤️</text>
+                </view>
+                <view class="branch-title-group">
+                  <view class="branch-name-row">
+                    <text class="branch-name">气象感知</text>
+                    <text class="branch-en-tag">Weather Agent · 气象环境感知</text>
+                  </view>
+                  <text class="branch-desc">舒适度指数 · 防晒防雨防滑 · 避暑绿廊</text>
+                </view>
+              </view>
+              <view class="branch-header-right">
+                <view class="state-badge" :class="weatherStatusClass">
+                  <text class="state-icon">{{ weatherStatusIcon }}</text>
+                  <text class="state-text">{{ weatherStatusText }}</text>
+                </view>
+                <text class="accordion-arrow">{{ collapsedAgents.weather ? '▼' : '▲' }}</text>
+              </view>
+            </view>
+
+            <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.weather }">
+              <view class="branch-body">
+                <!-- 智能体推理独白 -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">气象智能体推理独白 (Weather Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.weather }}</text>
+                </view>
+
+                <!-- 空工具提示 -->
+                <view v-if="weatherTools.length === 0" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isWeatherActive ? '正在感知当前走廊温湿度与穿衣舒适度…' : '本轮未派发环境气象相关工具' }}</text>
+                </view>
+
+                <!-- 工具节点列表 -->
+                <view v-if="weatherTools.length > 0" class="tools-flow">
+                  <view
+                    v-for="tool in weatherTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="[tool.isHighRisk ? 'high-risk-node' : '', 'node-' + tool.status]"
+                  >
+                    <view class="node-connector-dot" :class="{ 'risk-dot': tool.isHighRisk }"></view>
+                    <view class="node-card-inner">
+                      <view class="node-top-row">
+                        <view class="node-name-box">
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
+                          <text v-if="tool.isHighRisk" class="risk-badge">🛡️ 家人确认保护</text>
+                        </view>
+                        <view class="node-tags-group">
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
+                          </view>
+                        </view>
+                      </view>
+                      <view class="mono-params-box">
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tokIdx) in parseParamsTokens(tool.args)" :key="tokIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
+                      </view>
+                      <view v-if="tool.result" class="result-box">
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 {{ tool.result }}</text>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 分支 5：亲情守护 (Guardian Agent · 亲情安全守护) -->
+          <view class="subagent-branch-card guardian-branch" :class="{ 'collapsed': collapsedAgents.guardian, 'is-inactive': !isGuardianActive, 'is-active-branch': isGuardianActive }">
+            <view class="branch-header" @tap="toggleAgentCollapse('guardian')">
+              <view class="branch-header-left">
+                <view class="avatar-box guardian-avatar">
+                  <text class="avatar-icon">🛡️</text>
+                </view>
+                <view class="branch-title-group">
+                  <view class="branch-name-row">
+                    <text class="branch-name">亲情守护</text>
+                    <text class="branch-en-tag">Guardian Agent · 亲情安全守护</text>
+                  </view>
+                  <text class="branch-desc">动态电子围栏 · 异常停留预警 · 紧急救助</text>
+                </view>
+              </view>
+              <view class="branch-header-right">
+                <view class="state-badge" :class="guardianStatusClass">
+                  <text class="state-icon">{{ guardianStatusIcon }}</text>
+                  <text class="state-text">{{ guardianStatusText }}</text>
+                </view>
+                <text class="accordion-arrow">{{ collapsedAgents.guardian ? '▼' : '▲' }}</text>
+              </view>
+            </view>
+
+            <view class="branch-collapsible" :class="{ 'is-open': !collapsedAgents.guardian }">
+              <view class="branch-body">
+                <!-- 智能体推理独白 -->
+                <view class="agent-monologue-card">
+                  <view class="monologue-head">
+                    <text class="monologue-sparkle">💡</text>
+                    <text class="monologue-title">亲情守护智能体推理独白 (Guardian Agent Thought)</text>
+                  </view>
+                  <text class="monologue-text">{{ agentThoughts.guardian }}</text>
+                </view>
+
+                <!-- 空工具提示 -->
+                <view v-if="guardianTools.length === 0" class="branch-idle-box">
+                  <text class="branch-idle-text">{{ isGuardianActive ? '正在巡检动态电子围栏与安全哨兵指标…' : '本轮未派发亲情安防相关工具' }}</text>
+                </view>
+
+                <!-- 工具节点列表 -->
+                <view v-if="guardianTools.length > 0" class="tools-flow">
+                  <view
+                    v-for="tool in guardianTools"
+                    :key="tool.key"
+                    class="tool-node"
+                    :class="[tool.isHighRisk ? 'high-risk-node' : '', 'node-' + tool.status]"
+                  >
+                    <view class="node-connector-dot" :class="{ 'risk-dot': tool.isHighRisk }"></view>
+                    <view class="node-card-inner">
+                      <view class="node-top-row">
+                        <view class="node-name-box">
+                          <text class="tool-fn-name">{{ tool.name }}</text>
+                          <text class="tool-cn-name">{{ tool.summary }}</text>
+                          <text v-if="tool.isHighRisk" class="risk-badge">🛡️ 家人确认保护</text>
+                        </view>
+                        <view class="node-tags-group">
+                          <view class="node-status-tag" :class="tool.status">
+                            {{ formatToolStatus(tool.status, tool.name) }}
+                          </view>
+                        </view>
+                      </view>
+                      <view class="mono-params-box">
+                        <view class="params-header-row">
+                          <text class="params-lang-label">JSON ARGS</text>
+                          <text class="params-copy-hint">入参载荷</text>
+                        </view>
+                        <view class="mono-code-tokens">
+                          <text class="token-brace">{</text>
+                          <view v-for="(tok, tokIdx) in parseParamsTokens(tool.args)" :key="tokIdx" class="token-item">
+                            <text class="tok-key">"{{ tok.k }}"</text>
+                            <text class="tok-colon">: </text>
+                            <text class="tok-val" :class="'val-' + tok.type">{{ tok.v }}</text>
+                            <text v-if="!tok.isLast" class="tok-comma">,</text>
+                          </view>
+                          <text class="token-brace">}</text>
+                        </view>
+                      </view>
+                      <view v-if="tool.result" class="result-box">
+                        <view class="result-summary-row">
+                          <text class="result-text">🎯 {{ tool.result }}</text>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 分支 6：邻里帮 (Community Agent · 邻里帮) -->
           <view class="subagent-branch-card community-branch" :class="{ 'collapsed': collapsedAgents.community, 'is-inactive': !isCommunityActive, 'is-active-branch': isCommunityActive }">
             <view class="branch-header" @tap="toggleAgentCollapse('community')">
               <view class="branch-header-left">
@@ -773,6 +1043,9 @@ export default {
       collapsedAgents: {
         health: true,
         travel: true,
+        bds_nav: true,
+        weather: true,
+        guardian: true,
         community: true,
         safety: true,
         planBuilder: true,
@@ -862,6 +1135,9 @@ export default {
         return (
           !this.collapsedAgents.health &&
           !this.collapsedAgents.travel &&
+          !this.collapsedAgents.bds_nav &&
+          !this.collapsedAgents.weather &&
+          !this.collapsedAgents.guardian &&
           !this.collapsedAgents.community &&
           !this.collapsedAgents.safety &&
           !this.collapsedAgents.planBuilder
@@ -870,6 +1146,9 @@ export default {
       set(val) {
         this.collapsedAgents.health = !val
         this.collapsedAgents.travel = !val
+        this.collapsedAgents.bds_nav = !val
+        this.collapsedAgents.weather = !val
+        this.collapsedAgents.guardian = !val
         this.collapsedAgents.community = !val
         this.collapsedAgents.safety = !val
         this.collapsedAgents.planBuilder = !val
@@ -911,6 +1190,30 @@ export default {
       )
     },
 
+    isBdsNavActive() {
+      return (
+        this.dispatchedAgents.has('bds_nav') ||
+        (this.bdsNavTools && this.bdsNavTools.length > 0) ||
+        (this.thinking && this.isCurrentAgent('bds_nav'))
+      )
+    },
+
+    isWeatherActive() {
+      return (
+        this.dispatchedAgents.has('weather') ||
+        (this.weatherTools && this.weatherTools.length > 0) ||
+        (this.thinking && this.isCurrentAgent('weather'))
+      )
+    },
+
+    isGuardianActive() {
+      return (
+        this.dispatchedAgents.has('guardian') ||
+        (this.guardianTools && this.guardianTools.length > 0) ||
+        (this.thinking && this.isCurrentAgent('guardian'))
+      )
+    },
+
     isCommunityActive() {
       return (
         this.dispatchedAgents.has('community') ||
@@ -934,12 +1237,15 @@ export default {
       )
     },
 
-    // 协同智能体数严格等于当前真实激活的子智能体数量（分母为3，方案建造师与安全网关不计入）
+    // 协同智能体数严格等于当前真实激活的子智能体数量（分母为6，方案建造师与安全网关作为基础设施不计入）
     activeAgentsCount() {
-      const DISPATCHABLE_AGENTS = ['health', 'travel', 'community']
+      const DISPATCHABLE_AGENTS = ['health', 'travel', 'bds_nav', 'weather', 'guardian', 'community']
       const activeMap = {
         health: this.isHealthActive,
         travel: this.isTravelActive,
+        bds_nav: this.isBdsNavActive,
+        weather: this.isWeatherActive,
+        guardian: this.isGuardianActive,
         community: this.isCommunityActive,
       }
       return DISPATCHABLE_AGENTS.filter((a) => activeMap[a]).length
@@ -1257,7 +1563,79 @@ export default {
         }
       }
 
-      // 4. 邻里帮独白（只认现在真挂着的四个工具：
+      // 4. 北斗导航独白
+      let bdsNavThought = ''
+      if (!this.isBdsNavActive) {
+        bdsNavThought = '本轮未派发北斗微地形时空任务，北斗导航助手处于待命状态。'
+      } else {
+        const bStatus = msgs.filter(
+          (m) =>
+            (m.kind === 'status' && (this.matchesAgent(m.agent, 'bds_nav') || this.matchesAgent(m.agent, 'bds'))) ||
+            ((this.matchesAgent(m.agent, 'bds_nav') || this.matchesAgent(m.agent, 'bds')) && (m.reasoning || m.thought)),
+        )
+        const explicitBds = bStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+        if (explicitBds) {
+          bdsNavThought = explicitBds.reasoning || explicitBds.thought
+        } else if (this.bdsNavTools.length > 0) {
+          bdsNavThought = '北斗时空已介入：锁定北斗三号18星RTK差分，精细剔除台阶与陡坡微地形，检索沿途休憩长椅。'
+        } else if (this.thinking && (this.isCurrentAgent('bds_nav') || this.isCurrentAgent('bds'))) {
+          bdsNavThought = '北斗导航助手正在进行高精时空解算与适老微地形代价路由匹配…'
+        } else if (bStatus.length > 0) {
+          bdsNavThought = bStatus[bStatus.length - 1].text
+        } else {
+          bdsNavThought = '北斗导航助手已就绪，提供0.35m RTK高精定位与适老微地形避障路由。'
+        }
+      }
+
+      // 5. 气象感知独白
+      let weatherThought = ''
+      if (!this.isWeatherActive) {
+        weatherThought = '本轮未派发环境气象走廊分析，气象感知助手处于待命状态。'
+      } else {
+        const wStatus = msgs.filter(
+          (m) =>
+            (m.kind === 'status' && this.matchesAgent(m.agent, 'weather')) ||
+            (this.matchesAgent(m.agent, 'weather') && (m.reasoning || m.thought)),
+        )
+        const explicitWeather = wStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+        if (explicitWeather) {
+          weatherThought = explicitWeather.reasoning || explicitWeather.thought
+        } else if (this.weatherTools.length > 0) {
+          weatherThought = '气象环境感知已介入：分析温湿度、风速与紫外线，提供微气候遮阳与舒适度防护指引。'
+        } else if (this.thinking && this.isCurrentAgent('weather')) {
+          weatherThought = '气象感知助手正在获取实时天气走廊与舒适度指数…'
+        } else if (wStatus.length > 0) {
+          weatherThought = wStatus[wStatus.length - 1].text
+        } else {
+          weatherThought = '气象感知助手已就绪，全时监测出行环境与穿衣体感。'
+        }
+      }
+
+      // 6. 亲情守护独白
+      let guardianThought = ''
+      if (!this.isGuardianActive) {
+        guardianThought = '本轮未触发离栏或异常停留，亲情守护助手后台巡检待命。'
+      } else {
+        const gStatus = msgs.filter(
+          (m) =>
+            (m.kind === 'status' && this.matchesAgent(m.agent, 'guardian')) ||
+            (this.matchesAgent(m.agent, 'guardian') && (m.reasoning || m.thought)),
+        )
+        const explicitGuardian = gStatus.slice().reverse().find((m) => m.reasoning || m.thought)
+        if (explicitGuardian) {
+          guardianThought = explicitGuardian.reasoning || explicitGuardian.thought
+        } else if (this.guardianTools.length > 0) {
+          guardianThought = '亲情安全守护已介入：动态安全围栏生效，实时监控偏离与异常停留，联动突发应急通道。'
+        } else if (this.thinking && this.isCurrentAgent('guardian')) {
+          guardianThought = '亲情守护助手正在巡检安全围栏范围与停留指标…'
+        } else if (gStatus.length > 0) {
+          guardianThought = gStatus[gStatus.length - 1].text
+        } else {
+          guardianThought = '亲情守护助手已就绪，实时护航老人安全出行。'
+        }
+      }
+
+      // 7. 邻里帮独白（只认现在真挂着的四个工具：
       //    push_activities / suggest_call / suggest_walk / get_recipe）
       let communityThought = ''
       if (!this.isCommunityActive) {
@@ -1298,7 +1676,7 @@ export default {
         }
       }
 
-      // 5. 安全网独白
+      // 8. 安全网独白
       let safetyThought = ''
       const sStatus = msgs.filter(
         (m) =>
@@ -1321,7 +1699,7 @@ export default {
         safetyThought = '资金与医疗安全防护网正常运行，全流程合规受控。'
       }
 
-      // 6. 建造师独白
+      // 9. 建造师独白
       let planBuilderThought = ''
       const pStatus = msgs.filter(
         (m) =>
@@ -1343,6 +1721,9 @@ export default {
         orchestrator: orchestratorThought,
         health: healthThought,
         travel: travelThought,
+        bds_nav: bdsNavThought,
+        weather: weatherThought,
+        guardian: guardianThought,
         community: communityThought,
         safety: safetyThought,
         planBuilder: planBuilderThought,
@@ -1464,6 +1845,18 @@ export default {
       return this.parseTools(['travel', '银发导航'])
     },
 
+    bdsNavTools() {
+      return this.parseTools(['bds_nav', 'bds', '北斗导航', '北斗'])
+    },
+
+    weatherTools() {
+      return this.parseTools(['weather', '气象感知', '气象'])
+    },
+
+    guardianTools() {
+      return this.parseTools(['guardian', '亲情守护', '守护'])
+    },
+
     communityTools() {
       return this.parseTools(['community', '邻里帮'])
     },
@@ -1473,7 +1866,14 @@ export default {
     },
 
     allTools() {
-      return this.healthTools.concat(this.travelTools, this.communityTools, this.planBuilderTools)
+      return this.healthTools.concat(
+        this.travelTools,
+        this.bdsNavTools,
+        this.weatherTools,
+        this.guardianTools,
+        this.communityTools,
+        this.planBuilderTools,
+      )
     },
 
     highRiskTools() {
@@ -1585,6 +1985,51 @@ export default {
       if (cls === 'status-thinking') return '正在调用出行工具'
       if (cls === 'status-completed') return '出行任务已办结'
       return '银发导航待命'
+    },
+
+    bdsNavStatusClass() {
+      return this.branchStatus(this.bdsNavTools, 'bds_nav', '北斗导航')
+    },
+
+    bdsNavStatusIcon() {
+      return this.branchIcon(this.bdsNavStatusClass, '🛰️')
+    },
+
+    bdsNavStatusText() {
+      const cls = this.bdsNavStatusClass
+      if (cls === 'status-thinking') return '北斗高精解算中'
+      if (cls === 'status-completed') return '微地形规避已就绪'
+      return '北斗时空待命'
+    },
+
+    weatherStatusClass() {
+      return this.branchStatus(this.weatherTools, 'weather', '气象感知')
+    },
+
+    weatherStatusIcon() {
+      return this.branchIcon(this.weatherStatusClass, '🌤️')
+    },
+
+    weatherStatusText() {
+      const cls = this.weatherStatusClass
+      if (cls === 'status-thinking') return '正在感知走廊微气候'
+      if (cls === 'status-completed') return '舒适度与防晒已评估'
+      return '气象环境待命'
+    },
+
+    guardianStatusClass() {
+      return this.branchStatus(this.guardianTools, 'guardian', '亲情守护')
+    },
+
+    guardianStatusIcon() {
+      return this.branchIcon(this.guardianStatusClass, '🛡️')
+    },
+
+    guardianStatusText() {
+      const cls = this.guardianStatusClass
+      if (cls === 'status-thinking') return '正在巡检安全围栏'
+      if (cls === 'status-completed') return '安全围栏与急救在线'
+      return '亲情安全待命'
     },
 
     communityStatusClass() {
@@ -1828,8 +2273,17 @@ export default {
       if (targetKey === 'health' || targetKey === '安康助手') {
         return a.includes('health') || a.includes('安康') || a.includes('医疗')
       }
+      if (targetKey === 'bds_nav' || targetKey === '北斗导航' || targetKey === '北斗') {
+        return a.includes('bds') || a.includes('北斗') || (a.includes('nav') && !a.includes('travel'))
+      }
+      if (targetKey === 'weather' || targetKey === '气象感知' || targetKey === '气象') {
+        return a.includes('weather') || a.includes('气象') || a.includes('环境')
+      }
+      if (targetKey === 'guardian' || targetKey === '亲情守护' || targetKey === '守护') {
+        return a.includes('guardian') || a.includes('守护') || a.includes('亲情')
+      }
       if (targetKey === 'travel' || targetKey === '银发导航') {
-        return a.includes('travel') || a.includes('银发') || a.includes('出行') || a.includes('导航')
+        return a.includes('travel') || a.includes('银发') || (a.includes('出行') && !a.includes('北斗')) || a.includes('导航')
       }
       if (targetKey === 'community' || targetKey === '邻里帮') {
         return a.includes('community') || a.includes('邻里') || a.includes('便民')
@@ -1852,6 +2306,9 @@ export default {
       if (!agent) return ''
       const a = String(agent).replace(/#\d+$/, '').trim()
       if (this.matchesAgent(a, 'health')) return 'health'
+      if (this.matchesAgent(a, 'bds_nav')) return 'bds_nav'
+      if (this.matchesAgent(a, 'weather')) return 'weather'
+      if (this.matchesAgent(a, 'guardian')) return 'guardian'
       if (this.matchesAgent(a, 'travel')) return 'travel'
       if (this.matchesAgent(a, 'community')) return 'community'
       if (this.matchesAgent(a, 'plan_builder')) return 'plan_builder'
@@ -1868,6 +2325,9 @@ export default {
       if (!this._userChangedAllExpanded) {
         this.collapsedAgents.health = !this.isHealthActive
         this.collapsedAgents.travel = !this.isTravelActive
+        this.collapsedAgents.bds_nav = !this.isBdsNavActive
+        this.collapsedAgents.weather = !this.isWeatherActive
+        this.collapsedAgents.guardian = !this.isGuardianActive
         this.collapsedAgents.community = !this.isCommunityActive
         this.collapsedAgents.safety = !this.isSafetyActive
         this.collapsedAgents.planBuilder = !this.isPlanBuilderActive
@@ -1890,11 +2350,43 @@ export default {
       }
 
       if (this.matchesAgent(explicitAgent, 'health')) return 'health'
+      if (this.matchesAgent(explicitAgent, 'bds_nav')) return 'bds_nav'
+      if (this.matchesAgent(explicitAgent, 'weather')) return 'weather'
+      if (this.matchesAgent(explicitAgent, 'guardian')) return 'guardian'
       if (this.matchesAgent(explicitAgent, 'travel')) return 'travel'
       if (this.matchesAgent(explicitAgent, 'community')) return 'community'
       if (this.matchesAgent(explicitAgent, 'plan_builder')) return 'plan_builder'
 
-      // 1. 出行交通类（route/ride/taxi/train/ticket/hotel/weather/travel；route 优先于 plan）
+      // 1. 北斗高精导航与微地形类
+      if (
+        t.includes('bds') ||
+        t.includes('terrain') ||
+        t.includes('bench') ||
+        t.includes('corridor')
+      ) {
+        return 'bds_nav'
+      }
+
+      // 2. 气象环境感知类
+      if (
+        t.includes('weather') ||
+        t.includes('shade') ||
+        t.includes('comfort')
+      ) {
+        return 'weather'
+      }
+
+      // 3. 亲情守护与安全围栏类
+      if (
+        t.includes('guardian') ||
+        t.includes('dwell') ||
+        t.includes('fence') ||
+        t.includes('sos')
+      ) {
+        return 'guardian'
+      }
+
+      // 4. 出行交通类（route/ride/taxi/train/ticket/hotel/travel；route 优先于 plan）
       if (
         t.includes('route') ||
         t.includes('ride') ||
@@ -1902,7 +2394,6 @@ export default {
         t.includes('train') ||
         t.includes('ticket') ||
         t.includes('hotel') ||
-        t.includes('weather') ||
         t.includes('travel')
       ) {
         return 'travel'
@@ -2256,8 +2747,10 @@ export default {
 
     toolIcon(name) {
       const n = String(name || '')
+      if (n.indexOf('bds') !== -1 || n.indexOf('terrain') !== -1 || n.indexOf('bench') !== -1) return '🛰️'
       if (n.indexOf('appoint') !== -1 || n.indexOf('hospital') !== -1 || n.indexOf('register') !== -1) return '🏥'
-      if (n.indexOf('weather') !== -1) return '🌤️'
+      if (n.indexOf('weather') !== -1 || n.indexOf('shade') !== -1 || n.indexOf('comfort') !== -1) return '🌤️'
+      if (n.indexOf('corridor') !== -1 || n.indexOf('dwell') !== -1 || n.indexOf('guardian') !== -1) return '🛡️'
       if (n.indexOf('ride') !== -1 || n.indexOf('route') !== -1) return '🚖'
       if (n.indexOf('walk') !== -1) return '🚶'
       if (n.indexOf('activit') !== -1) return '🎲'
@@ -2317,6 +2810,9 @@ export default {
       this._userChangedAllExpanded = true
       if (id === 'health') this.collapsedAgents.health = false
       if (id === 'travel') this.collapsedAgents.travel = false
+      if (id === 'bds_nav') this.collapsedAgents.bds_nav = false
+      if (id === 'weather') this.collapsedAgents.weather = false
+      if (id === 'guardian') this.collapsedAgents.guardian = false
       if (id === 'community') this.collapsedAgents.community = false
       if (id === 'safety') this.collapsedAgents.safety = false
       if (id === 'planBuilder') this.collapsedAgents.planBuilder = false
@@ -2662,6 +3158,9 @@ export default {
 .orchestrator-avatar { background: #EBF4FE; }
 .health-avatar { background: #dcfce7; }
 .travel-avatar { background: #e0f2fe; }
+.bds-avatar { background: #e0f2fe; }
+.weather-avatar { background: #fef9c3; }
+.guardian-avatar { background: #fee2e2; }
 .community-avatar { background: #ede9fe; }
 .safety-avatar { background: #fef3c7; }
 .planbuilder-avatar { background: #fce7f3; }
