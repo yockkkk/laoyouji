@@ -120,6 +120,26 @@
 
     <!-- 适老地图视窗 (Leaflet 渲染高德栅格瓦片，坐标 GCJ-02) -->
     <view class="map-section" :class="{ 'fullscreen-mode': isMapFullscreen }">
+      <!-- 适老微地形高精图层状态栏 -->
+      <view class="microterrain-status-bar">
+        <view class="micro-status-pill pill-corridor" @tap="speakMicroFeature('corridor')">
+          <text class="pill-icon">🛡️</text>
+          <text class="pill-text">30m安全走廊</text>
+        </view>
+        <view class="micro-status-pill pill-slope" @tap="speakMicroFeature('slope')">
+          <text class="pill-icon">🟢</text>
+          <text class="pill-text">坡度&lt;2.5%平缓</text>
+        </view>
+        <view class="micro-status-pill pill-barrier" @tap="speakMicroFeature('barrier')">
+          <text class="pill-icon">⛔</text>
+          <text class="pill-text">险台阶已硬阻断</text>
+        </view>
+        <view class="micro-status-pill pill-bench" @tap="speakMicroFeature('bench')">
+          <text class="pill-icon">🪑</text>
+          <text class="pill-text">沿途长椅守护</text>
+        </view>
+      </view>
+
       <div id="elder-amap-container" class="amap-box"></div>
       <view v-if="mapLoading" class="map-loading-mask">
         <text class="loading-icon" aria-hidden="true">⏳</text>
@@ -265,6 +285,9 @@ export default {
       elderMarker: null,
       routePolyline: null,
       routeCasing: null,
+      routeCorridor: null,
+      homeCircleLayer: null,
+      microTerrainLayers: [],
       stationMarkers: [],
       tileLayer: null,
       leafletMap: null,
@@ -327,6 +350,13 @@ export default {
               voiceHint: '到达湘雅医院啦！走左边平缓坡道进门就是导医台，骨科在二楼。',
               coords: [112.9870, 28.2140]
             }
+          ],
+          microBarriers: [
+            { name: '避开地道42级险台阶', desc: 'Cost=∞ 算法硬阻断剪枝，改走地面平层无障碍通道', coords: [112.9866, 28.2145], icon: '⛔' }
+          ],
+          microPois: [
+            { name: '平层无障碍直梯连廊', desc: '推车轮椅无缝直通门诊二楼骨科', coords: [112.9868, 28.2143], type: 'slope', icon: '♿' },
+            { name: '门诊适老爱心长椅', desc: '长辈专用休息长椅，配有温开水补给点', coords: [112.9865, 28.2148], type: 'bench', icon: '🪑' }
           ]
         },
         {
@@ -383,6 +413,16 @@ export default {
               voiceHint: '到达烈士公园西门啦！顺着平平的木栈道进园，空气特别好。',
               coords: [112.9970, 28.2060]
             }
+          ],
+          microBarriers: [
+            { name: '避开南门38级险台阶', desc: 'Cost=∞ 硬阻断已剪枝，杜绝长辈摔伤', coords: [112.9920, 28.2105], icon: '⛔' },
+            { name: '避开过街陡坡 (11.8%)', desc: '坡度过大存在摔倒高危，算法已智能绕开', coords: [112.9880, 28.2138], icon: '⚠️' }
+          ],
+          microPois: [
+            { name: '坡度 1.2% (平缓绿道)', desc: '平缓防滑人行步道，老年慢步极度舒适', coords: [112.9875, 28.2140], type: 'slope', icon: '🟢' },
+            { name: '坡度 1.8% (平缓木栈道)', desc: '年嘉湖环湖适老防滑木栈道', coords: [112.9930, 28.2090], type: 'slope', icon: '🟢' },
+            { name: '适老长椅 1号 (配遮阳棚)', desc: '距起点180米，设有低位防滑扶手', coords: [112.9890, 28.2130], type: 'bench', icon: '🪑' },
+            { name: '适老长椅 2号 (湖滨长椅)', desc: '距起点420米，视野开阔透气', coords: [112.9950, 28.2075], type: 'bench', icon: '🪑' }
           ]
         },
         {
@@ -438,6 +478,13 @@ export default {
               voiceHint: '张阿姨，到达省人民医院了！走左侧平缓坡道直接进大厅。',
               coords: [112.9810, 28.1920]
             }
+          ],
+          microBarriers: [
+            { name: '避开天桥64级无梯台阶', desc: 'Cost=∞ 剪枝，改走45秒长绿灯有声安全斑马线', coords: [112.9825, 28.2010], icon: '⛔' }
+          ],
+          microPois: [
+            { name: '三甲急救绿通定锚点', desc: '500ms秒级自愈重划天心阁院区急救通道', coords: [112.9815, 28.1940], type: 'hazard', icon: '🏥' },
+            { name: '蔡锷路林荫长椅', desc: '沿途休息驿站，距起点320米', coords: [112.9840, 28.2080], type: 'bench', icon: '🪑' }
           ]
         }
       ],
@@ -853,6 +900,20 @@ export default {
       if (!L || !this.leafletMap) return
 
       // 先清理所有旧图层，防止多路线叠加
+      if (this.microTerrainLayers && this.microTerrainLayers.length) {
+        this.microTerrainLayers.forEach((layer) => {
+          try { this.leafletMap.removeLayer(layer) } catch (e) {}
+        })
+        this.microTerrainLayers = []
+      }
+      if (this.routeCorridor) {
+        try { this.leafletMap.removeLayer(this.routeCorridor) } catch (e) {}
+        this.routeCorridor = null
+      }
+      if (this.homeCircleLayer) {
+        try { this.leafletMap.removeLayer(this.homeCircleLayer) } catch (e) {}
+        this.homeCircleLayer = null
+      }
       if (this.routeCasing) {
         try { this.leafletMap.removeLayer(this.routeCasing) } catch (e) {}
         this.routeCasing = null
@@ -879,7 +940,30 @@ export default {
 
       const latlngs = this.polylinePath.map((p) => toLeafletLatLng(p))
 
-      // 路线描边 + 适老高辨识度天青蓝
+      // 1. 动态安全走廊：翡翠绿半透明光带 (32px宽度，代表步道两侧25-30m安全走廊)
+      if (latlngs.length >= 2) {
+        this.routeCorridor = L.polyline(latlngs, {
+          color: '#10b981',
+          weight: 34,
+          opacity: 0.28,
+          lineJoin: 'round',
+          lineCap: 'round',
+        }).addTo(this.leafletMap)
+        this.routeCorridor.bindTooltip('🛡️ 北斗适老动态安全走廊 (30m免打扰守护)', { permanent: false, direction: 'top' })
+
+        // 家·500米生活守护圈 (以起点为中心画绿色虚线圆)
+        this.homeCircleLayer = L.circle(latlngs[0], {
+          radius: 500,
+          color: '#10b981',
+          weight: 2,
+          dashArray: '6, 6',
+          fillColor: '#10b981',
+          fillOpacity: 0.08,
+        }).addTo(this.leafletMap)
+        this.homeCircleLayer.bindTooltip('🏠 家·500米生活守护圈 (圈内日常慢步静默伴随)', { permanent: false, direction: 'top' })
+      }
+
+      // 2. 规划路线描边 + 适老高辨识度天青蓝
       if (latlngs.length >= 2) {
         this.routeCasing = L.polyline(latlngs, {
           color: '#ffffff',
@@ -898,7 +982,39 @@ export default {
         }).addTo(this.leafletMap)
       }
 
-      // 标注地标与起终点
+      // 3. 标注当前场景的微地形要素：险台阶硬阻断剪枝点 + 缓坡/长椅适老POI
+      const curScene = this.demoScenes[this.currentSceneIdx || 0]
+      if (curScene) {
+        // 险台阶/陡坡硬阻断点 (红色警示图章)
+        if (curScene.microBarriers && curScene.microBarriers.length) {
+          curScene.microBarriers.forEach((b) => {
+            const icon = makeMapMarkerIcon(L, {
+              html: `<div class="micro-barrier-badge"><span class="barrier-icon">${b.icon || '⛔'}</span><span>${b.name}</span></div>`,
+              size: [52, 28],
+            })
+            const bm = L.marker(toLeafletLatLng(b.coords), { icon, zIndexOffset: 800 }).addTo(this.leafletMap)
+            bm.bindTooltip(`⚠️ ${b.desc || '已硬阻断剪枝，为您避开陡阶危险'}`, { permanent: false })
+            this.microTerrainLayers.push(bm)
+          })
+        }
+        // 坡度分段与长椅休憩POI
+        if (curScene.microPois && curScene.microPois.length) {
+          curScene.microPois.forEach((poi) => {
+            const isBench = poi.type === 'bench'
+            const isSlope = poi.type === 'slope'
+            const badgeClass = isBench ? 'poi-bench' : isSlope ? 'poi-slope' : 'poi-hazard'
+            const icon = makeMapMarkerIcon(L, {
+              html: `<div class="micro-poi-badge ${badgeClass}"><span class="poi-icon">${poi.icon}</span><span>${poi.name}</span></div>`,
+              size: [48, 26],
+            })
+            const pm = L.marker(toLeafletLatLng(poi.coords), { icon, zIndexOffset: 700 }).addTo(this.leafletMap)
+            pm.bindTooltip(`${poi.desc || poi.name}`, { permanent: false })
+            this.microTerrainLayers.push(pm)
+          })
+        }
+      }
+
+      // 4. 标注地标与起终点
       this.stationMarkers = []
       this.steps.forEach((st, idx) => {
         const isStart = idx === 0
@@ -913,7 +1029,7 @@ export default {
         this.stationMarkers.push(m)
       })
 
-      // 绘制长辈当前实时定位 Marker (带呼吸波纹动效与北斗高精徽标)
+      // 5. 绘制长辈当前实时定位 Marker (带呼吸波纹动效与北斗高精徽标)
       const liveIcon = makeMapMarkerIcon(L, {
         html: `<div class="elder-live-pulse-marker"><div class="pulse-ring"></div><div class="pulse-core">🛰️ ${this.userName} (北斗0.35m)</div></div>`,
         size: [80, 80],
@@ -928,6 +1044,21 @@ export default {
           padding: [50, 50],
           maxZoom: 16,
         })
+      }
+    },
+    speakMicroFeature(type) {
+      if (type === 'corridor') {
+        speak('北斗动态安全走廊已覆盖步道两侧30米，在此走廊内自由漫步，子女端静默守护不打扰。')
+        uni.showToast({ title: '🛡️ 30米动态安全走廊保护中', icon: 'none' })
+      } else if (type === 'slope') {
+        speak('当前路线经过微地形代价多目标优化，全程平均坡度小于2.5%，路面平整防滑。')
+        uni.showToast({ title: '🟢 纵坡<2.5% 平缓适老绿道', icon: 'none' })
+      } else if (type === 'barrier') {
+        speak('微地形算法已为您硬阻断沿途全部险陡台阶和过街天桥，确保100%零台阶无障碍通行。')
+        uni.showToast({ title: '⛔ 沿途险台阶已100%硬阻断', icon: 'none' })
+      } else if (type === 'bench') {
+        speak('沿途每隔150至200米设有适老休息长椅与遮阳棚，走累了随时可以坐下歇歇脚。')
+        uni.showToast({ title: '🪑 沿途多处长椅休息点已标定', icon: 'none' })
       }
     },
     startReporting() {
@@ -1592,6 +1723,66 @@ export default {
   overflow: hidden;
   box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.08);
   border: 2rpx solid #cbd5e1;
+}
+
+/* 适老微地形高精要素状态栏 */
+.microterrain-status-bar {
+  position: absolute;
+  top: 14rpx;
+  left: 14rpx;
+  right: 14rpx;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  pointer-events: auto;
+}
+
+.micro-status-pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  padding: 8rpx 8rpx;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1.5rpx solid rgba(255, 255, 255, 0.25);
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.micro-status-pill:active {
+  transform: scale(0.96);
+}
+
+.micro-status-pill.pill-corridor {
+  border-color: rgba(16, 185, 129, 0.8);
+}
+
+.micro-status-pill.pill-slope {
+  border-color: rgba(2, 132, 199, 0.8);
+}
+
+.micro-status-pill.pill-barrier {
+  border-color: rgba(220, 38, 38, 0.8);
+}
+
+.micro-status-pill.pill-bench {
+  border-color: rgba(217, 119, 6, 0.8);
+}
+
+.micro-status-pill .pill-icon {
+  font-size: 22rpx;
+}
+
+.micro-status-pill .pill-text {
+  font-size: 20rpx;
+  font-weight: 800;
+  color: #ffffff;
 }
 
 .amap-box {

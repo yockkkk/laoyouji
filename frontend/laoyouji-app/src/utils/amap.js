@@ -160,6 +160,14 @@ export function ensureAmapMarkerStyles() {
 .child-elder-breathe-marker .breathe-core{position:relative;z-index:2;background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:3px 8px;border-radius:12px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:nowrap;transform:translateZ(0);}
 .child-offroute-marker-bubble{display:inline-block;background:#ef4444;color:#fff;font-size:11px;font-weight:800;line-height:1.2;padding:4px 10px;border-radius:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(239,68,68,.4);white-space:nowrap;animation:offrouteBounce .8s infinite alternate;}
 @keyframes offrouteBounce{from{transform:translateY(0);}to{transform:translateY(-4px);}}
+/* —— 适老微地形高精标记 (硬阻断台阶 / 缓坡 / 长椅 / 避险) —— */
+.micro-barrier-badge{display:inline-flex;align-items:center;padding:4px 9px;border-radius:14px;background:#dc2626;color:#fff;font-size:11px;font-weight:700;line-height:1.2;white-space:nowrap;border:2px solid #fff;box-shadow:0 3px 8px rgba(220,38,38,.45);pointer-events:auto;}
+.micro-barrier-badge .barrier-icon{margin-right:2px;}
+.micro-poi-badge{display:inline-flex;align-items:center;padding:4px 9px;border-radius:14px;color:#fff;font-size:11px;font-weight:700;line-height:1.2;white-space:nowrap;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:auto;}
+.micro-poi-badge.poi-bench{background:#059669;}
+.micro-poi-badge.poi-slope{background:#0284c7;}
+.micro-poi-badge.poi-hazard{background:#d97706;}
+.micro-poi-badge .poi-icon{margin-right:2px;}
 `
   document.head.appendChild(style)
   markerStylesInjected = true

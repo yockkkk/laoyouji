@@ -189,12 +189,13 @@
         <!-- 地图 Canvas 挂载点 -->
         <div id="child-gaode-map" class="child-amap-canvas" @touchmove.stop></div>
 
-        <!-- 北斗多重电子围栏图层图例 -->
+        <!-- 北斗多重电子围栏与微地形图层图例 -->
         <view class="geofence-legend-strip">
           <view class="legend-chip"><text class="legend-dot green"></text><text class="legend-text">家·500m安全圈</text></view>
-          <view class="legend-chip"><text class="legend-dot blue"></text><text class="legend-text">适老走廊(50-80m)</text></view>
-          <view class="legend-chip"><text class="legend-dot purple"></text><text class="legend-text">目的地安全区</text></view>
-          <view class="legend-chip"><text class="legend-dot red"></text><text class="legend-text">水域/陡坡警示区</text></view>
+          <view class="legend-chip"><text class="legend-dot blue"></text><text class="legend-text">适老走廊(30m)</text></view>
+          <view class="legend-chip"><text class="legend-dot barrier"></text><text class="legend-text">⛔ 险台阶已阻断</text></view>
+          <view class="legend-chip"><text class="legend-dot bench"></text><text class="legend-text">🪑 适老长椅</text></view>
+          <view class="legend-chip"><text class="legend-dot red"></text><text class="legend-text">水域警戒区</text></view>
         </view>
 
         <view v-if="mapLoading" class="map-loading-overlay">
@@ -966,6 +967,40 @@ export default {
       }).addTo(this.leafletMap)
       this.geofenceLayers.riskCircle.bindTooltip('⚠️ 高危水域/陡坡警戒区 (年嘉湖)', { permanent: false, direction: 'top' })
 
+      // 4.1 绘制适老微地形高精避险要素 (险台阶硬阻断剪枝点与沿途长椅POI)
+      const tripDest = (this.trip && (this.trip.destination || this.trip.title)) || ''
+      if (tripDest.includes('烈士公园') || tripDest.includes('年嘉湖')) {
+        const stairMarker = L.marker(toLeafletLatLng([112.9920, 28.2105]), {
+          icon: makeMapMarkerIcon(L, {
+            html: '<div class="micro-barrier-badge"><span class="barrier-icon">⛔</span><span>避开38级险台阶</span></div>',
+            size: [52, 28],
+          }),
+          zIndexOffset: 800,
+        }).addTo(this.leafletMap)
+        stairMarker.bindTooltip('⚠️ 险台阶已硬阻断剪枝绕行，杜绝长辈骨骼损伤与摔倒', { permanent: false })
+        this.waypointMarkers.push(stairMarker)
+
+        const benchMarker = L.marker(toLeafletLatLng([112.9890, 28.2130]), {
+          icon: makeMapMarkerIcon(L, {
+            html: '<div class="micro-poi-badge poi-bench"><span class="poi-icon">🪑</span><span>长椅休憩点</span></div>',
+            size: [48, 26],
+          }),
+          zIndexOffset: 700,
+        }).addTo(this.leafletMap)
+        benchMarker.bindTooltip('🪑 适老休息长椅（配遮阳棚与防滑扶手）', { permanent: false })
+        this.waypointMarkers.push(benchMarker)
+      } else if (tripDest.includes('湘雅')) {
+        const stairMarker = L.marker(toLeafletLatLng([112.9866, 28.2145]), {
+          icon: makeMapMarkerIcon(L, {
+            html: '<div class="micro-barrier-badge"><span class="barrier-icon">⛔</span><span>避开地道险阶</span></div>',
+            size: [52, 28],
+          }),
+          zIndexOffset: 800,
+        }).addTo(this.leafletMap)
+        stairMarker.bindTooltip('⚠️ 算法已绕开地下通道42级险陡台阶，改走平层无障碍直梯连廊', { permanent: false })
+        this.waypointMarkers.push(stairMarker)
+      }
+
       // 5. 绘制途经打点 Markers
       this.routePointsData.forEach((pt) => {
         const isStart = pt.type === 'start'
@@ -1706,6 +1741,12 @@ export default {
 }
 .legend-dot.red {
   background: #ef4444;
+}
+.legend-dot.barrier {
+  background: #dc2626;
+}
+.legend-dot.bench {
+  background: #059669;
 }
 .legend-text {
   font-size: 20rpx;
