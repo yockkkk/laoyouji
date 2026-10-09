@@ -224,7 +224,7 @@ class MockMapProvider(MapProvider):
                 "origin": origin, "destination": destination,
                 "mode": pick["mode"], "duration": pick["duration"],
                 "distance_km": route.get("distance_km"),
-                "polyline": route["points"],
+                "polyline": route.get("polyline") or route["points"],
                 "steps": pick["steps"],
                 # 三种方式一起给出去：老人可以在页面上换，模型也可以改口
                 "options": [{"mode": o["mode"], "duration": o["duration"],

@@ -267,21 +267,22 @@ export default {
       title: '',
       currentSceneIdx: 0,
       originName: '家（华夏路社区）',
-      destinationName: '中南大学湘雅医院',
-      routeDuration: '约8分钟',
-      routeDistance: '0.48公里',
+      originName: '湖南烈士公园西门（无障碍入口）',
+      destinationName: '烈士公园朝晖楼（年嘉湖晨练区）',
+      routeDuration: '约15分钟',
+      routeDistance: '0.95公里',
       routeMode: '步行',
-      routeNotice: '正在获取北斗适老高精路线规划…',
+      routeNotice: '北斗亚米级高精时空护航已就绪，正在引导平缓无障碍步道…',
       mapLoading: true,
       mapFailed: false,
       isMapFullscreen: false,
       checkingIn: false,
-      familyContactName: '李明',
+      familyContactName: '小敏（女儿）',
       familyContactPhone: '13812345678',
       reportCount: 0,
       reportTimer: null,
       currentStepIndex: 0,
-      elderCoords: [112.9862, 28.2154], // 长沙市开福区华夏路社区·北斗康养示范小区
+      elderCoords: [112.9936, 28.2092], // 湖南省示范点·烈士公园西门无障碍入口
       elderMarker: null,
       routePolyline: null,
       routeCasing: null,
@@ -295,8 +296,109 @@ export default {
       steps: [],
       routePoints: [],
       polylinePath: [],
-      // 湖南省大学生智能导航科技创新大赛 3 大核心示范场景
+      // 湖南省大学生智能导航科技创新大赛 3 大核心示范场景（高精度实景人行步道）
       demoScenes: [
+        {
+          id: 'park',
+          label: '烈士公园晨练步道',
+          icon: '🌳',
+          origin: '湖南烈士公园西门（无障碍入口）',
+          destination: '烈士公园朝晖楼（年嘉湖晨练区）',
+          city: '长沙',
+          desc: '年嘉湖环湖林荫绿道 · 坡度<2.5% · 避开38级险台阶 · 途经2处适老长椅',
+          duration: '约15分钟',
+          distance: '0.95公里',
+          score: 98,
+          points: [
+            { location: '湖南烈士公园西门（无障碍入口）', name: '烈士公园西门无障碍入口', lng: 112.9936, lat: 28.2092 },
+            { location: '烈士公园林荫平缓慢步道', name: '平缓林荫慢步道', lng: 112.9958, lat: 28.2090 },
+            { location: '年嘉湖西堤适老爱心长椅区', name: '年嘉湖西堤爱心长椅', lng: 112.9975, lat: 28.2086 },
+            { location: '年嘉湖环湖适老防滑木栈道', name: '环湖适老防滑木栈道', lng: 112.9995, lat: 28.2072 },
+            { location: '烈士公园朝晖楼（年嘉湖晨练区）', name: '朝晖楼康养晨练区', lng: 113.0018, lat: 28.2030 }
+          ],
+          polyline: [
+            [112.9936, 28.2092],
+            [112.9940, 28.2092],
+            [112.9945, 28.2091],
+            [112.9950, 28.2091],
+            [112.9955, 28.2090],
+            [112.9960, 28.2090],
+            [112.9965, 28.2089],
+            [112.9970, 28.2088],
+            [112.9975, 28.2086],
+            [112.9979, 28.2084],
+            [112.9983, 28.2082],
+            [112.9987, 28.2079],
+            [112.9991, 28.2076],
+            [112.9995, 28.2072],
+            [112.9998, 28.2068],
+            [113.0001, 28.2064],
+            [113.0004, 28.2059],
+            [113.0007, 28.2054],
+            [113.0010, 28.2048],
+            [113.0012, 28.2043],
+            [113.0014, 28.2038],
+            [113.0016, 28.2034],
+            [113.0018, 28.2030]
+          ],
+          steps: [
+            {
+              title: '第 1 步：湖南烈士公园西门无障碍林荫慢步道',
+              landmark: '烈士公园西门无障碍入口',
+              icon: '🌳',
+              content: '由烈士公园西门平缓通道进园，沿林荫道稳步行进，地面平整无台阶坑洼。',
+              accessibleFeatures: ['无台阶', '全程平缓 (<1.2%)', '绿荫覆盖率 92%'],
+              voiceHint: '张阿姨，顺着西大门阴凉的平缓林荫道慢慢走，路面特别平整防滑。',
+              coords: [112.9936, 28.2092]
+            },
+            {
+              title: '第 2 步：避开假山险台阶绕行平缓通道',
+              landmark: '假山台阶绕行指示桩',
+              icon: '⛔',
+              content: '算法硬阻断已剪枝避开假山 38 级险陡台阶，引导您走右侧宽阔平缓绿道。',
+              accessibleFeatures: ['已避开38级险台阶', '坡度1.1%极缓', '配备防滑扶手'],
+              voiceHint: '张阿姨，前面假山台阶很陡，系统已为您选好平缓绿道，避开台阶安心走。',
+              coords: [112.9958, 28.2090]
+            },
+            {
+              title: '第 3 步：年嘉湖西堤适老爱心长椅区',
+              landmark: '年嘉湖西堤便民长椅',
+              icon: '🪑',
+              content: '途经适老休息驿站，设有便民长椅与遮阳棚，低位扶手设计，可随时小憩。',
+              accessibleFeatures: ['适老爱心长椅', '直饮水补给点', '遮阳挡雨棚'],
+              voiceHint: '张阿姨，湖边有带遮阳棚的爱心长椅，走累了坐下歇歇脚、喝口温水。',
+              coords: [112.9975, 28.2086]
+            },
+            {
+              title: '第 4 步：年嘉湖环湖适老防滑木栈道',
+              landmark: '年嘉湖环湖木栈道',
+              icon: '🚶',
+              content: '顺着环湖适老防滑木栈道前行，湖面微风舒适，坡度仅 1.6%，全程无障碍直通。',
+              accessibleFeatures: ['防滑木栈道', '缓坡平顺 (<2%)', '避开临水湿滑'],
+              voiceHint: '张阿姨，顺着平整的木栈道继续往前走，湖景开阔，微风吹着很舒畅。',
+              coords: [112.9995, 28.2072]
+            },
+            {
+              title: '第 5 步：烈士公园朝晖楼康养晨练广场',
+              landmark: '朝晖楼晨练康养广场',
+              icon: '🏅',
+              content: '顺利抵达朝晖楼晨练区，设有志愿服务站与医疗急救呼叫桩，晨练适宜。',
+              accessibleFeatures: ['平层无障碍到达', '红十字急救桩', '志愿助老岗亭'],
+              voiceHint: '张阿姨，到达朝晖楼啦！这里有志愿服务站，祝您晨练愉快！',
+              coords: [113.0018, 28.2030]
+            }
+          ],
+          microBarriers: [
+            { name: '避开假山38级险台阶', desc: 'Cost=∞ 硬阻断剪枝，杜绝长辈摔伤，改走平缓绿道', coords: [112.9965, 28.2096], icon: '⛔' },
+            { name: '避开过街陡坡 (11.8%)', desc: '坡度过大存在摔倒高危，算法已智能绕开', coords: [112.9945, 28.2098], icon: '⚠️' }
+          ],
+          microPois: [
+            { name: '坡度 1.1% (平缓绿道)', desc: '平缓防滑人行步道，老年慢步极度舒适', coords: [112.9950, 28.2091], type: 'slope', icon: '🟢' },
+            { name: '坡度 1.6% (平缓木栈道)', desc: '年嘉湖环湖适老防滑木栈道', coords: [112.9995, 28.2072], type: 'slope', icon: '🟢' },
+            { name: '适老长椅 1号 (配遮阳棚)', desc: '距起点260米，设有低位防滑扶手与温开水点', coords: [112.9975, 28.2086], type: 'bench', icon: '🪑' },
+            { name: '适老长椅 2号 (湖滨长椅)', desc: '距起点580米，视野开阔透气，配有靠背扶手', coords: [113.0004, 28.2059], type: 'bench', icon: '🪑' }
+          ]
+        },
         {
           id: 'xiangya',
           label: '湘雅老院区绿通',
@@ -304,187 +406,175 @@ export default {
           origin: '家（长沙市开福区华夏路社区）',
           destination: '中南大学湘雅医院',
           city: '长沙',
-          desc: '适老防滑步道 · 湘雅路有声斑马线 · 门诊无障碍坡道',
+          desc: '适老防滑人行道 · 湘雅路45秒有声斑马线 · 门诊无障碍连廊',
           duration: '约8分钟',
           distance: '0.48公里',
           score: 98,
           points: [
-            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9862, lat: 28.2154 },
-            { location: '华夏路林荫街心花园', name: '街心花园休息长椅', lng: 112.9865, lat: 28.2148 },
-            { location: '湘雅路有声安全斑马线', name: '湘雅路有声安全斑马线', lng: 112.9868, lat: 28.2143 },
-            { location: '中南大学湘雅医院', name: '中南大学湘雅医院（湘雅路院区）', lng: 112.9870, lat: 28.2140 }
+            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9835, lat: 28.2160 },
+            { location: '华夏路适老林荫人行道', name: '华夏路缓坡人行道', lng: 112.9836, lat: 28.2148 },
+            { location: '湘雅路街心爱心长椅', name: '街心长椅休息区', lng: 112.9854, lat: 28.2141 },
+            { location: '湘雅路有声安全斑马线', name: '湘雅路有声安全斑马线', lng: 112.9868, lat: 28.2141 },
+            { location: '中南大学湘雅医院门诊大楼', name: '湘雅医院门诊1号无障碍坡道', lng: 112.9871, lat: 28.2125 }
           ],
           polyline: [
-            [112.9862, 28.2154],
-            [112.9863, 28.2151],
-            [112.9865, 28.2148],
-            [112.9867, 28.2145],
-            [112.9868, 28.2143],
-            [112.9870, 28.2140]
+            [112.9835, 28.2160],
+            [112.9835, 28.2155],
+            [112.9836, 28.2150],
+            [112.9836, 28.2145],
+            [112.9837, 28.2141],
+            [112.9842, 28.2141],
+            [112.9848, 28.2141],
+            [112.9854, 28.2141],
+            [112.9860, 28.2141],
+            [112.9865, 28.2141],
+            [112.9868, 28.2141],
+            [112.9870, 28.2141],
+            [112.9870, 28.2137],
+            [112.9870, 28.2133],
+            [112.9871, 28.2129],
+            [112.9871, 28.2125]
           ],
           steps: [
             {
-              title: '第 1 步：华夏路社区南门无障碍出口',
+              title: '第 1 步：华夏路社区东门无障碍人行道',
               landmark: '华夏路社区便民服务亭',
               icon: '🏡',
-              content: '出小区沿华夏路适老防滑步道往南前行 150 米，途经街心花园休息长椅。',
-              accessibleFeatures: ['无台阶', '全程平缓缓坡 (<2%)', '林荫遮阳步道'],
-              voiceHint: '张阿姨，顺着咱们小区门口平平的防滑步道慢慢走，路边有长椅可以歇歇脚。',
-              coords: [112.9862, 28.2154]
+              content: '出小区东门沿防滑人行道向南慢行，路面平整，无坑洼台阶。',
+              accessibleFeatures: ['无台阶', '全程平缓 (<0.9%)', '林荫遮阳步道'],
+              voiceHint: '张阿姨，顺着咱们小区门口平平的防滑步道慢慢走，路况特别好。',
+              coords: [112.9835, 28.2160]
             },
             {
-              title: '第 2 步：湘雅路口有声安全斑马线',
+              title: '第 2 步：避开地下通道险陡台阶',
+              landmark: '地面无障碍通道口',
+              icon: '⛔',
+              content: '算法硬阻断已剪枝避开地下通道 42 级险台阶，引导走地面平层通道。',
+              accessibleFeatures: ['已避开42级险台阶', '地面平层通行', '人车分流'],
+              voiceHint: '张阿姨，地道台阶很陡，系统已为您选好平整的地面人行道，安心过。',
+              coords: [112.9836, 28.2148]
+            },
+            {
+              title: '第 3 步：湘雅路街心爱心长椅区',
+              landmark: '湘雅路街心休息长椅',
+              icon: '🪑',
+              content: '途经街心长椅驿站，设有便民长椅与温开水补给点，可在此随心小憩。',
+              accessibleFeatures: ['适老爱心长椅', '温开水补给点', '防滑低位扶手'],
+              voiceHint: '张阿姨，路边有爱心长椅和热水点，走累了随时坐下喝口水歇歇。',
+              coords: [112.9854, 28.2141]
+            },
+            {
+              title: '第 4 步：湘雅路口有声安全斑马线',
               landmark: '湘雅路口有声红绿灯',
               icon: '🚦',
-              content: '沿绿荫道慢行至湘雅路路口，过配备清脆语音提示的有声斑马线（绿灯时长 45 秒）。',
-              accessibleFeatures: ['无台阶', '人车分流安全岛', '声响红绿灯指引 (45秒)'],
-              voiceHint: '张阿姨，经过路口有清脆的提示音，绿灯时间很长，慢慢过，不用着急。',
-              coords: [112.9868, 28.2143]
+              content: '过配备清脆语音提示的有声斑马线（绿灯时长 45 秒，中途设行人安全岛）。',
+              accessibleFeatures: ['45秒长绿灯', '语音声响指引', '行人安全岛'],
+              voiceHint: '张阿姨，经过路口有清脆的提示音，绿灯时间很长，慢慢走不用着急。',
+              coords: [112.9868, 28.2141]
             },
             {
-              title: '第 3 步：中南大学湘雅医院门诊大楼 1 号无障碍坡道',
+              title: '第 5 步：湘雅医院门诊大楼 1 号无障碍坡道',
               landmark: '中南大学湘雅医院门诊大楼',
               icon: '🏥',
-              content: '抵达湘雅医院门诊大楼，顺着左侧平缓无障碍专用坡道进入大厅，直通骨科与挂号处。',
-              accessibleFeatures: ['无台阶', '防滑无障碍专用坡道', '无障碍直梯', '导医志愿者引导'],
+              content: '抵达湘雅医院门诊大楼，顺着左侧专用防滑坡道进入大厅，直通骨科与无障碍直梯。',
+              accessibleFeatures: ['专用防滑坡道', '无障碍直梯', '导医志愿者引导'],
               voiceHint: '到达湘雅医院啦！走左边平缓坡道进门就是导医台，骨科在二楼。',
-              coords: [112.9870, 28.2140]
+              coords: [112.9871, 28.2125]
             }
           ],
           microBarriers: [
-            { name: '避开地道42级险台阶', desc: 'Cost=∞ 算法硬阻断剪枝，改走地面平层无障碍通道', coords: [112.9866, 28.2145], icon: '⛔' }
+            { name: '避开地道42级险台阶', desc: 'Cost=∞ 算法硬阻断剪枝，改走地面平层无障碍通道', coords: [112.9848, 28.2146], icon: '⛔' }
           ],
           microPois: [
-            { name: '平层无障碍直梯连廊', desc: '推车轮椅无缝直通门诊二楼骨科', coords: [112.9868, 28.2143], type: 'slope', icon: '♿' },
-            { name: '门诊适老爱心长椅', desc: '长辈专用休息长椅，配有温开水补给点', coords: [112.9865, 28.2148], type: 'bench', icon: '🪑' }
-          ]
-        },
-        {
-          id: 'park',
-          label: '烈士公园晨练步道',
-          icon: '🌳',
-          origin: '家（长沙市开福区华夏路社区）',
-          destination: '湖南烈士公园',
-          city: '长沙',
-          desc: '年嘉湖西路林荫道 · 避开陡坡台阶 · 途经3处便民休息长椅',
-          duration: '约15分钟',
-          distance: '1.2公里',
-          score: 96,
-          points: [
-            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9862, lat: 28.2154 },
-            { location: '开福寺路绿道', name: '开福寺路林荫绿道', lng: 112.9890, lat: 28.2130 },
-            { location: '年嘉湖西路步道', name: '年嘉湖适老缓坡步道', lng: 112.9930, lat: 28.2090 },
-            { location: '湖南烈士公园西门', name: '湖南烈士公园（西门无障碍入口）', lng: 112.9970, lat: 28.2060 }
-          ],
-          polyline: [
-            [112.9862, 28.2154],
-            [112.9875, 28.2140],
-            [112.9890, 28.2130],
-            [112.9910, 28.2110],
-            [112.9930, 28.2090],
-            [112.9950, 28.2075],
-            [112.9970, 28.2060]
-          ],
-          steps: [
-            {
-              title: '第 1 步：华夏路社区东门林荫绿道',
-              landmark: '华夏路便民服务站',
-              icon: '🏡',
-              content: '出东门沿树荫平缓慢行道前行，路面平整，无坑洼台阶。',
-              accessibleFeatures: ['无台阶', '全程缓坡 (<3%)', '绿荫遮阳率 92%'],
-              voiceHint: '张阿姨，顺着东门阴凉的树荫道慢慢走，路特别平。',
-              coords: [112.9862, 28.2154]
-            },
-            {
-              title: '第 2 步：开福寺路适老休息长椅区',
-              landmark: '开福寺路适老驿站',
-              icon: '🪑',
-              content: '途经适老休息驿站，设有便民长椅与遮阳棚，可随心小憩。',
-              accessibleFeatures: ['无台阶', '配备爱心长椅', '直饮水补给点'],
-              voiceHint: '张阿姨，前面有爱心长椅，走累了坐下歇歇喝口水。',
-              coords: [112.9890, 28.2130]
-            },
-            {
-              title: '第 3 步：湖南烈士公园西门无障碍平缓通道',
-              landmark: '烈士公园西大门',
-              icon: '🌳',
-              content: '由烈士公园西门平缓通道进园，直通年嘉湖环湖适老健身木栈道。',
-              accessibleFeatures: ['无台阶', '防滑木栈道', '全程无障碍贯通'],
-              voiceHint: '到达烈士公园西门啦！顺着平平的木栈道进园，空气特别好。',
-              coords: [112.9970, 28.2060]
-            }
-          ],
-          microBarriers: [
-            { name: '避开南门38级险台阶', desc: 'Cost=∞ 硬阻断已剪枝，杜绝长辈摔伤', coords: [112.9920, 28.2105], icon: '⛔' },
-            { name: '避开过街陡坡 (11.8%)', desc: '坡度过大存在摔倒高危，算法已智能绕开', coords: [112.9880, 28.2138], icon: '⚠️' }
-          ],
-          microPois: [
-            { name: '坡度 1.2% (平缓绿道)', desc: '平缓防滑人行步道，老年慢步极度舒适', coords: [112.9875, 28.2140], type: 'slope', icon: '🟢' },
-            { name: '坡度 1.8% (平缓木栈道)', desc: '年嘉湖环湖适老防滑木栈道', coords: [112.9930, 28.2090], type: 'slope', icon: '🟢' },
-            { name: '适老长椅 1号 (配遮阳棚)', desc: '距起点180米，设有低位防滑扶手', coords: [112.9890, 28.2130], type: 'bench', icon: '🪑' },
-            { name: '适老长椅 2号 (湖滨长椅)', desc: '距起点420米，视野开阔透气', coords: [112.9950, 28.2075], type: 'bench', icon: '🪑' }
+            { name: '坡度 0.9% (平整步道)', desc: '华夏路适老防滑人行步道', coords: [112.9836, 28.2148], type: 'slope', icon: '🟢' },
+            { name: '湘雅路街心爱心长椅', desc: '长辈专用休息长椅，配有温开水补给点', coords: [112.9854, 28.2141], type: 'bench', icon: '🪑' },
+            { name: '平层无障碍直梯连廊', desc: '推车轮椅无缝直通门诊二楼骨科', coords: [112.9871, 28.2129], type: 'slope', icon: '♿' }
           ]
         },
         {
           id: 'renmin',
           label: '省人民医院老年专线',
           icon: '🏛️',
-          origin: '家（长沙市开福区华夏路社区）',
+          origin: '蔡锷北路适老驿站',
           destination: '湖南省人民医院',
           city: '长沙',
           desc: '人车分流安全绿道 · 45秒长绿灯斑马线 · 南大门无障碍直梯',
           duration: '约22分钟',
-          distance: '1.8公里',
+          distance: '2.2公里',
           score: 95,
           points: [
-            { location: '家（长沙市开福区华夏路社区）', name: '家（华夏路社区）', lng: 112.9862, lat: 28.2154 },
-            { location: '蔡锷北路宽道', name: '蔡锷北路林荫步道', lng: 112.9840, lat: 28.2080 },
-            { location: '解放西路安全岛', name: '解放西路有声红绿灯', lng: 112.9820, lat: 28.1980 },
-            { location: '湖南省人民医院', name: '湖南省人民医院（天心阁院区）', lng: 112.9810, lat: 28.1920 }
+            { location: '蔡锷北路适老驿站', name: '蔡锷北路适老驿站', lng: 112.9818, lat: 28.2045 },
+            { location: '蔡锷路林荫人行道', name: '蔡锷路林荫步道', lng: 112.9817, lat: 28.2015 },
+            { location: '蔡锷中路适老长椅', name: '蔡锷中路休息驿站', lng: 112.9815, lat: 28.1985 },
+            { location: '解放西路有声红绿灯斑马线', name: '解放西路有声斑马线', lng: 112.9814, lat: 28.1970 },
+            { location: '湖南省人民医院天心阁院区', name: '省人民医院天心阁院区门诊', lng: 112.9810, lat: 28.1920 }
           ],
           polyline: [
-            [112.9862, 28.2154],
-            [112.9850, 28.2110],
-            [112.9840, 28.2080],
-            [112.9830, 28.2030],
-            [112.9820, 28.1980],
+            [112.9818, 28.2045],
+            [112.9818, 28.2030],
+            [112.9817, 28.2015],
+            [112.9817, 28.2000],
+            [112.9816, 28.1985],
+            [112.9815, 28.1970],
+            [112.9814, 28.1955],
+            [112.9813, 28.1940],
+            [112.9812, 28.1930],
             [112.9810, 28.1920]
           ],
           steps: [
             {
-              title: '第 1 步：华夏路平缓无障碍步道',
-              landmark: '华夏路社区便民亭',
+              title: '第 1 步：蔡锷北路平缓无障碍步道',
+              landmark: '蔡锷北路适老驿站',
               icon: '🏡',
-              content: '顺华夏路绿荫通道前行，全程缓坡无台阶。',
+              content: '顺蔡锷北路宽敞防滑人行道向南慢行，绿树成荫，全程缓坡无台阶。',
               accessibleFeatures: ['无台阶', '人车分流', '防滑路面'],
               voiceHint: '张阿姨，咱们慢慢走，沿路都是平平的防滑步道。',
-              coords: [112.9862, 28.2154]
+              coords: [112.9818, 28.2045]
             },
             {
-              title: '第 2 步：解放西路有声安全斑马线',
+              title: '第 2 步：避开天桥64级险陡台阶',
+              landmark: '地面无障碍斑马线指示',
+              icon: '⛔',
+              content: '算法硬阻断已剪枝避开人行天桥 64 级无梯陡阶，引导走地面安全斑马线。',
+              accessibleFeatures: ['已避开64级险台阶', '地面平层通行'],
+              voiceHint: '张阿姨，天桥台阶太高太陡，咱们走地面的平整斑马线。',
+              coords: [112.9817, 28.2015]
+            },
+            {
+              title: '第 3 步：蔡锷中路适老爱心长椅区',
+              landmark: '蔡锷中路便民长椅',
+              icon: '🪑',
+              content: '途经爱心长椅休息区，配有遮阳棚与无障碍公厕引导，可随时休息。',
+              accessibleFeatures: ['配备爱心长椅', '遮阳棚', '无障碍公厕引导'],
+              voiceHint: '张阿姨，路边有长椅可以歇歇脚，不着急赶路。',
+              coords: [112.9815, 28.1985]
+            },
+            {
+              title: '第 4 步：解放西路有声安全斑马线',
               landmark: '解放西路口安全岛',
               icon: '🚦',
               content: '过有声信号灯斑马线，安全绿灯时长 45 秒，中途设行人安全岛。',
-              accessibleFeatures: ['无台阶', '45秒长绿灯', '语音声响指引'],
+              accessibleFeatures: ['45秒长绿灯', '语音声响指引', '行人安全岛'],
               voiceHint: '张阿姨，路口绿灯时间长，有清脆语音提示，慢慢过不用着急。',
-              coords: [112.9820, 28.1980]
+              coords: [112.9814, 28.1970]
             },
             {
-              title: '第 3 步：湖南省人民医院南门无障碍专用梯',
+              title: '第 5 步：湖南省人民医院天心阁院区无障碍入口',
               landmark: '湖南省人民医院天心阁院区',
               icon: '🏥',
-              content: '抵达省人民医院，走左侧专用防滑缓坡进入门诊大厅，直通无障碍电梯。',
-              accessibleFeatures: ['无台阶', '专用防滑缓坡', '无障碍直梯'],
+              content: '抵达省人民医院，走左侧专用防滑缓坡进入门诊大厅，直通无障碍直梯。',
+              accessibleFeatures: ['专用防滑缓坡', '无障碍直梯', '急救绿通定锚'],
               voiceHint: '张阿姨，到达省人民医院了！走左侧平缓坡道直接进大厅。',
               coords: [112.9810, 28.1920]
             }
           ],
           microBarriers: [
-            { name: '避开天桥64级无梯台阶', desc: 'Cost=∞ 剪枝，改走45秒长绿灯有声安全斑马线', coords: [112.9825, 28.2010], icon: '⛔' }
+            { name: '避开天桥64级无梯台阶', desc: 'Cost=∞ 剪枝，改走45秒长绿灯有声安全斑马线', coords: [112.9816, 28.1990], icon: '⛔' }
           ],
           microPois: [
-            { name: '三甲急救绿通定锚点', desc: '500ms秒级自愈重划天心阁院区急救通道', coords: [112.9815, 28.1940], type: 'hazard', icon: '🏥' },
-            { name: '蔡锷路林荫长椅', desc: '沿途休息驿站，距起点320米', coords: [112.9840, 28.2080], type: 'bench', icon: '🪑' }
+            { name: '坡度 1.2% (平缓步道)', desc: '蔡锷路林荫人行道，路面平坦', coords: [112.9817, 28.2015], type: 'slope', icon: '🟢' },
+            { name: '蔡锷中路适老长椅', desc: '沿途休息驿站，距起点320米', coords: [112.9815, 28.1985], type: 'bench', icon: '🪑' },
+            { name: '三甲急救绿通定锚点', desc: '500ms秒级自愈重划天心阁院区急救通道', coords: [112.9812, 28.1930], type: 'hazard', icon: '🏥' }
           ]
         }
       ],
@@ -577,6 +667,19 @@ export default {
   },
   methods: {
     async initPage() {
+      // 预先装配默认示范场景数据（烈士公园晨练步道）
+      const defaultSc = this.demoScenes[this.currentSceneIdx || 0]
+      if (defaultSc) {
+        this.originName = defaultSc.origin
+        this.destinationName = defaultSc.destination
+        this.routeDuration = defaultSc.duration
+        this.routeDistance = defaultSc.distance
+        this.barrierFreeScore = defaultSc.score
+        this.polylinePath = defaultSc.polyline
+        this.steps = defaultSc.steps
+        this.routePoints = defaultSc.points
+        this.elderCoords = [defaultSc.points[0].lng, defaultSc.points[0].lat]
+      }
       await this.fetchRouteFromBackend()
       await this.initMap()
       this.startReporting()
@@ -661,32 +764,32 @@ export default {
             }
           }
 
-          if (Array.isArray(r.polyline) && r.polyline.length) {
+          // 仅当后端返回的点数足够密集（>=10个点）时采用，否则保留高精度平滑人行道轨迹
+          if (Array.isArray(r.polyline) && r.polyline.length >= 10) {
             this.polylinePath = r.polyline.map((p) => [p.lng, p.lat])
-          } else if (this.routePoints.length) {
+          } else if (!this.polylinePath.length && this.routePoints.length) {
             this.polylinePath = this.routePoints.map((p) => [p.lng, p.lat])
           }
 
           if (Array.isArray(r.steps) && r.steps.length) {
             this.steps = r.steps.map((st, idx) => this.enrichStepWithLandmarks(st, idx, r))
-          } else {
-            // 如果后端无步骤，装配真实适老实景地标步骤
+          } else if (!this.steps.length) {
             this.steps = this.generateFallbackElderLandmarkSteps()
           }
-        } else {
-          // 兜底生成真实的长沙/适老地标指引，保证演示体验流畅
+        } else if (!this.steps.length) {
           this.steps = this.generateFallbackElderLandmarkSteps()
         }
       } catch (e) {
         console.warn('获取后端路线规划失败，使用适老地标实景步骤兜底:', e)
-        this.steps = this.generateFallbackElderLandmarkSteps()
+        if (!this.steps.length) {
+          this.steps = this.generateFallbackElderLandmarkSteps()
+        }
       }
     },
     // 将传统冰冷步骤转化为适老地标实景与无障碍属性卡片
     enrichStepWithLandmarks(st, idx, r) {
       const text = typeof st === 'string' ? st : (st.instruction || st.content || '')
       const pt = (this.routePoints && this.routePoints[idx]) || (this.routePoints && this.routePoints[this.routePoints.length - 1])
-      const ptName = (this.routePoints && this.routePoints[idx] && this.routePoints[idx].name) || ''
 
       // 提取或匹配直观地标与拟物化图标
       let landmark = st.landmark || ''
@@ -696,26 +799,89 @@ export default {
       let voiceHint = st.voice_hint || st.voiceHint || ''
 
       if (!landmark) {
-        if (idx === 0) {
-          landmark = '烈士公园南门大樟树入口'
-          icon = '🌳'
-          actionDesc = '在百年大樟树与便民岗亭前右转，顺着缓坡无障碍通道稳步走。'
-          accessibleBadges = ['无台阶', '全程缓坡 (<4%)', '绿荫遮阳步道']
-        } else if (idx === 1) {
-          landmark = '中国建设银行便民网点'
-          icon = '🏦'
-          actionDesc = '往前走看到中国建设银行，从银行右侧平缓通道通过，路口有人行道斑马线。'
-          accessibleBadges = ['无台阶', '全程缓坡 (<4%)', '途经2处休息长椅']
-        } else if (idx === 2) {
-          landmark = '同仁堂便民大药房'
-          icon = '🏥'
-          actionDesc = '经过大药房门前宽敞林荫道，直走过安全红绿灯路口，有清脆语音提示。'
-          accessibleBadges = ['无台阶', '人车分流安全步道', '绿荫遮阳步道']
+        const dest = (this.destinationName || (r && r.destination) || '').trim()
+        if (dest.includes('烈士') || dest.includes('年嘉湖')) {
+          if (idx === 0) {
+            landmark = '烈士公园西门无障碍入口'
+            icon = '🌳'
+            actionDesc = '由烈士公园西门平缓通道进园，沿林荫道稳步行进，地面平整无台阶坑洼。'
+            accessibleBadges = ['无台阶', '全程平缓 (<1.2%)', '绿荫覆盖率 92%']
+          } else if (idx === 1) {
+            landmark = '假山台阶绕行指示桩'
+            icon = '⛔'
+            actionDesc = '算法硬阻断已剪枝避开假山 38 级险陡台阶，引导走右侧宽阔平缓绿道。'
+            accessibleBadges = ['已避开38级险台阶', '坡度1.1%极缓', '配备防滑扶手']
+          } else if (idx === 2) {
+            landmark = '年嘉湖西堤便民长椅'
+            icon = '🪑'
+            actionDesc = '途经适老休息驿站，设有便民长椅与遮阳棚，低位扶手设计，可随时小憩。'
+            accessibleBadges = ['适老爱心长椅', '直饮水补给点', '遮阳挡雨棚']
+          } else if (idx === 3) {
+            landmark = '年嘉湖环湖木栈道'
+            icon = '🚶'
+            actionDesc = '顺着环湖适老防滑木栈道前行，湖面微风舒适，坡度仅 1.6%，全程无障碍直通。'
+            accessibleBadges = ['防滑木栈道', '缓坡平顺 (<2%)', '避开临水湿滑']
+          } else {
+            landmark = '朝晖楼晨练康养广场'
+            icon = '🏅'
+            actionDesc = '顺利抵达朝晖楼晨练区，设有志愿服务站与医疗急救呼叫桩，晨练适宜。'
+            accessibleBadges = ['平层无障碍到达', '红十字急救桩', '志愿助老岗亭']
+          }
+        } else if (dest.includes('湘雅')) {
+          if (idx === 0) {
+            landmark = '华夏路社区东门便民服务亭'
+            icon = '🏡'
+            actionDesc = '出小区东门沿平缓防滑人行道向南慢行，路面平整，无坑洼台阶。'
+            accessibleBadges = ['无台阶', '全程平缓 (<0.9%)', '林荫遮阳步道']
+          } else if (idx === 1) {
+            landmark = '地面无障碍通道口'
+            icon = '⛔'
+            actionDesc = '算法硬阻断已剪枝避开地下通道 42 级险台阶，引导走地面平层通道。'
+            accessibleBadges = ['已避开42级险台阶', '地面平层通行', '人车分流']
+          } else if (idx === 2) {
+            landmark = '湘雅路街心休息长椅'
+            icon = '🪑'
+            actionDesc = '途经街心长椅驿站，设有便民长椅与温开水补给点，可在此随心小憩。'
+            accessibleBadges = ['适老爱心长椅', '温开水补给点', '防滑低位扶手']
+          } else if (idx === 3) {
+            landmark = '湘雅路口有声红绿灯'
+            icon = '🚦'
+            actionDesc = '过配备清脆语音提示的有声斑马线（绿灯时长 45 秒，中途设行人安全岛）。'
+            accessibleBadges = ['45秒长绿灯', '语音声响指引', '行人安全岛']
+          } else {
+            landmark = '湘雅医院门诊大楼 1 号无障碍坡道'
+            icon = '🏥'
+            actionDesc = '抵达湘雅医院门诊大楼，顺着左侧专用防滑坡道进入大厅，直通骨科与无障碍直梯。'
+            accessibleBadges = ['专用防滑坡道', '无障碍直梯', '导医志愿者引导']
+          }
         } else {
-          landmark = `${this.destinationName || '医院'}正门无障碍直梯`
-          icon = '♿'
-          actionDesc = `抵达${this.destinationName || '目的地'}正门，走左侧平缓无障碍通道，进入大厅直梯。`
-          accessibleBadges = ['无台阶', '有无障碍直梯', '导医志愿者引导']
+          // 省人民医院 / 默认
+          if (idx === 0) {
+            landmark = '蔡锷北路适老驿站'
+            icon = '🏡'
+            actionDesc = '顺蔡锷北路宽敞防滑人行道向南慢行，绿树成荫，全程缓坡无台阶。'
+            accessibleBadges = ['无台阶', '人车分流', '防滑路面']
+          } else if (idx === 1) {
+            landmark = '地面无障碍斑马线指示'
+            icon = '⛔'
+            actionDesc = '算法硬阻断已剪枝避开人行天桥 64 级无梯陡阶，引导走地面安全斑马线。'
+            accessibleBadges = ['已避开64级险台阶', '地面平层通行']
+          } else if (idx === 2) {
+            landmark = '蔡锷中路便民长椅'
+            icon = '🪑'
+            actionDesc = '途经爱心长椅休息区，配有遮阳棚与无障碍公厕引导，可随时休息。'
+            accessibleBadges = ['配备爱心长椅', '遮阳棚', '无障碍公厕引导']
+          } else if (idx === 3) {
+            landmark = '解放西路口安全岛'
+            icon = '🚦'
+            actionDesc = '过有声信号灯斑马线，安全绿灯时长 45 秒，中途设行人安全岛。'
+            accessibleBadges = ['45秒长绿灯', '语音声响指引', '行人安全岛']
+          } else {
+            landmark = `${this.destinationName || '医院'}无障碍入口`
+            icon = '🏥'
+            actionDesc = `抵达${this.destinationName || '目的地'}，走左侧专用防滑缓坡进入大厅，直通无障碍直梯。`
+            accessibleBadges = ['专用防滑缓坡', '无障碍直梯', '急救绿通定锚']
+          }
         }
       }
 
@@ -736,10 +902,10 @@ export default {
         accessibleFeatures: accessibleBadges,
         voiceHint,
         tip: idx === 0
-          ? '出发前带好医保卡和温开水，路上慢慢走，不着急。'
-          : idx === (r.steps ? r.steps.length - 1 : 3)
+          ? '出发前带好温开水与遮阳帽，路上慢慢走，不着急。'
+          : idx === ((r && r.steps) ? r.steps.length - 1 : 4)
           ? '到达目的地后，导医台和工作人员随时为您提供帮助。'
-          : '前行50米路边设有适老休息长椅，走累了可以坐下来歇歇。',
+          : '前行路边设有适老休息长椅，走累了可以坐下来歇歇。',
         coords: pt ? [pt.lng, pt.lat] : this.elderCoords,
       }
     },
@@ -768,7 +934,7 @@ export default {
       this.elderCoords = [sc.points[0].lng, sc.points[0].lat]
       this.currentStepIndex = 0
 
-      // 尝试调用后端直接路线规划接口同步
+      // 尝试调用后端直接路线规划接口同步（仅在后端有点更多更高精时采纳，防止覆盖高精人行步道）
       try {
         const directRes = await get('/api/trips/route/direct', {
           origin: sc.origin,
@@ -779,10 +945,7 @@ export default {
           const r = directRes.route
           if (r.duration) this.routeDuration = r.duration
           if (r.distance_km) this.routeDistance = `${r.distance_km}公里`
-          if (Array.isArray(r.steps) && r.steps.length) {
-            this.steps = r.steps.map((st, idx) => this.enrichStepWithLandmarks(st, idx, r))
-          }
-          if (Array.isArray(r.polyline) && r.polyline.length) {
+          if (Array.isArray(r.polyline) && r.polyline.length >= sc.polyline.length) {
             this.polylinePath = r.polyline.map((p) => [p.lng, p.lat])
           }
         }

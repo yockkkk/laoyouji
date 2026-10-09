@@ -496,7 +496,17 @@ export default {
       return 126
     },
     trailPoints() {
-      const pts = (this.checkpoints || []).filter((cp) => cp && cp.lng != null && cp.lat != null)
+      let pts = (this.checkpoints || []).filter((cp) => cp && cp.lng != null && cp.lat != null)
+      // 过滤超远距离脏数据（如早先测试跨城或跨数公里的大浮动漂移点）
+      if (pts.length > 0 && this.routeCoords.length > 0) {
+        const routeCenter = this.routeCoords[Math.floor(this.routeCoords.length / 2)]
+        pts = pts.filter((cp) => {
+          const dLng = Math.abs(cp.lng - routeCenter[0])
+          const dLat = Math.abs(cp.lat - routeCenter[1])
+          // 超过 0.025 度 (~2.5公里) 的异常跳跃点不纳入人行尺度轨迹连线，防止将人行视角拉伸到全市
+          return dLng < 0.025 && dLat < 0.025
+        })
+      }
       if (pts.length > 0) return pts
       if (this.routePointsData && this.routePointsData.length) {
         return this.routePointsData.map((rp, idx) => ({
@@ -837,9 +847,9 @@ export default {
       if (this.routeCoords && this.routeCoords.length >= 4) {
         const midIdx = Math.floor(this.routeCoords.length / 2)
         const mid = this.routeCoords[midIdx]
-        return [Number(mid[0]) + 0.002, Number(mid[1]) + 0.0015]
+        return [Number(mid[0]) + 0.0008, Number(mid[1]) + 0.0006]
       }
-      return [112.998, 28.21] // 默认年嘉湖高危水域
+      return [112.9995, 28.2072] // 默认年嘉湖临水警戒区
     },
     renderTripOnMap() {
       const L = window.L
@@ -969,36 +979,56 @@ export default {
 
       // 4.1 绘制适老微地形高精避险要素 (险台阶硬阻断剪枝点与沿途长椅POI)
       const tripDest = (this.trip && (this.trip.destination || this.trip.title)) || ''
-      if (tripDest.includes('烈士公园') || tripDest.includes('年嘉湖')) {
-        const stairMarker = L.marker(toLeafletLatLng([112.9920, 28.2105]), {
+      if (tripDest.includes('烈士公园') || tripDest.includes('年嘉湖') || !tripDest) {
+        const stairMarker = L.marker(toLeafletLatLng([112.9965, 28.2096]), {
           icon: makeMapMarkerIcon(L, {
             html: '<div class="micro-barrier-badge"><span class="barrier-icon">⛔</span><span>避开38级险台阶</span></div>',
             size: [52, 28],
           }),
           zIndexOffset: 800,
         }).addTo(this.leafletMap)
-        stairMarker.bindTooltip('⚠️ 险台阶已硬阻断剪枝绕行，杜绝长辈骨骼损伤与摔倒', { permanent: false })
+        stairMarker.bindTooltip('⚠️ 假山险台阶已硬阻断剪枝绕行，杜绝长辈骨骼损伤与摔倒', { permanent: false })
         this.waypointMarkers.push(stairMarker)
 
-        const benchMarker = L.marker(toLeafletLatLng([112.9890, 28.2130]), {
+        const benchMarker = L.marker(toLeafletLatLng([112.9975, 28.2086]), {
           icon: makeMapMarkerIcon(L, {
-            html: '<div class="micro-poi-badge poi-bench"><span class="poi-icon">🪑</span><span>长椅休憩点</span></div>',
+            html: '<div class="micro-poi-badge poi-bench"><span class="poi-icon">🪑</span><span>适老爱心长椅</span></div>',
             size: [48, 26],
           }),
           zIndexOffset: 700,
         }).addTo(this.leafletMap)
-        benchMarker.bindTooltip('🪑 适老休息长椅（配遮阳棚与防滑扶手）', { permanent: false })
+        benchMarker.bindTooltip('🪑 年嘉湖西堤适老长椅（配遮阳棚与防滑扶手）', { permanent: false })
         this.waypointMarkers.push(benchMarker)
+
+        const slopeMarker = L.marker(toLeafletLatLng([112.9950, 28.2091]), {
+          icon: makeMapMarkerIcon(L, {
+            html: '<div class="micro-poi-badge poi-slope"><span class="poi-icon">🟢</span><span>坡度1.1%平缓</span></div>',
+            size: [48, 26],
+          }),
+          zIndexOffset: 700,
+        }).addTo(this.leafletMap)
+        slopeMarker.bindTooltip('🟢 平缓林荫绿道，坡度仅 1.1%，慢步省力安全', { permanent: false })
+        this.waypointMarkers.push(slopeMarker)
       } else if (tripDest.includes('湘雅')) {
-        const stairMarker = L.marker(toLeafletLatLng([112.9866, 28.2145]), {
+        const stairMarker = L.marker(toLeafletLatLng([112.9848, 28.2146]), {
           icon: makeMapMarkerIcon(L, {
             html: '<div class="micro-barrier-badge"><span class="barrier-icon">⛔</span><span>避开地道险阶</span></div>',
             size: [52, 28],
           }),
           zIndexOffset: 800,
         }).addTo(this.leafletMap)
-        stairMarker.bindTooltip('⚠️ 算法已绕开地下通道42级险陡台阶，改走平层无障碍直梯连廊', { permanent: false })
+        stairMarker.bindTooltip('⚠️ 算法已绕开地下通道42级险陡台阶，改走平层无障碍通道', { permanent: false })
         this.waypointMarkers.push(stairMarker)
+
+        const benchMarker = L.marker(toLeafletLatLng([112.9854, 28.2141]), {
+          icon: makeMapMarkerIcon(L, {
+            html: '<div class="micro-poi-badge poi-bench"><span class="poi-icon">🪑</span><span>街心爱心长椅</span></div>',
+            size: [48, 26],
+          }),
+          zIndexOffset: 700,
+        }).addTo(this.leafletMap)
+        benchMarker.bindTooltip('🪑 湘雅路街心爱心长椅，配有温开水补给点', { permanent: false })
+        this.waypointMarkers.push(benchMarker)
       }
 
       // 5. 绘制途经打点 Markers
@@ -1064,9 +1094,9 @@ export default {
       // 同步偏航警告点标记
       this.updateOffRouteMarker()
 
-      // 自适应视野缩放
+      // 自适应视野缩放（锁定人行高精尺度，限制最大缩放）
       if (latlngs.length) {
-        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40] })
+        this.leafletMap.fitBounds(this.routePolyline.getBounds(), { padding: [40, 40], maxZoom: 17 })
       }
     },
     updateOffRouteMarker() {
@@ -1128,6 +1158,7 @@ export default {
       if (this.leafletMap && this.routePolyline) {
         this.leafletMap.fitBounds(this.routePolyline.getBounds(), {
           padding: [40, 40],
+          maxZoom: 17,
           animate: true,
           duration: 0.8,
           easeLinearity: 0.25,
@@ -1347,8 +1378,9 @@ export default {
           uni.showToast({ title: '还没有长辈位置，先等一次上报', icon: 'none' })
           return
         }
-        const offLng = Number(base[0]) + 0.06
-        const offLat = Number(base[1]) + 0.04
+        // 人行尺度偏航：偏离安全走廊约 90-110米（触发偏航告警，但视野始终锁定在人行步道街区）
+        const offLng = Number(base[0]) + 0.00095
+        const offLat = Number(base[1]) + 0.00075
         try {
           const res = await post(`/api/trips/${this.tripId}/checkpoints`, {
             location: '偏离规划安全走廊（演示上报）',
