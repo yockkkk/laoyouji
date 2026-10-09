@@ -284,6 +284,15 @@ const AGENT_ICON = {
   guardian: '🛡️',
   community: '🏘️',
 }
+const AGENT_COLOR = {
+  main: '#E65100',
+  travel: '#0284C7',
+  bds_nav: '#0284C7',
+  health: '#10B981',
+  weather: '#F59E0B',
+  guardian: '#8B5CF6',
+  community: '#EC4899',
+}
 
 // ---- 历史弹层的日期分组 ------------------------------------------------
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -349,6 +358,7 @@ export default {
       showHistory: false,
       sessionList: [],
       activeChips: [], // 场景化快捷建议胶囊列表 [{ label, text }]
+      _typewriterTimer: null, // 打字机流式输出计时器
     }
   },
   computed: {
@@ -486,6 +496,10 @@ export default {
       uni.showTabBar({ animation: false })
     } catch (e) {}
     this._stopWatch()
+    if (this._typewriterTimer) {
+      clearInterval(this._typewriterTimer)
+      this._typewriterTimer = null
+    }
     if (typeof window !== 'undefined' && this._handleResize) {
       window.removeEventListener('resize', this._handleResize)
     }
@@ -983,7 +997,11 @@ export default {
       // 自愈重发时这句已经在屏幕上了，别让老人看见自己说了两遍
       if (!_isRetry) this.messages.push({ kind: 'text', text, isUser: true })
       this.thinking = true
-      this.activeThinking = null
+      this.activeThinking = {
+        agent: 'main',
+        thought: '康乐总管正在理解您的出行需求，准备组织智能体协同…',
+        color: '#E65100',
+      }
       this._todoMsg = null
       const bubble = { kind: 'text', text: '', agent: 'main' }
       let bubbleOpen = false
@@ -1047,6 +1065,30 @@ export default {
       }
     },
 
+    _startTypewriter(bubble, targetText) {
+      if (!targetText) return
+      if (this._typewriterTimer) {
+        clearInterval(this._typewriterTimer)
+        this._typewriterTimer = null
+      }
+      if (targetText.length <= 4) {
+        bubble.text = targetText
+        this._scrollBottom(true)
+        return
+      }
+      let idx = 0
+      const step = Math.max(1, Math.ceil(targetText.length / 42))
+      this._typewriterTimer = setInterval(() => {
+        idx = Math.min(targetText.length, idx + step)
+        bubble.text = targetText.slice(0, idx)
+        this._scrollBottom(true)
+        if (idx >= targetText.length) {
+          clearInterval(this._typewriterTimer)
+          this._typewriterTimer = null
+        }
+      }, 22)
+    },
+
     _handle(ev, bubble, openBubble) {
       const d = ev.data || {}
       switch (ev.event) {
@@ -1063,6 +1105,11 @@ export default {
          */
         case 'todo': {
           const snapshot = { todos: d.todos || [], progress: d.progress || {} }
+          this.activeThinking = {
+            agent: 'main',
+            thought: '正在规划出行护航步骤：评估体能、北斗高精选线、气象感知…',
+            color: '#E65100',
+          }
           if (this._todoMsg) {
             this._todoMsg.todos = snapshot.todos
             this._todoMsg.progress = snapshot.progress
@@ -1077,6 +1124,11 @@ export default {
         case 'agent_status': {
           const text = d.text || d.status || ''
           if (text) {
+            this.activeThinking = {
+              agent: d.agent || 'main',
+              thought: text,
+              color: AGENT_COLOR[d.agent] || '#E65100',
+            }
             const existingIdx = this.messages.findIndex(
               (m) => m.kind === 'status' && (m.agent === d.agent || (d.text && m.text === d.text)) && m.text.includes('正在处理'),
             )
@@ -1090,46 +1142,48 @@ export default {
         }
 
         case 'delta': {
-          // 打字预览。后端 persist=False，不进事件日志、不进模型历史。
-          //
-          // 老人主对话框只该出现主智能体**最终定稿**的一句总结，规划过程一律只进
-          // 右侧链路。所以这里：①子智能体(银发导航/安康助手/邻里帮)的流式内容直接丢弃，
-          // 不进主框；②主智能体的预览只**缓冲**、预览期**不显现气泡**——中间规划步骤
-          // 的话术会被随后的 tool_call 清掉（见下），只有不再跟工具调用的最终总结，
-          // 才由 agent_msg / final 定稿时显现。这样从根上消除了"规划话术闪一下又没了"。
           if (!this.isMainAgent(d.agent)) break
           bubble.text += d.text || ''
           break
         }
 
         case 'agent_msg': {
-          /**
-           * 定稿**覆盖**预览，任何情况下都不保留预览。
-           *
-           * 医疗安全改写（R1/R2）挂在 agent/request 瀑布最外层，而 delta 是
-           * provider 内部逐片推的、比改写更早到前端。所以预览可能是**未审的原话**，
-           * 而 agent_msg 才是审过的那一份。见 docs/DESIGN.md §6.1 与
-           * test_medical_safety.py::test_the_streaming_preview_is_not_the_authoritative_text。
-           *
-           * 只认主智能体的定稿：子智能体(agent=health/travel/community)那句"最终答复"
-           * 是内部回给主智能体的中间产物，绝不该顶进老人主对话框——子智能体的工作已在
-           * 右侧链路以工具节点呈现。delta 预览期不开气泡，最终定稿在这里补上开启。
-           */
           if (!this.isMainAgent(d.agent)) break
-          bubble.text = d.text ?? ''
-          if (bubble.text) openBubble(true)
+          const targetMsg = d.text ?? ''
+          if (targetMsg) {
+            bubble.text = ''
+            openBubble(true)
+            this._startTypewriter(bubble, targetMsg)
+          }
           break
         }
 
         case 'tool_call': {
+          const toolName = d.tool || ''
+          const toolThoughts = {
+            plan_bds_elder_route: { agent: 'bds_nav', text: '北斗导航 Agent 正在解算年嘉湖零台阶平缓步道与安全走廊…', color: '#0284C7' },
+            inspect_micro_terrain: { agent: 'bds_nav', text: '微地形感知 Agent 正在探测步道纵坡、平缓绿道与硬阻断…', color: '#0284C7' },
+            locate_rest_benches: { agent: 'bds_nav', text: '适老时空 Agent 正在匹配沿途爱心长椅与避暑凉亭…', color: '#0284C7' },
+            get_weather: { agent: 'weather', text: '气象感知 Agent 正在获取烈士公园实时温湿度与风力…', color: '#F59E0B' },
+            get_bds_weather_escort: { agent: 'weather', text: '气象感知 Agent 正在评估烈士公园林荫遮阳与路面干湿状态…', color: '#F59E0B' },
+            assess_health: { agent: 'health', text: '安康助手 Agent 正在结合慢病体征核验步行耐受上限…', color: '#10B981' },
+            search_hospital: { agent: 'health', text: '医疗绿通 Agent 正在检索周边三甲急诊与平层无障碍通道…', color: '#10B981' },
+          }
+          const tInfo = toolThoughts[toolName] || {
+            agent: d.agent || 'main',
+            text: `智能体正在执行【${d.summary || toolName}】…`,
+            color: AGENT_COLOR[d.agent] || '#6366F1',
+          }
+          this.activeThinking = {
+            agent: tInfo.agent,
+            thought: tInfo.text,
+            color: tInfo.color,
+          }
+
           // 伴随了工具调用说明是中间规划步骤，清空打字预览文本，不作为气泡展示给老人
           if (bubble && bubble.text) {
             bubble.text = ''
           }
-          // 幂等：同一 call_id 可能重复到达 —— SSE 断线转轮询时 pollEvents 从
-          // afterSeq=0 起把本轮事件整段重放，其中的 tool_call 已在实时流里推过一遍。
-          // 原来这里无条件 push，于是断线那一下之前见过的每个工具都叠成两张卡。
-          // 已存在同 call_id 就地更新，不再新增；已办结的状态不回退成 running。
           const existingTool = d.call_id
             ? this.messages.find((m) => m.kind === 'tool' && m.callId === d.call_id)
             : null
@@ -1180,6 +1234,11 @@ export default {
         }
 
         case 'card':
+          this.activeThinking = {
+            agent: 'main',
+            thought: '康乐总管正在装配《北斗适老出行护航方案书》…',
+            color: '#E65100',
+          }
           this._upsertCard(d)
           this._scrollBottom()
           break
@@ -1242,6 +1301,11 @@ export default {
         case 'report': {
           const who = AGENT_LABEL[d.agent] || d.agent || '助手'
           const icon = AGENT_ICON[d.agent] || '🤵'
+          this.activeThinking = {
+            agent: d.agent || 'main',
+            thought: `${who}已完成协同任务，正在汇总护航建议…`,
+            color: AGENT_COLOR[d.agent] || '#0284C7',
+          }
           const pendingIdx = this.messages.findIndex(
             (m) => m.kind === 'status' && (m.agent === d.agent || m.text.includes(who)) && m.text.includes('正在处理'),
           )
@@ -1258,20 +1322,11 @@ export default {
 
         case 'thinking_delta': {
           const agent = d.agent || 'main'
-          const colors = {
-            main: '#E65100',
-            health: '#2E7D32',
-            bds_nav: '#1565C0',
-            weather: '#0288D1',
-            guardian: '#6A1B9A',
-            travel: '#E65100',
-            community: '#C2185B',
-          }
           this.activeThinking = {
             agent,
             delta: d.delta || '',
             thought: d.thought || d.delta || '',
-            color: colors[agent] || '#E65100',
+            color: AGENT_COLOR[agent] || '#E65100',
           }
           this._scrollBottom()
           break
@@ -1313,16 +1368,17 @@ export default {
 
         case 'final':
           this.activeThinking = null
+          this.thinking = false
           // 清理可能遗留的未闭合"正在处理…"状态气泡
           this.messages = this.messages.filter(
             (m) => !(m.kind === 'status' && m.text && m.text.includes('正在处理')),
           )
-          // 定稿兜底，与 agent_msg 同语义：只在一句话都没出来时补上（保持审过版优先）。
-          // 关键改动：delta 预览期不再开气泡，最终文本可能已由 agent_msg 落进 bubble.text
-          // 或仍停在 delta 缓冲里——无论哪种，只要有内容就在这里确保气泡显现，
-          // 不能再靠 delta 去开气泡了。
-          if (d.text && !bubble.text) bubble.text = d.text
-          if (bubble.text) openBubble(true)
+          const targetFinal = d.text || bubble.text || ''
+          if (targetFinal) {
+            bubble.text = ''
+            openBubble(true)
+            this._startTypewriter(bubble, targetFinal)
+          }
           this._scrollBottom(true)
           break
 
